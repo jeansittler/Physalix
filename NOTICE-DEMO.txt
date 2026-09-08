@@ -1,0 +1,37 @@
+Physalyx — Démonstration du 7 septembre 2026
+==========================================
+
+Application de physique-chimie pour Windows 10/11 64 bits.
+
+DÉMARRAGE
+1. Extraire entièrement le ZIP (clic droit > Extraire tout).
+2. Ouvrir le dossier Physalyx.
+3. Double-cliquer sur Physalyx.exe.
+
+Python n'est pas nécessaire. Conserver le dossier _internal à côté
+de Physalyx.exe : il contient les bibliothèques de l'application.
+
+POUR ESSAYER
+- Données : saisir les noms, les unités et quelques mesures.
+- Graphique : choisir les grandeurs X et Y, ajouter des séries.
+- Modélisation : choisir une série, un modèle et éventuellement un intervalle,
+  puis calculer les coefficients et afficher la courbe ajustée sur le graphique.
+- Pointage vidéo : ouvrir une courte vidéo personnelle, définir un
+  étalon et une origine, puis pointer le mouvement image par image.
+- Calculs : créer une dérivée ou une grandeur calculée par formule.
+
+LIMITES DE CETTE DÉMONSTRATION
+Les données et les calculs sont perdus à la fermeture : la sauvegarde
+n'est pas encore disponible. Les modèles sont également perdus à la fermeture.
+La lecture vidéo est sans son ; certains formats peuvent ne
+pas être reconnus. Préférer des extraits courts pour le pointage.
+
+Le fichier GUIDE.md donne les détails des fonctions disponibles.
+Pour un retour utile : indiquer les étapes suivies, le résultat attendu
+et le problème rencontré, avec une capture d'écran si possible.
+
+COMPOSANTS
+Physalyx utilise notamment Python, PySide6/Qt, shiboken6, PyQtGraph,
+NumPy, SciPy et PyAV/FFmpeg. Les notices fournies par les distributions de ces
+bibliothèques sont conservées dans _internal, notamment dans les
+dossiers *.dist-info et les répertoires de licences des composants.
