@@ -128,7 +128,7 @@ class ProjectFiles:
             write_project(path, state, self.video_tab.cache)
             self.project_path = Path(path)
             self._saved_state = self.document_signature()
-            self.setWindowTitle(f'{self.project_path.name} — Physalyx')
+            self.setWindowTitle(f'{self.project_path.name} — Physalix')
             self.statusBar().showMessage(f'Projet enregistré : {path}', 8000)
             return True
         except (OSError, ValueError, zipfile.BadZipFile) as error:
@@ -161,7 +161,7 @@ class ProjectFiles:
             self.modeling_tab.graph_requested.connect(lambda: self.tabs.setCurrentWidget(self.graph_tab))
             old.deleteLater()
             self.project_path = Path(path) if path else None
-            self.setWindowTitle(f'{self.project_path.name} — Physalyx' if path else 'Physalyx')
+            self.setWindowTitle(f'{self.project_path.name} — Physalix' if path else 'Physalix')
             if state is not None:
                 restore_views(self, state['graphs'])
             self._saved_state = self.document_signature()

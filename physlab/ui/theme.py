@@ -1,7 +1,7 @@
 """Tokens et styles du thème clair, partagés par les widgets et les tracés."""
 
 from dataclasses import dataclass
-from pathlib import Path
+from physlab.ui.resources import resource_path
 
 from PySide6.QtGui import QColor, QFont, QPalette
 
@@ -50,7 +50,7 @@ def report_stylesheet(t=LIGHT):
 
 
 def stylesheet(t=LIGHT):
-    assets = (Path(__file__).parent / "resources").as_posix()
+    assets = resource_path().as_posix()
     return f"""
     QWidget {{ color: {t.text}; font-family: '{t.font}'; font-size: {t.font_px}px; }}
     QMainWindow, QDialog, QTabWidget::pane, QScrollArea > QWidget > QWidget {{ background: {t.background}; }}

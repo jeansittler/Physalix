@@ -40,7 +40,8 @@ exe = EXE(
     a.scripts,
     [],
     exclude_binaries=True,
-    name='Physalyx',
+    name='Physalix',
+    icon='physlab/ui/resources/branding/icon_physalix.ico',
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
@@ -59,5 +60,5 @@ coll = COLLECT(
     strip=False,
     upx=True,
     upx_exclude=[],
-    name='Physalyx',
+    name='Physalix',
 )

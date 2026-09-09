@@ -6,12 +6,15 @@ from PySide6.QtWidgets import QApplication
 
 from physlab.ui.main_window import MainWindow
 from physlab.ui.theme import apply_theme
+from physlab.ui.branding import application_icon, set_windows_app_id
 
 
 def main() -> int:
     """Lancer l'interface de Physalyx."""
+    set_windows_app_id()
     app = QApplication(sys.argv)
-    app.setApplicationName("Physalyx")
+    app.setApplicationName("Physalix")
+    app.setWindowIcon(application_icon())
     apply_theme(app)
 
     window = MainWindow()

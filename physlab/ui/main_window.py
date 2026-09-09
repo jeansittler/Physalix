@@ -2,7 +2,8 @@
 
 from PySide6.QtCore import Qt, QSize
 from PySide6.QtWidgets import QMainWindow, QTabWidget, QWidget, QVBoxLayout
-from physlab.ui.components import label, role
+from physlab.ui.components import role
+from physlab.ui.branding import BrandLogo, application_icon
 from physlab.ui.icons import icon
 
 from physlab.ui.data_tab import DataTab
@@ -20,7 +21,8 @@ class MainWindow(QMainWindow, ProjectFiles):
 
     def __init__(self) -> None:
         super().__init__()
-        self.setWindowTitle("Physalyx")
+        self.setWindowTitle("Physalix")
+        self.setWindowIcon(application_icon())
         self.resize(1280, 760)
         self.setMinimumSize(640, 420)
 
@@ -31,12 +33,9 @@ class MainWindow(QMainWindow, ProjectFiles):
         self.tabs.tabBar().setUsesScrollButtons(True)
         brand = role(QWidget(), "brand")
         brand_layout = QVBoxLayout(brand)
-        brand_layout.setContentsMargins(24, 8, 24, 8)
+        brand_layout.setContentsMargins(24, 0, 24, 0)
         brand_layout.setSpacing(0)
-        brand_layout.addWidget(label("Physalyx", "brandTitle"))
-        tagline = label("Observer • Mesurer • Comprendre", "muted")
-        tagline.setWordWrap(False)
-        brand_layout.addWidget(tagline)
+        brand_layout.addWidget(BrandLogo())
         self.tabs.setCornerWidget(brand, Qt.Corner.TopLeftCorner)
         self.data_tab = DataTab()
         self.graph_tab = GraphWorkspace(self.data_tab.model)
@@ -56,7 +55,7 @@ class MainWindow(QMainWindow, ProjectFiles):
         self.update_navigation()
         self.setCentralWidget(self.tabs)
 
-        self.statusBar().showMessage("Physalyx — Prêt")
+        self.statusBar().showMessage("Prêt")
         self.setup_files()
 
     def update_navigation(self, *args):
