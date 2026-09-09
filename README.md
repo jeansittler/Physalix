@@ -1,4 +1,4 @@
-# Physalyx
+# Physalix
 
 Base d’une application Windows de bureau pour les TP de physique-chimie au lycée,
 inspirée dans l’esprit de Latis Pro, avec une interface simple et moderne.
@@ -10,7 +10,7 @@ L’onglet Modélisation ajuste des fonctions aux mesures. Les tableaux peuvent 
 
 ## Enregistrer et échanger un travail
 
-- **Fichier → Enregistrer** (`Ctrl+S`) sauvegarde le travail dans un fichier **`.physalyx`**.
+- **Fichier → Enregistrer** (`Ctrl+S`) sauvegarde le travail dans un fichier **`.physalix`**.
   **Enregistrer sous…** permet d’en conserver une autre version. **Ouvrir un projet…**
   (`Ctrl+O`) restitue le tableur, les noms et unités, les formules et colonnes calculées,
   les graphiques, les séries, les modélisations et leurs résultats, les intervalles et
@@ -31,7 +31,7 @@ L’onglet Modélisation ajuste des fonctions aux mesures. Les tableaux peuvent 
   signature, le point-virgule et la virgule décimale, pour Excel en français.
   Dans une autre configuration régionale, choisir ces paramètres à l’import dans Excel.
   Le CSV ne contient pas les graphiques ni les définitions des calculs : conserver
-  aussi le projet `.physalyx` pour reprendre le travail.
+  aussi le projet `.physalix` pour reprendre le travail.
 
 ## Saisir des données
 
@@ -98,7 +98,7 @@ L’onglet Modélisation ajuste des fonctions aux mesures. Les tableaux peuvent 
   la barre **fx** et l'édition de la cellule affichent la formule originale.
 - Sélectionnez B1 et tirez sa poignée vers le bas : B2 reçoit `=A2*2`, B3 `=A3*2`…
   Les références `$A$1`, `$A1` et `A$1` fixent respectivement les deux coordonnées,
-  la colonne ou la ligne. Copier puis coller à l'intérieur de Physalyx adapte aussi
+  la colonne ou la ligne. Copier puis coller à l'intérieur de Physalix adapte aussi
   les références ; une copie vers un autre logiciel fournit les valeurs affichées.
 - Opérations : `+`, `-`, `*`, `/`, `^`. Fonctions : `RACINE` / `SQRT`, `ABS`,
   `SIN`, `COS`, `TAN`, `EXP`, `LN` (népérien), `LOG` / `LOG10` (base 10), `SOMME` / `SUM`,
@@ -406,9 +406,9 @@ commande est nécessaire. Fermer la fenêtre arrête l’application.
 ## Structure
 
 ```text
-Physalyx/
+Physalix/
 ├── main.py                   # Point d’entrée à exécuter
-├── physlab/
+├── physalix/
 │   ├── __init__.py           # Paquet de l’application
 │   ├── app.py               # QApplication et boucle d’événements
 │   └── ui/
@@ -450,7 +450,7 @@ un exécutable Windows, puis éventuellement un installateur. Les utilisateurs
 n’auront alors ni Python à installer ni terminal à utiliser.
 
 La dernière version portable Windows 64 bits se lance depuis
-`dist/Physalyx/Physalyx.exe`, en conservant son dossier `_internal` à côté.
+`dist/Physalix/Physalix.exe`, en conservant son dossier `_internal` à côté.
 Le script de construction produit uniquement la version locale, sans archive ZIP.
 Le partage sera préparé une fois les modifications terminées.
 La notice `LISEZ-MOI.txt` accompagne la démonstration.
@@ -462,11 +462,13 @@ Pour reconstruire cette version depuis l'environnement de développement :
 .\build-demo.ps1
 ```
 
-La configuration `Physalyx.spec` inclut les dépendances vidéo et les métadonnées
+La configuration `Physalix.spec` inclut les dépendances vidéo et les métadonnées
 des bibliothèques. La construction doit être effectuée sous Windows.
 
-Le package Python interne `physlab` conserve son nom pour maintenir les imports.
-Le renommage ne modifie aucun format de fichier ni les lecteurs existants.
+Le package Python principal est `physalix`. Les nouveaux projets utilisent
+l'extension `.physalix` et la signature interne `Physalix` (version 1).
+Les anciens projets `.physalyx` restent lisibles. Leur enregistrement propose
+un nouveau fichier `.physalix` et conserve le fichier original.
 
 ## Modifier une formule existante
 

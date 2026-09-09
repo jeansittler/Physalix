@@ -2,8 +2,8 @@
 from PySide6.QtCore import Qt, Signal, QRect
 from PySide6.QtWidgets import (QComboBox, QHBoxLayout, QInputDialog, QLabel, QMdiArea,
                                QMdiSubWindow, QPushButton, QStackedWidget, QTabBar, QVBoxLayout, QWidget)
-from physlab.ui.graph_tab import GraphTab
-from physlab.ui.modeling_tab import ModelingTab
+from physalix.ui.graph_tab import GraphTab
+from physalix.ui.modeling_tab import ModelingTab
 
 
 class GraphWindow(QMdiSubWindow):
@@ -11,7 +11,7 @@ class GraphWindow(QMdiSubWindow):
         super().__init__()
         self.owner, self.graph = owner, graph
         self.setWidget(graph)
-        from physlab.ui.icons import icon
+        from physalix.ui.icons import icon
         self.setWindowIcon(icon('graph'))
         self.setWindowFlags(Qt.WindowType.SubWindow | Qt.WindowType.CustomizeWindowHint |
                             Qt.WindowType.WindowTitleHint | Qt.WindowType.WindowCloseButtonHint)

@@ -7,9 +7,9 @@ from PySide6.QtWidgets import (
     QVBoxLayout, QWidget, QDialog, QDialogButtonBox, QMenu,
 )
 
-from physlab.calculations import CalculationEngine, derivative_unit
-from physlab.ui.math_help import math_help_button
-from physlab.ui.components import page_layout, role, ResponsiveCards, label as section_label
+from physalix.calculations import CalculationEngine, derivative_unit
+from physalix.ui.math_help import math_help_button
+from physalix.ui.components import page_layout, role, ResponsiveCards, label as section_label
 
 
 class FormulaEditDialog(QDialog):

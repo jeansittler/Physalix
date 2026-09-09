@@ -6,7 +6,7 @@ from PySide6.QtWidgets import (
     QCheckBox, QColorDialog, QComboBox, QHBoxLayout, QLabel, QPushButton, QWidget,
 )
 import pyqtgraph as pg
-from physlab.ui.components import role
+from physalix.ui.components import role
 
 
 class GraphSeries(QWidget):

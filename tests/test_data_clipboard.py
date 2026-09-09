@@ -10,7 +10,7 @@ from PySide6.QtCore import QItemSelection, QItemSelectionModel, Qt
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication
 
-from physlab.ui.data_tab import DataTab
+from physalix.ui.data_tab import DataTab
 
 
 class ClipboardTests(unittest.TestCase):
@@ -58,7 +58,7 @@ class ClipboardTests(unittest.TestCase):
         self.assertEqual(self.model.units, ["s", "m"])
         self.assertEqual(self.model.rows[0], ["0", "1,5"])
 
-    @patch("physlab.ui.data_tab.QMessageBox.warning")
+    @patch("physalix.ui.data_tab.QMessageBox.warning")
     def test_invalid_paste_is_atomic(self, warning):
         self.model.rows[19][1] = "42"
         self.paste("1\t2\n3\tinvalide", row=21, column=1)
@@ -67,7 +67,7 @@ class ClipboardTests(unittest.TestCase):
         self.assertEqual(self.model.rowCount(), 22)
         self.assertEqual(self.model.rows[19][1], "42")
 
-    @patch("physlab.ui.data_tab.QMessageBox.warning")
+    @patch("physalix.ui.data_tab.QMessageBox.warning")
     def test_calculated_column_is_protected(self, warning):
         self.model.calculated_columns.add(1)
         self.paste("1\t2")

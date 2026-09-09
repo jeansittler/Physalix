@@ -8,8 +8,8 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from PySide6.QtCore import QItemSelection, QItemSelectionModel
 from PySide6.QtWidgets import QApplication
-from physlab.statistics import METRICS, describe
-from physlab.ui.main_window import MainWindow
+from physalix.statistics import METRICS, describe
+from physalix.ui.main_window import MainWindow
 
 
 class StatisticsMathTests(unittest.TestCase):

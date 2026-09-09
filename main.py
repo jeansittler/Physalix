@@ -1,6 +1,6 @@
-"""Point d'entrée de Physalyx en développement."""
+"""Point d'entrée de Physalix en développement."""
 
-from physlab.app import main
+from physalix.app import main
 
 
 if __name__ == "__main__":

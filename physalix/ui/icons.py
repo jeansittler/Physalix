@@ -4,7 +4,7 @@ from PySide6.QtCore import QByteArray, Qt
 from PySide6.QtGui import QIcon, QPixmap, QPainter
 from PySide6.QtSvg import QSvgRenderer
 
-from physlab.ui.theme import LIGHT
+from physalix.ui.theme import LIGHT
 
 
 PATHS = {

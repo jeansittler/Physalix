@@ -1,8 +1,8 @@
-# Refonte visuelle de Physalyx
+# Refonte visuelle de Physalix
 
 ## Organisation conservée
 
-Physalyx reste une application native **PySide6 / Qt Widgets**, avec **PyQtGraph**
+Physalix reste une application native **PySide6 / Qt Widgets**, avec **PyQtGraph**
 pour les tracés, **SciPy** pour les ajustements et **PyAV** pour le décodage vidéo.
 `MainWindow` conserve son `QTabWidget`, ses cinq classes d'écran, le modèle de
 données partagé et les connexions de signaux existantes. Aucun framework,
@@ -12,19 +12,19 @@ Avant cette intervention, le style reposait sur Fusion, la palette système,
 quelques couleurs locales de PyQtGraph et le HTML des rapports. Aucune collection
 d'icônes ni feuille QSS globale n'était présente. Le message « Base de
 développement » était une chaîne statique de la fenêtre principale, sans rôle
-fonctionnel : il devient « Physalyx — Prêt ».
+fonctionnel : il devient « Physalix — Prêt ».
 
 ## Thème et composants
 
-- `physlab/ui/theme.py` : tokens du thème clair, palette Qt explicite, Segoe UI,
+- `physalix/ui/theme.py` : tokens du thème clair, palette Qt explicite, Segoe UI,
   QSS global, hiérarchie des boutons, champs, cases à cocher, tableaux, menus,
   barres de défilement et styles HTML des résultats.
-- `physlab/ui/components.py` : rôles de présentation, marges de page, panneaux,
+- `physalix/ui/components.py` : rôles de présentation, marges de page, panneaux,
   aide dépliable, cartes adaptatives et conteneurs défilants pour petites fenêtres.
-- `physlab/ui/icons.py` : cinq pictogrammes SVG simples rendus par Qt à plusieurs
+- `physalix/ui/icons.py` : cinq pictogrammes SVG simples rendus par Qt à plusieurs
   résolutions, avec variantes actives et désactivées.
-- `physlab/ui/resources/*.svg` : cinq petits fichiers pour les chevrons et la
-  coche. `Physalyx.spec` les inclut dans l'exécutable distribué.
+- `physalix/ui/resources/*.svg` : cinq petits fichiers pour les chevrons et la
+  coche. `Physalix.spec` les inclut dans l'exécutable distribué.
 
 Les propriétés `role` distinguent `primary`, `danger`, `panel`, `sectionTitle`,
 `caption`, `muted`, `brand` et `brandTitle`. Les boutons secondaires utilisent le
@@ -36,7 +36,7 @@ sombre. Aucun sélecteur de thème sombre ni nouvelle fenêtre de paramètres.
 | Écran | Présentation |
 | --- | --- |
 | Données | Tableau blanc, traits fins, en-têtes teintés, lignes Grandeur/Unité distinguées, sélection claire et cadre de cellule bleus, lignes de 32 px, bouton Ajouter une grandeur, aide dépliable. |
-| Graphique | Barre d'outils harmonisée, accès au menu existant par un bouton, réglages des séries dans des panneaux, tracé dominant sur fond blanc, grille allégée, bleu Physalyx par défaut pour la première série, messages discrets. |
+| Graphique | Barre d'outils harmonisée, accès au menu existant par un bouton, réglages des séries dans des panneaux, tracé dominant sur fond blanc, grille allégée, bleu Physalix par défaut pour la première série, messages discrets. |
 | Modélisation | Cartes Modèle et Intervalle et options, côte à côte ou empilées selon la largeur, bouton de calcul principal, rapport blanc et typographie harmonisée, aide détaillée conservée. |
 | Pointage vidéo | Groupes Fichier, Étalonnage, Pointage et Lecture, état lisible, surface vidéo sombre préservée, loupe encadrée, slider bleu, contrôles accessibles par défilement si nécessaire. |
 | Calculs | Deux cartes adaptatives pour la dérivée et la formule, clavier mathématique conservé, boutons de création principaux, explications secondaires, tableau récapitulatif harmonisé. |
@@ -48,10 +48,10 @@ Graphique et Vidéo défilent sous leur taille confortable au lieu de se superpo
 
 ## Fichiers modifiés
 
-`physlab/app.py`, `physlab/ui/main_window.py`, `data_tab.py`, `graph_tab.py`,
+`physalix/app.py`, `physalix/ui/main_window.py`, `data_tab.py`, `graph_tab.py`,
 `graph_series.py`, `graph_axis.py`, `graph_legend.py`, `modeling_tab.py`,
-`fit_report.py`, `video_tab.py`, `calculations_tab.py`, `Physalyx.spec`, `README.md`.
-Les chemins abrégés des écrans sont tous dans `physlab/ui/`.
+`fit_report.py`, `video_tab.py`, `calculations_tab.py`, `Physalix.spec`, `README.md`.
+Les chemins abrégés des écrans sont tous dans `physalix/ui/`.
 
 Fichiers créés : les trois modules de thème/composants/icônes, cinq SVG,
 `tests/test_ui_theme.py`, ce document, et les scripts, journaux et captures dans
@@ -85,7 +85,7 @@ copier-coller reste inchangé, et les données restent en mémoire pendant la se
   chargement vidéo, images précédente/suivante, étalon, origine, pointage,
   annulation, lecture et fermeture : **réussis**.
 - `build-demo.ps1` : **réussi**, exécutable et ZIP produits. La fenêtre Qt nommée
-  Physalyx a été détectée après lancement de l'exécutable, puis fermée proprement.
+  Physalix a été détectée après lancement de l'exécutable, puis fermée proprement.
 
 Deux tests de souris échouent dans la suite native Windows brute, **également
 sur les sources d'origine** : survol du réticule et sélection d'une unité dans

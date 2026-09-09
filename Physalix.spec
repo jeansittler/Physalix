@@ -1,8 +1,12 @@
 # -*- mode: python ; coding: utf-8 -*-
 from PyInstaller.utils.hooks import collect_all
 from PyInstaller.utils.hooks import copy_metadata
+from PyInstaller.utils.win32.versioninfo import (
+    VSVersionInfo, FixedFileInfo, StringFileInfo, StringTable, StringStruct,
+    VarFileInfo, VarStruct,
+)
 
-datas = [('physlab/ui/resources', 'physlab/ui/resources')]
+datas = [('physalix/ui/resources', 'physalix/ui/resources')]
 binaries = []
 hiddenimports = []
 datas += copy_metadata('PySide6')
@@ -41,7 +45,22 @@ exe = EXE(
     [],
     exclude_binaries=True,
     name='Physalix',
-    icon='physlab/ui/resources/branding/icon_physalix.ico',
+    icon='physalix/ui/resources/branding/icon_physalix.ico',
+    version=VSVersionInfo(
+        ffi=FixedFileInfo(),
+        kids=[
+            StringFileInfo([StringTable('040C04B0', [
+                StringStruct('FileDescription', 'Physalix'),
+                StringStruct('ProductName', 'Physalix'),
+                StringStruct('InternalName', 'Physalix'),
+                StringStruct('OriginalFilename', 'Physalix.exe'),
+                # No release numbering yet; match FixedFileInfo's default.
+                StringStruct('FileVersion', '0.0.0.0'),
+                StringStruct('ProductVersion', '0.0.0.0'),
+            ])]),
+            VarFileInfo([VarStruct('Translation', [0x040c, 1200])]),
+        ],
+    ),
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,

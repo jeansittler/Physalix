@@ -2,6 +2,7 @@
 import os
 os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
 import tempfile
+import json
 from pathlib import Path
 import unittest
 from unittest.mock import patch
@@ -9,10 +10,10 @@ import zipfile
 
 from PySide6.QtCore import QPointF
 from PySide6.QtWidgets import QApplication, QMessageBox, QFileDialog
-from physlab.fitting import fit_model
-from physlab.project import read_project, write_project, read_csv, write_csv, atomic_write
-from physlab.ui.main_window import MainWindow
-from physlab.ui.project_state import snapshot, restore
+from physalix.fitting import fit_model
+from physalix.project import read_project, write_project, read_csv, write_csv, atomic_write
+from physalix.ui.main_window import MainWindow
+from physalix.ui.project_state import snapshot, restore
 
 
 class ProjectTests(unittest.TestCase):
@@ -24,7 +25,7 @@ class ProjectTests(unittest.TestCase):
         self.window = MainWindow()
         self.windows = [self.window]
         self.directory = tempfile.TemporaryDirectory()
-        self.path = Path(self.directory.name) / 'expérience.physalyx'
+        self.path = Path(self.directory.name) / 'expérience.physalix'
 
     def tearDown(self):
         for window in self.windows:
@@ -82,6 +83,69 @@ class ProjectTests(unittest.TestCase):
         self.assertEqual(m.rows[0][2], '20')
         self.assertEqual(m.rows[0][4], '11')
         self.assertFalse(first.series[0].fits)  # Invalidation normale après modification des mesures.
+
+    def legacy_project(self):
+        """Build an authentic version-1 legacy archive, independent of the writer."""
+        path = self.path.with_suffix('.physalyx')
+        with zipfile.ZipFile(path, 'w') as archive:
+            archive.writestr('project.json', json.dumps({
+                'format': 'Physalyx', 'version': 1, 'state': snapshot(self.window)}))
+        return path
+
+    def test_legacy_open_and_save_migrates_without_changing_original(self):
+        legacy = self.legacy_project()
+        original = legacy.read_bytes()
+        with patch.object(QFileDialog, 'getOpenFileName', return_value=(str(legacy), '')) as dialog:
+            self.window.open_project()
+        self.assertIn('*.physalix', dialog.call_args.args[3])
+        self.assertIn('*.physalyx', dialog.call_args.args[3])
+        self.assertEqual(self.window.project_path, legacy)
+        with patch.object(QFileDialog, 'getSaveFileName', return_value=(str(self.path), '')) as dialog:
+            self.assertTrue(self.window.save_project())
+        self.assertEqual(dialog.call_args.args[2], str(self.path))
+        self.assertEqual(self.window.project_path, self.path)
+        self.assertEqual(legacy.read_bytes(), original)
+        with zipfile.ZipFile(self.path) as archive:
+            document = json.loads(archive.read('project.json'))
+        self.assertEqual(document['format'], 'Physalix')
+        self.assertEqual(document['version'], 1)
+        self.assertEqual(read_project(self.path), read_project(legacy))
+        with patch.object(QFileDialog, 'getSaveFileName') as dialog:
+            self.assertTrue(self.window.save_project())
+            dialog.assert_not_called()
+
+    def test_cancel_legacy_migration_preserves_path_and_file(self):
+        legacy = self.legacy_project()
+        self.window.replace_project(read_project(legacy), legacy)
+        with patch.object(QFileDialog, 'getSaveFileName', return_value=('', '')):
+            self.assertFalse(self.window.save_project())
+        self.assertEqual(self.window.project_path, legacy)
+        self.assertFalse(self.path.exists())
+
+    def test_save_suffixes_and_reopen(self):
+        for suffix in ('', '.physalix', '.PHYSALIX', '.physalyx', '.PHYSALYX'):
+            with self.subTest(suffix=suffix):
+                selected = self.path.with_suffix(suffix)
+                with patch.object(QFileDialog, 'getSaveFileName', return_value=(str(selected), '')):
+                    self.assertTrue(self.window.save_project(save_as=True))
+                self.assertEqual(self.window.project_path, self.path)
+                self.assertEqual(read_project(self.path), snapshot(self.window))
+                self.path.unlink()
+
+    def test_normalized_destination_does_not_overwrite_without_confirmation(self):
+        self.path.write_bytes(b'keep me')
+        with patch.object(QFileDialog, 'getSaveFileName', return_value=(str(self.path.with_suffix('')), '')), \
+                patch.object(QMessageBox, 'question', return_value=QMessageBox.StandardButton.No):
+            self.assertFalse(self.window.save_project())
+        self.assertEqual(self.path.read_bytes(), b'keep me')
+
+    def test_unknown_format_and_future_version_are_rejected(self):
+        for name, version in [('unknown', 1), ('Physalix', 2), ('Physalyx', 2)]:
+            with self.subTest(name=name, version=version):
+                with zipfile.ZipFile(self.path, 'w') as archive:
+                    archive.writestr('project.json', json.dumps({'format': name, 'version': version, 'state': {}}))
+                with self.assertRaises(ValueError):
+                    read_project(self.path)
 
     def test_atomic_failure_keeps_previous_file(self):
         self.path.write_text('original', encoding='utf-8')
@@ -149,7 +213,7 @@ class ProjectTests(unittest.TestCase):
         self.assertEqual(read_csv(path)['rows'][0], ["'=1+2", '-2'])
 
     def test_video_embedded_with_calibration(self):
-        from physlab.video import VideoCache
+        from physalix.video import VideoCache
         from PySide6.QtGui import QImage
         video = self.window.video_tab
         video.cache = VideoCache(tempfile.TemporaryDirectory(), [0.0], 20, 20, False)

@@ -11,8 +11,8 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 from PySide6.QtGui import QImage
 from PySide6.QtWidgets import QApplication
 
-from physlab.ui.branding import BrandLogo, application_icon
-from physlab.ui.resources import resource_path
+from physalix.ui.branding import BrandLogo, application_icon
+from physalix.ui.resources import resource_path
 
 
 class BrandingTests(unittest.TestCase):

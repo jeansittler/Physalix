@@ -6,7 +6,7 @@ from PySide6.QtCore import QRectF, Qt
 from PySide6.QtGui import QIcon, QPainter, QPixmap
 from PySide6.QtWidgets import QWidget
 
-from physlab.ui.resources import resource_path
+from physalix.ui.resources import resource_path
 
 
 def application_icon() -> QIcon:

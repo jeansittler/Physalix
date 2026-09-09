@@ -4,8 +4,8 @@ import unittest
 
 os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
 from PySide6.QtWidgets import QApplication
-from physlab.ui.main_window import MainWindow
-from physlab.fitting import fit_model
+from physalix.ui.main_window import MainWindow
+from physalix.fitting import fit_model
 
 
 class GraphWorkspaceTests(unittest.TestCase):

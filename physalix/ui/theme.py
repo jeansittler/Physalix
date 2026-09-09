@@ -1,7 +1,7 @@
 """Tokens et styles du thème clair, partagés par les widgets et les tracés."""
 
 from dataclasses import dataclass
-from physlab.ui.resources import resource_path
+from physalix.ui.resources import resource_path
 
 from PySide6.QtGui import QColor, QFont, QPalette
 

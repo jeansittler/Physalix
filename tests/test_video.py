@@ -16,8 +16,8 @@ from PySide6.QtTest import QTest
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QApplication
 
-from physlab.video import prepare_video
-from physlab.ui.main_window import MainWindow
+from physalix.video import prepare_video
+from physalix.ui.main_window import MainWindow
 
 
 def make_video(path, codec="ffv1", timestamps=(0, 40, 120, 160)):

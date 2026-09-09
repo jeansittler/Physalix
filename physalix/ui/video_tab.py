@@ -9,11 +9,11 @@ from PySide6.QtWidgets import (
     QComboBox, QDialog, QFileDialog, QHBoxLayout, QLabel, QPushButton, QSlider, QVBoxLayout, QWidget,
 )
 
-from physlab.video import prepare_video
-from physlab.ui.data_tab import MeasurementsModel
-from physlab.ui.video_canvas import Magnifier, VideoCanvas
-from physlab.ui.video_tracking import CalibrationDialog, TrackingSession
-from physlab.ui.components import workspace_layout, panel, label, role
+from physalix.video import prepare_video
+from physalix.ui.data_tab import MeasurementsModel
+from physalix.ui.video_canvas import Magnifier, VideoCanvas
+from physalix.ui.video_tracking import CalibrationDialog, TrackingSession
+from physalix.ui.components import workspace_layout, panel, label, role
 
 
 class VideoLoader(QThread):

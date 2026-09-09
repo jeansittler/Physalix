@@ -9,9 +9,9 @@ from PySide6.QtCore import Qt
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication
 
-from physlab.calculations import CalculationEngine, Formula, derivative_unit
-from physlab.ui.data_tab import MeasurementsModel
-from physlab.ui.main_window import MainWindow
+from physalix.calculations import CalculationEngine, Formula, derivative_unit
+from physalix.ui.data_tab import MeasurementsModel
+from physalix.ui.main_window import MainWindow
 
 
 class FormulaTests(unittest.TestCase):

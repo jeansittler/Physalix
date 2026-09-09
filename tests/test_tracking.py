@@ -12,10 +12,10 @@ from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QDialog
 
 import test_video
-from physlab.ui.data_tab import MeasurementsModel
-from physlab.ui.video_canvas import VideoCanvas
-from physlab.ui.video_tracking import CalibrationDialog, TrackingSession
-from physlab.ui.main_window import MainWindow
+from physalix.ui.data_tab import MeasurementsModel
+from physalix.ui.video_canvas import VideoCanvas
+from physalix.ui.video_tracking import CalibrationDialog, TrackingSession
+from physalix.ui.main_window import MainWindow
 
 
 class TrackingMathTests(unittest.TestCase):
@@ -67,7 +67,7 @@ class TrackingMathTests(unittest.TestCase):
                 session.calibrate(QPointF(0, 0), end, length, "cm")
 
     def test_grow_table_and_graph_pairs(self):
-        from physlab.ui.graph_tab import paired_values
+        from physalix.ui.graph_tab import paired_values
         model = MeasurementsModel()
         session = TrackingSession(model)
         session.set_origin(QPointF(0, 0))

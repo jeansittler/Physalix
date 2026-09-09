@@ -1,19 +1,19 @@
-"""Fenêtre principale et navigation de Physalyx."""
+"""Fenêtre principale et navigation de Physalix."""
 
 from PySide6.QtCore import Qt, QSize
 from PySide6.QtWidgets import QMainWindow, QTabWidget, QWidget, QVBoxLayout
-from physlab.ui.components import role
-from physlab.ui.branding import BrandLogo, application_icon
-from physlab.ui.icons import icon
+from physalix.ui.components import role
+from physalix.ui.branding import BrandLogo, application_icon
+from physalix.ui.icons import icon
 
-from physlab.ui.data_tab import DataTab
-from physlab.ui.graph_tab import GraphTab
-from physlab.ui.modeling_tab import ModelingTab
-from physlab.ui.video_tab import VideoTab
-from physlab.ui.calculations_tab import CalculationsTab
-from physlab.ui.statistics_tab import StatisticsTab
-from physlab.ui.graph_workspace import GraphWorkspace, ModelingWorkspace
-from physlab.ui.project_files import ProjectFiles
+from physalix.ui.data_tab import DataTab
+from physalix.ui.graph_tab import GraphTab
+from physalix.ui.modeling_tab import ModelingTab
+from physalix.ui.video_tab import VideoTab
+from physalix.ui.calculations_tab import CalculationsTab
+from physalix.ui.statistics_tab import StatisticsTab
+from physalix.ui.graph_workspace import GraphWorkspace, ModelingWorkspace
+from physalix.ui.project_files import ProjectFiles
 
 
 class MainWindow(QMainWindow, ProjectFiles):

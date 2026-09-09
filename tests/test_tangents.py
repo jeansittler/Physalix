@@ -2,9 +2,9 @@ import os
 os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
 import unittest
 import numpy as np
-from physlab.tangents import parallel_tangents
+from physalix.tangents import parallel_tangents
 from PySide6.QtWidgets import QApplication
-from physlab.ui.main_window import MainWindow
+from physalix.ui.main_window import MainWindow
 
 class TangentsTests(unittest.TestCase):
     def test_symmetry_and_true_parallel_contacts(self):
@@ -31,7 +31,7 @@ class TangentsTests(unittest.TestCase):
 
     def test_ui_updates_and_perpendicular_in_pixels(self):
         app = QApplication.instance() or QApplication([])
-        from physlab.ui.theme import apply_theme
+        from physalix.ui.theme import apply_theme
         apply_theme(app)
         window = MainWindow()
         window.resize(1100, 800)

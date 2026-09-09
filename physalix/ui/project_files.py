@@ -8,8 +8,9 @@ from PySide6.QtGui import QAction, QKeySequence
 from PySide6.QtWidgets import (QApplication, QFileDialog, QMessageBox, QDialog, QVBoxLayout,
                                QHBoxLayout, QLabel, QComboBox, QCheckBox, QTableWidget,
                                QTableWidgetItem, QDialogButtonBox)
-from physlab.project import read_project, write_project, read_csv, write_csv
-from physlab.ui.project_state import snapshot, restore, restore_views
+from physalix.project import read_project, write_project, read_csv, write_csv
+from physalix.project import PROJECT_SUFFIX, LEGACY_SUFFIX
+from physalix.ui.project_state import snapshot, restore, restore_views
 
 
 class CsvImportDialog(QDialog):
@@ -116,12 +117,25 @@ class ProjectFiles:
             QMessageBox.information(self, 'Vidéo en préparation', 'Attendez la fin de la préparation de la vidéo avant d’enregistrer.')
             return False
         path = self.project_path
+        if path and path.suffix.lower() == LEGACY_SUFFIX:
+            path = path.with_suffix(PROJECT_SUFFIX)
+            save_as = True  # Let the user confirm the new destination; keep the legacy file.
         if save_as or not path:
-            path, _ = QFileDialog.getSaveFileName(self, 'Enregistrer le projet', str(path or 'Sans titre.physalyx'), 'Projet Physalyx (*.physalyx)')
+            path, _ = QFileDialog.getSaveFileName(self, 'Enregistrer le projet', str(path or 'Sans titre.physalix'), 'Projet Physalix (*.physalix)')
             if not path:
                 return False
-            if not path.lower().endswith('.physalyx'):
-                path += '.physalyx'
+            selected = Path(path)
+            if selected.suffix.lower() in (LEGACY_SUFFIX, PROJECT_SUFFIX):
+                path = selected.with_suffix(PROJECT_SUFFIX)
+            else:
+                path = Path(str(selected) + PROJECT_SUFFIX)
+            if path != selected and path.exists():
+                answer = QMessageBox.question(self, 'Remplacer le projet ?',
+                    f'Le fichier {path.name} existe déjà. Le remplacer ?',
+                    QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                    QMessageBox.StandardButton.No)
+                if answer != QMessageBox.StandardButton.Yes:
+                    return False
         try:
             QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
             state = snapshot(self)
@@ -138,7 +152,7 @@ class ProjectFiles:
             QApplication.restoreOverrideCursor()
 
     def replace_project(self, state=None, path=None):
-        from physlab.ui.main_window import MainWindow
+        from physalix.ui.main_window import MainWindow
         staging = MainWindow()
         staging._discard_on_close = True
         try:
@@ -176,7 +190,8 @@ class ProjectFiles:
         self.replace_project()
 
     def open_project(self):
-        path, _ = QFileDialog.getOpenFileName(self, 'Ouvrir un projet', str(self.project_path or ''), 'Projet Physalyx (*.physalyx)')
+        path, _ = QFileDialog.getOpenFileName(self, 'Ouvrir un projet', str(self.project_path or ''),
+            f'Projet Physalix (*{PROJECT_SUFFIX} *{LEGACY_SUFFIX})')
         if not path:
             return
         try:

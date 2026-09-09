@@ -15,12 +15,12 @@ from PySide6.QtWidgets import (
     QStyledItemDelegate, QVBoxLayout, QWidget,
 )
 
-from physlab.ui.fill_table import FillTableView
-from physlab.ui.units import COMMON_UNITS
-from physlab.ui.theme import LIGHT
-from physlab.ui.components import help_toggle, page_layout, role
-from physlab.ui.math_help import math_help_button
-from physlab.spreadsheet import CellFormula, CellError, column_label, remove_formula_column, translate_formula
+from physalix.ui.fill_table import FillTableView
+from physalix.ui.units import COMMON_UNITS
+from physalix.ui.theme import LIGHT
+from physalix.ui.components import help_toggle, page_layout, role
+from physalix.ui.math_help import math_help_button
+from physalix.spreadsheet import CellFormula, CellError, column_label, remove_formula_column, translate_formula
 
 
 class CellEdit(QUndoCommand):
@@ -418,7 +418,7 @@ class MeasurementsTable(FillTableView):
                              if (row, column) in selected else ""] for column in columns])
         mime = QMimeData()
         mime.setText(output.getvalue())
-        mime.setData("application/x-physalyx-cells", json.dumps(payload).encode("utf-8"))
+        mime.setData("application/x-physalix-cells", json.dumps(payload).encode("utf-8"))
         QApplication.clipboard().setMimeData(mime)
 
     def paste_clipboard(self):
@@ -445,9 +445,9 @@ class MeasurementsTable(FillTableView):
             columns = [header.logicalIndex(v) if v < header.count() else model.columnCount() + v - header.count()
                        for v in range(first_visual, first_visual + width)]
             mime = QApplication.clipboard().mimeData()
-            if mime.hasFormat("application/x-physalyx-cells"):
+            if mime.hasFormat("application/x-physalix-cells"):
                 try:
-                    payload = json.loads(bytes(mime.data("application/x-physalyx-cells")))
+                    payload = json.loads(bytes(mime.data("application/x-physalix-cells")))
                     if len(payload) == len(rows) and all(len(row) == width for row in payload):
                         for r, entries in enumerate(payload):
                             for c, (source_row, source_column, value) in enumerate(entries):

@@ -4,7 +4,7 @@ from PySide6.QtCore import Qt
 from PySide6.QtGui import QPainterPath
 from PySide6.QtWidgets import QGraphicsPathItem
 import pyqtgraph as pg
-from physlab.ui.theme import LIGHT
+from physalix.ui.theme import LIGHT
 
 
 class EndAxis(pg.AxisItem):

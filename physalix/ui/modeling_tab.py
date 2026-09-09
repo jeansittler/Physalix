@@ -6,11 +6,11 @@ from PySide6.QtWidgets import (
     QPushButton, QScrollArea, QVBoxLayout, QWidget, QTextBrowser, QFrame,
 )
 
-from physlab.fitting import MODELS, fit_model
-from physlab.ui.fit_report import report_html, math_text, DETAILS_HTML
-from physlab.ui.graph_tab import paired_values
-from physlab.ui.components import page_layout, panel, label, role, ResponsiveCards
-from physlab.ui.theme import report_stylesheet
+from physalix.fitting import MODELS, fit_model
+from physalix.ui.fit_report import report_html, math_text, DETAILS_HTML
+from physalix.ui.graph_tab import paired_values
+from physalix.ui.components import page_layout, panel, label, role, ResponsiveCards
+from physalix.ui.theme import report_stylesheet
 
 
 class ReportView(QTextBrowser):

@@ -7,10 +7,10 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 from PySide6.QtCore import QPointF
 from PySide6.QtWidgets import QApplication, QDialog
 from PySide6.QtTest import QTest
-from physlab.calculations import CalculationEngine, Formula
-from physlab.ui.data_tab import MeasurementsModel
-from physlab.ui.calculations_tab import CalculationsTab, FormulaEditDialog
-from physlab.ui.video_tracking import TrackingSession
+from physalix.calculations import CalculationEngine, Formula
+from physalix.ui.data_tab import MeasurementsModel
+from physalix.ui.calculations_tab import CalculationsTab, FormulaEditDialog
+from physalix.ui.video_tracking import TrackingSession
 
 
 class FormulaEditingTests(unittest.TestCase):

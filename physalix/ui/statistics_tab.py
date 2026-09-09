@@ -9,9 +9,9 @@ from PySide6.QtWidgets import (
     QLabel, QPushButton, QSpinBox, QTableWidget, QTableWidgetItem, QWidget,
 )
 
-from physlab.statistics import METRICS, describe
-from physlab.spreadsheet import column_label
-from physlab.ui.components import label, role, workspace_layout
+from physalix.statistics import METRICS, describe
+from physalix.spreadsheet import column_label
+from physalix.ui.components import label, role, workspace_layout
 
 
 class StatisticsTab(QWidget):

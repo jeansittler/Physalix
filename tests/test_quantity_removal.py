@@ -10,9 +10,9 @@ from PySide6.QtCore import QPoint, QPointF, QTimer
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication, QMessageBox
 
-from physlab.ui.main_window import MainWindow
-from physlab.ui.data_tab import MeasurementsModel
-from physlab.ui.video_tracking import TrackingSession
+from physalix.ui.main_window import MainWindow
+from physalix.ui.data_tab import MeasurementsModel
+from physalix.ui.video_tracking import TrackingSession
 
 
 class QuantityRemovalTests(unittest.TestCase):
@@ -62,10 +62,10 @@ class QuantityRemovalTests(unittest.TestCase):
             model = window.data_tab.model
             engine = window.calculations_tab.engine
             engine.add("sum", "", expression="x+y")
-            with patch("physlab.ui.data_tab.QMessageBox.question", return_value=QMessageBox.StandardButton.No):
+            with patch("physalix.ui.data_tab.QMessageBox.question", return_value=QMessageBox.StandardButton.No):
                 window.data_tab.table.delete_quantity(0)
             self.assertEqual(model.names, ["x", "y", "sum"])
-            with patch("physlab.ui.data_tab.QMessageBox.question", return_value=QMessageBox.StandardButton.Yes):
+            with patch("physalix.ui.data_tab.QMessageBox.question", return_value=QMessageBox.StandardButton.Yes):
                 window.data_tab.table.delete_quantity(2)
             QTest.qWait(10)
             self.assertEqual(model.names, ["x", "y"])
@@ -90,7 +90,7 @@ class QuantityRemovalTests(unittest.TestCase):
                 menu.actions()[0].trigger()
                 menu.close()
             with patch(
-                    "physlab.ui.data_tab.QMessageBox.question", return_value=QMessageBox.StandardButton.Yes):
+                    "physalix.ui.data_tab.QMessageBox.question", return_value=QMessageBox.StandardButton.Yes):
                 QTimer.singleShot(0, choose_delete)
                 header.customContextMenuRequested.emit(position)
             self.assertEqual(labels, ["Supprimer la grandeur…"])

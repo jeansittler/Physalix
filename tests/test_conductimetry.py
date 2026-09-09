@@ -5,8 +5,8 @@ import numpy as np
 
 os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
 from PySide6.QtWidgets import QApplication
-from physlab.conductimetry import fit_equivalence
-from physlab.ui.main_window import MainWindow
+from physalix.conductimetry import fit_equivalence
+from physalix.ui.main_window import MainWindow
 
 
 class ConductimetryMathTests(unittest.TestCase):

@@ -26,7 +26,7 @@ class VideoCache:
 def prepare_video(path, cancelled=lambda: False, progress=lambda count: None,
                   max_bytes=4 * 1024**3):
     """Lire toutes les images en ordre de présentation ; nettoyer en cas d'échec."""
-    cache = VideoCache(TemporaryDirectory(prefix="Physalyx-video-"), [], 0, 0, False)
+    cache = VideoCache(TemporaryDirectory(prefix="Physalix-video-"), [], 0, 0, False)
     try:
         used = 0
         origin = None

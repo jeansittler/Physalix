@@ -2,8 +2,8 @@
 import math
 import unittest
 
-from physlab.calculations import Formula, number
-from physlab.spreadsheet import CellFormula, translate_formula, remove_formula_column
+from physalix.calculations import Formula, number
+from physalix.spreadsheet import CellFormula, translate_formula, remove_formula_column
 
 
 class UsualFunctionsTests(unittest.TestCase):

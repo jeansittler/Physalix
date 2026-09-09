@@ -3,7 +3,7 @@ import numpy as np
 import pyqtgraph as pg
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QCheckBox, QComboBox, QDoubleSpinBox, QHBoxLayout, QLabel, QPushButton, QVBoxLayout, QWidget
-from physlab.curve_guides import curve_interpolator, model_plateau, tangent_at
+from physalix.curve_guides import curve_interpolator, model_plateau, tangent_at
 
 
 class CurveGuidesTool(QWidget):
@@ -148,7 +148,7 @@ class CurveGuidesTool(QWidget):
         self.selection_changed()
 
     def selection_changed(self, *args):
-        from physlab.ui.graph_tab import paired_values
+        from physalix.ui.graph_tab import paired_values
         series, fit = self.selected()
         if series is None:
             self.curve = None

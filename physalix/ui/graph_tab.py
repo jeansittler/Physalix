@@ -13,11 +13,11 @@ from PySide6.QtWidgets import (
 )
 import pyqtgraph as pg
 
-from physlab.ui.graph_series import GraphSeries
-from physlab.ui.graph_axis import EndAxis
-from physlab.ui.graph_legend import SmartLegend
-from physlab.ui.theme import LIGHT, SERIES_COLORS
-from physlab.ui.components import workspace_layout, role, panel as make_panel
+from physalix.ui.graph_series import GraphSeries
+from physalix.ui.graph_axis import EndAxis
+from physalix.ui.graph_legend import SmartLegend
+from physalix.ui.theme import LIGHT, SERIES_COLORS
+from physalix.ui.components import workspace_layout, role, panel as make_panel
 
 
 @dataclass(eq=False)
@@ -54,7 +54,7 @@ def paired_values(rows, x_column, y_column):
 
 
 class InteractivePlot(pg.PlotWidget):
-    """Remplacer le menu technique de PyQtGraph par les outils de Physalyx."""
+    """Remplacer le menu technique de PyQtGraph par les outils de Physalix."""
 
     menu_requested = Signal(object)
 
@@ -167,13 +167,13 @@ class GraphTab(QWidget):
         plot_layout.setContentsMargins(4, 4, 4, 4)
         plot_layout.addWidget(self.plot)
         layout.addWidget(plot_panel, 1)
-        from physlab.ui.tangent_tool import TangentTool
+        from physalix.ui.tangent_tool import TangentTool
         self.tangent_tool = TangentTool(self)
         layout.addWidget(self.tangent_tool)
-        from physlab.ui.conductimetry_tool import ConductimetryTool
+        from physalix.ui.conductimetry_tool import ConductimetryTool
         self.conductimetry_tool = ConductimetryTool(self)
         layout.addWidget(self.conductimetry_tool)
-        from physlab.ui.curve_guides_tool import CurveGuidesTool
+        from physalix.ui.curve_guides_tool import CurveGuidesTool
         self.curve_guides_tool = CurveGuidesTool(self)
         layout.addWidget(self.curve_guides_tool)
         self.coordinates = QLabel("Réticule désactivé — clic droit pour l’activer.")

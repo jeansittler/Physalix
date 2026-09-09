@@ -9,7 +9,7 @@ from PySide6.QtCore import Qt
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication, QComboBox
 
-from physlab.ui.data_tab import DataTab
+from physalix.ui.data_tab import DataTab
 
 
 class UnitTests(unittest.TestCase):

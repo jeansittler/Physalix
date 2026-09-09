@@ -10,8 +10,8 @@ from PySide6.QtGui import QColor, QContextMenuEvent
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication
 
-from physlab.ui.main_window import MainWindow
-from physlab.ui.graph_tab import paired_values
+from physalix.ui.main_window import MainWindow
+from physalix.ui.graph_tab import paired_values
 
 
 class GraphTests(unittest.TestCase):

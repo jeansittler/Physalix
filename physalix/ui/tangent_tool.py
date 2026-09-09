@@ -3,7 +3,7 @@ import numpy as np
 import pyqtgraph as pg
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QLabel, QComboBox, QSlider, QPushButton
-from physlab.tangents import parallel_tangents
+from physalix.tangents import parallel_tangents
 
 
 class TangentTool(QWidget):
@@ -99,7 +99,7 @@ class TangentTool(QWidget):
         self.selection_changed()
 
     def selection_changed(self, *args):
-        from physlab.ui.graph_tab import paired_values
+        from physalix.ui.graph_tab import paired_values
         series = self.series.currentData()
         if series is None:
             self.fail('Affichez une série avec le volume en X et le pH en Y.')
@@ -124,7 +124,7 @@ class TangentTool(QWidget):
     def calculate(self, *args):
         if not self.active:
             return
-        from physlab.ui.graph_tab import paired_values
+        from physalix.ui.graph_tab import paired_values
         series = self.series.currentData()
         if series is None:
             return

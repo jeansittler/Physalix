@@ -3,7 +3,7 @@
 from math import ceil, fsum, isfinite, sqrt
 import statistics
 
-from physlab.calculations import number
+from physalix.calculations import number
 
 
 # Clé, libellé, puissance de l'unité, définition et effectif minimum.

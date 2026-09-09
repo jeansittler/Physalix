@@ -9,7 +9,11 @@ import tempfile
 import zipfile
 
 
-FORMAT = 'Physalyx'
+FORMAT = 'Physalix'
+# Read-only compatibility with projects saved before the product rename.
+LEGACY_FORMAT = 'Physalyx'
+PROJECT_SUFFIX = '.physalix'
+LEGACY_SUFFIX = '.physalyx'
 VERSION = 1
 
 
@@ -42,7 +46,7 @@ def read_project(path):
         if archive.getinfo('project.json').file_size > 64 * 1024**2:
             raise ValueError('Le projet dépasse la taille maximale des données (64 Mo).')
         document = json.loads(archive.read('project.json'))
-    if document.get('format') != FORMAT or document.get('version') != VERSION:
+    if document.get('format') not in (FORMAT, LEGACY_FORMAT) or document.get('version') != VERSION:
         raise ValueError('Format de projet inconnu ou version non prise en charge.')
     return document['state']
 

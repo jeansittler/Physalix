@@ -7,9 +7,9 @@ from types import SimpleNamespace
 os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
 from PySide6.QtCore import QPointF, Qt
 from PySide6.QtWidgets import QApplication
-from physlab.curve_guides import curve_interpolator, tangent_at, model_plateau
-from physlab.ui.main_window import MainWindow
-from physlab.fitting import fit_model
+from physalix.curve_guides import curve_interpolator, tangent_at, model_plateau
+from physalix.ui.main_window import MainWindow
+from physalix.fitting import fit_model
 
 
 class CurveGuidesMathTests(unittest.TestCase):

@@ -7,8 +7,8 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 import numpy as np
 from PySide6.QtWidgets import QApplication
 
-from physlab.fitting import Expression, fit_model, parse_parameters
-from physlab.ui.main_window import MainWindow
+from physalix.fitting import Expression, fit_model, parse_parameters
+from physalix.ui.main_window import MainWindow
 
 
 class FittingTests(unittest.TestCase):

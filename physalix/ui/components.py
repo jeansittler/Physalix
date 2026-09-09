@@ -3,7 +3,7 @@
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QFrame, QLabel, QVBoxLayout, QHBoxLayout, QPushButton, QWidget, QBoxLayout, QScrollArea
 
-from physlab.ui.theme import LIGHT
+from physalix.ui.theme import LIGHT
 
 
 def role(widget, name):

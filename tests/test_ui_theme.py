@@ -5,8 +5,8 @@ import unittest
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication, QPushButton, QScrollArea
-from physlab.ui.main_window import MainWindow
-from physlab.ui.theme import apply_theme
+from physalix.ui.main_window import MainWindow
+from physalix.ui.theme import apply_theme
 
 
 class ThemeLayoutTests(unittest.TestCase):

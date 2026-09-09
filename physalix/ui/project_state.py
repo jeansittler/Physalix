@@ -7,9 +7,9 @@ import zipfile
 import numpy as np
 from PySide6.QtCore import QPointF
 from PySide6.QtWidgets import QComboBox, QLineEdit, QAbstractButton, QSpinBox, QDoubleSpinBox, QSlider
-from physlab.calculations import Calculation, Formula
-from physlab.fitting import FitResult
-from physlab.video import VideoCache
+from physalix.calculations import Calculation, Formula
+from physalix.fitting import FitResult
+from physalix.video import VideoCache
 
 
 def controls(owner):
@@ -214,7 +214,7 @@ def restore(window, state, path=None):
         metadata = video['cache']
         if not path or not metadata['times']:
             raise ValueError('Vidéo du projet manquante.')
-        cache = VideoCache(TemporaryDirectory(prefix='Physalyx-project-'), **metadata)
+        cache = VideoCache(TemporaryDirectory(prefix='Physalix-project-'), **metadata)
         window.video_tab.cache = cache
         with zipfile.ZipFile(path) as archive:
             size = sum(archive.getinfo(f'video/{i:09d}.png').file_size for i in range(len(cache.times)))

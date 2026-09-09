@@ -5,7 +5,7 @@ from decimal import Decimal, InvalidOperation, localcontext
 from PySide6.QtCore import QItemSelection, QItemSelectionModel, QRect, Qt, QTimer
 from PySide6.QtGui import QPainter, QPen
 from PySide6.QtWidgets import QAbstractItemView, QTableView
-from physlab.spreadsheet import translate_formula
+from physalix.spreadsheet import translate_formula
 
 
 def extend_series(texts: list[str], count: int) -> list[str]:

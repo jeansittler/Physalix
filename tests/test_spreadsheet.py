@@ -9,8 +9,8 @@ from PySide6.QtCore import QItemSelection, QItemSelectionModel, Qt
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication, QLineEdit
 
-from physlab.spreadsheet import CellFormula, column_label, translate_formula
-from physlab.ui.main_window import MainWindow
+from physalix.spreadsheet import CellFormula, column_label, translate_formula
+from physalix.ui.main_window import MainWindow
 
 
 class SpreadsheetTests(unittest.TestCase):

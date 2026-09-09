@@ -3,7 +3,7 @@
 import numpy as np
 import pyqtgraph as pg
 from PySide6.QtCore import QTimer, Qt
-from physlab.ui.theme import LIGHT
+from physalix.ui.theme import LIGHT
 
 
 class SmartLegend(pg.LegendItem):

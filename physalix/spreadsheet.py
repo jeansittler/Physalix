@@ -4,7 +4,7 @@ import ast
 import math
 import re
 
-from physlab.calculations import FUNCTIONS
+from physalix.calculations import FUNCTIONS
 
 
 REFERENCE = r"\$?[A-Za-z]{1,5}\$?[1-9][0-9]*"

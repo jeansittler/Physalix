@@ -9,8 +9,8 @@ from PySide6.QtCore import QItemSelection, QItemSelectionModel, QPoint, Qt
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication
 
-from physlab.ui.data_tab import DataTab
-from physlab.ui.fill_table import extend_series
+from physalix.ui.data_tab import DataTab
+from physalix.ui.fill_table import extend_series
 
 
 class SeriesTests(unittest.TestCase):

@@ -1,15 +1,15 @@
-Physalyx — Démonstration du 7 septembre 2026
+Physalix — Démonstration du 7 septembre 2026
 ==========================================
 
 Application de physique-chimie pour Windows 10/11 64 bits.
 
 DÉMARRAGE
 1. Extraire entièrement le ZIP (clic droit > Extraire tout).
-2. Ouvrir le dossier Physalyx.
-3. Double-cliquer sur Physalyx.exe.
+2. Ouvrir le dossier Physalix.
+3. Double-cliquer sur Physalix.exe.
 
 Python n'est pas nécessaire. Conserver le dossier _internal à côté
-de Physalyx.exe : il contient les bibliothèques de l'application.
+de Physalix.exe : il contient les bibliothèques de l'application.
 
 POUR ESSAYER
 - Données : saisir les noms, les unités et quelques mesures.
@@ -31,7 +31,7 @@ Pour un retour utile : indiquer les étapes suivies, le résultat attendu
 et le problème rencontré, avec une capture d'écran si possible.
 
 COMPOSANTS
-Physalyx utilise notamment Python, PySide6/Qt, shiboken6, PyQtGraph,
+Physalix utilise notamment Python, PySide6/Qt, shiboken6, PyQtGraph,
 NumPy, SciPy et PyAV/FFmpeg. Les notices fournies par les distributions de ces
 bibliothèques sont conservées dans _internal, notamment dans les
 dossiers *.dist-info et les répertoires de licences des composants.

@@ -7,7 +7,7 @@ from PySide6.QtWidgets import (
     QComboBox, QDialog, QDialogButtonBox, QDoubleSpinBox, QFormLayout, QHBoxLayout,
     QLabel, QPushButton, QVBoxLayout, QWidget,
 )
-from physlab.conductimetry import fit_equivalence
+from physalix.conductimetry import fit_equivalence
 
 
 class ConductimetryTool(QWidget):
@@ -126,7 +126,7 @@ class ConductimetryTool(QWidget):
         self.selection_changed()
 
     def values(self):
-        from physlab.ui.graph_tab import paired_values
+        from physalix.ui.graph_tab import paired_values
         series = self.series.currentData()
         return paired_values(self.graph.model.rows, *series.key()) if series else ([], [], 0)
 
