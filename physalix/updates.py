@@ -9,7 +9,6 @@ import math
 import os
 from pathlib import Path
 import re
-import subprocess
 import sys
 import tempfile
 import threading
@@ -233,12 +232,65 @@ def download_installer(manifest, progress=lambda done, total: None, cancel=None)
         raise
 
 
+def _launch_elevated(path):
+    """Request Windows consent/administrator credentials before returning success."""
+    import ctypes
+    from ctypes import wintypes
+
+    class ShellExecuteInfo(ctypes.Structure):
+        _fields_ = [
+            ("cbSize", wintypes.DWORD), ("fMask", wintypes.ULONG),
+            ("hwnd", wintypes.HWND), ("lpVerb", wintypes.LPCWSTR),
+            ("lpFile", wintypes.LPCWSTR), ("lpParameters", wintypes.LPCWSTR),
+            ("lpDirectory", wintypes.LPCWSTR), ("nShow", ctypes.c_int),
+            ("hInstApp", wintypes.HINSTANCE), ("lpIDList", ctypes.c_void_p),
+            ("lpClass", wintypes.LPCWSTR), ("hkeyClass", wintypes.HKEY),
+            ("dwHotKey", wintypes.DWORD), ("hIcon", wintypes.HANDLE),
+            ("hProcess", wintypes.HANDLE),
+        ]
+
+    shell = ctypes.WinDLL("shell32", use_last_error=True)
+    execute = shell.ShellExecuteExW
+    execute.argtypes = [ctypes.POINTER(ShellExecuteInfo)]
+    execute.restype = wintypes.BOOL
+    ole = ctypes.WinDLL("ole32", use_last_error=True)
+    ole.CoInitializeEx.argtypes = [ctypes.c_void_p, wintypes.DWORD]
+    ole.CoInitializeEx.restype = ctypes.c_long
+    ole.CoUninitialize.argtypes = []
+    ole.CoUninitialize.restype = None
+    initialized = ole.CoInitializeEx(None, 0x2 | 0x4)
+    # Qt may already have initialized this thread in a different apartment.
+    if initialized < 0 and initialized != -2147417850:  # RPC_E_CHANGED_MODE
+        raise UpdateError("Cannot initialize Windows Shell")
+    try:
+        info = ShellExecuteInfo()
+        info.cbSize = ctypes.sizeof(info)
+        # Wait for launch before closing Physalix; suppress errors, never UAC UI.
+        info.fMask = 0x00000100 | 0x00000400  # NOASYNC | FLAG_NO_UI
+        info.lpVerb = "runas"
+        info.lpFile = str(path)
+        info.lpParameters = "/SP- /NORESTART"
+        info.lpDirectory = str(path.parent)
+        info.nShow = 1  # SW_SHOWNORMAL
+        if not execute(ctypes.byref(info)):
+            error = ctypes.get_last_error()
+            if error == 1223:  # ERROR_CANCELLED (consent or credentials refused)
+                raise Cancelled("La mise à jour a été annulée.")
+            raise ctypes.WinError(error)
+    finally:
+        if initialized in (0, 1):
+            ole.CoUninitialize()
+
+
 def launch_installer(path):
-    """Start Inno's asInvoker loader; it handles elevation and original-user restart."""
+    """Launch verified Setup elevated, leaving Physalix itself unelevated."""
     if sys.platform != "win32":
         raise UpdateError("Windows installer required")
     path = Path(path).resolve(strict=True)
+    if not path.is_file():
+        raise UpdateError("Installer is not a file")
     restore_dll = None
+    original_path = os.environ.get("PATH")
     if getattr(sys, "frozen", False):
         import ctypes
         set_dll = ctypes.windll.kernel32.SetDllDirectoryW
@@ -248,16 +300,16 @@ def launch_installer(path):
             raise OSError("Cannot reset DLL search path")
         restore_dll = lambda: set_dll(sys._MEIPASS)
     try:
-        env = os.environ.copy()
         if getattr(sys, "frozen", False):
             root = Path(sys._MEIPASS).resolve()
-            env["PATH"] = os.pathsep.join(p for p in env.get("PATH", "").split(os.pathsep)
-                                        if p and not Path(p).resolve().is_relative_to(root))
-        process = subprocess.Popen([str(path), "/SP-", "/NORESTART"], cwd=str(path.parent), env=env,
-                                   stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-                                   close_fds=True, shell=False)
-        log.info("Installer launched")
-        return process
+            os.environ["PATH"] = os.pathsep.join(p for p in (original_path or "").split(os.pathsep)
+                                               if p and not Path(p).resolve().is_relative_to(root))
+        _launch_elevated(path)
+        log.info("Elevated installer launched; installation not yet confirmed")
     finally:
         if restore_dll:
+            if original_path is None:
+                os.environ.pop("PATH", None)
+            else:
+                os.environ["PATH"] = original_path
             restore_dll()

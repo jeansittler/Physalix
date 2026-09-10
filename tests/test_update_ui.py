@@ -144,6 +144,27 @@ class UpdateUiTests(unittest.TestCase):
             self.assertEqual(sequence, ["save", "launch", "close"])
             self.assertTrue(self.window._discard_on_close)
 
+    def test_uac_refusal_keeps_project_open_and_allows_retry(self):
+        with patch.object(updates, "launch_installer", side_effect=updates.Cancelled), patch.object(updates, "remove_download") as cleanup, patch.object(self.window, "close") as close, patch("physalix.ui.updates.QMessageBox.information") as info:
+            self.controller.finish("download", Path("fake.exe"), None)
+            close.assert_not_called()
+            self.assertFalse(getattr(self.window, "_discard_on_close", False))
+            self.assertFalse(self.controller.busy)
+            self.assertTrue(self.controller.check_action.isEnabled())
+            cleanup.assert_called_once_with(Path("fake.exe"))
+            self.assertEqual(info.call_args.args[2], "La mise à jour a été annulée.")
+
+    def test_download_hash_failure_blocks_complete_handoff(self):
+        import io
+        response = io.BytesIO(b"corrupted installer")
+        response.headers = {}
+        manifest = updates.Manifest("1.1.2", "https://example.com/i.exe", "a" * 64, "", False)
+        with patch.object(updates, "open_url", return_value=response), patch.object(updates, "launch_installer") as launch, patch("physalix.ui.updates.QMessageBox.information") as info:
+            self.controller.download(manifest)
+            self.wait_done()
+            launch.assert_not_called()
+            self.assertIn("vérifiée", info.call_args.args[2])
+
     def test_notes_are_plain_text_and_mandatory_is_optional(self):
         notes = '<a href="https://example.com">Text</a>'
         dialog = UpdateDialog(updates.Manifest("1.1.1", "https://example.com/i.exe", "a" * 64, notes, True))

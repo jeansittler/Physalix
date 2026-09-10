@@ -193,6 +193,11 @@ class UpdateController(QObject):
             return
         try:
             updates.launch_installer(path)
+        except updates.Cancelled:
+            updates.log.info("Installer elevation cancelled")
+            updates.remove_download(path)
+            QMessageBox.information(self.window, "Mise à jour", "La mise à jour a été annulée.")
+            return
         except Exception as error:
             updates.log.warning("Installer launch failed (%s)", type(error).__name__)
             updates.remove_download(path)

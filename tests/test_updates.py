@@ -152,15 +152,72 @@ class UpdateTests(unittest.TestCase):
             with self.assertRaises(u.Cancelled):
                 u.sha256_file(path, cancel)
 
-    def test_launch_preserves_inno_mode(self):
+    def test_launch_requests_windows_elevation(self):
+        import ctypes
         with tempfile.TemporaryDirectory() as folder:
-            path = Path(folder) / "Physalix Setup.exe"
+            path = Path(folder) / "Physalix été Setup.exe"
             path.write_bytes(b"fake")
-            with patch.object(u.subprocess, "Popen") as popen, patch.object(u.sys, "platform", "win32"), patch.object(u.sys, "frozen", False, create=True):
+            shell, ole = Mock(), Mock()
+            ole.CoInitializeEx.return_value = 0
+            def execute(pointer):
+                info = pointer._obj
+                self.assertEqual(info.cbSize, ctypes.sizeof(info))
+                self.assertEqual(info.lpVerb, "runas")
+                self.assertEqual(info.lpFile, str(path.resolve()))
+                self.assertEqual(info.lpParameters, "/SP- /NORESTART")
+                self.assertEqual(info.lpDirectory, str(path.parent.resolve()))
+                self.assertEqual(info.fMask, 0x500)
+                self.assertEqual(info.nShow, 1)
+                return True
+            shell.ShellExecuteExW.side_effect = execute
+            with patch.object(ctypes, "WinDLL", side_effect=[shell, ole], create=True), patch.object(u.sys, "platform", "win32"), patch.object(u.sys, "frozen", False, create=True):
                 u.launch_installer(path)
-                args, kwargs = popen.call_args
-                self.assertEqual(args[0], [str(path.resolve()), "/SP-", "/NORESTART"])
-                self.assertFalse(kwargs["shell"])
+            shell.ShellExecuteExW.assert_called_once()
+            ole.CoUninitialize.assert_called_once()
+
+    def test_windows_cancel_and_launch_errors(self):
+        import ctypes
+        for code, expected in [(1223, u.Cancelled), (5, OSError), (2, OSError)]:
+            with self.subTest(code=code), tempfile.TemporaryDirectory() as folder:
+                path = Path(folder) / "Setup.exe"
+                path.write_bytes(b"fake")
+                shell, ole = Mock(), Mock()
+                shell.ShellExecuteExW.return_value = False
+                ole.CoInitializeEx.return_value = 1
+                with patch.object(ctypes, "WinDLL", side_effect=[shell, ole], create=True), patch.object(ctypes, "get_last_error", return_value=code, create=True), patch.object(u.sys, "platform", "win32"), self.assertRaises(expected):
+                    u.launch_installer(path)
+                ole.CoUninitialize.assert_called_once()
+
+    def test_missing_installer_and_directory_never_call_windows(self):
+        with tempfile.TemporaryDirectory() as folder, patch.object(u, "_launch_elevated") as launch, patch.object(u.sys, "platform", "win32"):
+            with self.assertRaises(FileNotFoundError):
+                u.launch_installer(Path(folder) / "missing.exe")
+            with self.assertRaises(u.UpdateError):
+                u.launch_installer(Path(folder))
+            launch.assert_not_called()
+
+    def test_frozen_environment_restored_after_success_cancel_or_error(self):
+        import ctypes
+        for error in (None, u.Cancelled(), OSError()):
+            with self.subTest(error=error), tempfile.TemporaryDirectory() as folder:
+                root = Path(folder)
+                path = root / "Setup.exe"
+                path.write_bytes(b"fake")
+                bundled = root / "_internal"
+                original = str(bundled) + u.os.pathsep + str(root)
+                set_dll = Mock(return_value=1)
+                def execute(path):
+                    self.assertEqual(u.os.environ["PATH"], str(root))
+                    if error:
+                        raise error
+                with patch.object(u.sys, "platform", "win32"), patch.object(u.sys, "frozen", True, create=True), patch.object(u.sys, "_MEIPASS", str(bundled), create=True), patch.dict(u.os.environ, PATH=original), patch.object(ctypes.windll.kernel32, "SetDllDirectoryW", set_dll), patch.object(u, "_launch_elevated", side_effect=execute):
+                    if error:
+                        with self.assertRaises(type(error)):
+                            u.launch_installer(path)
+                    else:
+                        u.launch_installer(path)
+                    self.assertEqual(u.os.environ["PATH"], original)
+                    self.assertEqual([c.args for c in set_dll.call_args_list], [(None,), (str(bundled),)])
 
 
 class ReleaseTests(unittest.TestCase):

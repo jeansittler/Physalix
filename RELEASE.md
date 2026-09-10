@@ -73,25 +73,58 @@ Après une fermeture forcée du processus, un reliquat temporaire peut subsister
 il n'est jamais repris ou exécuté automatiquement.
 
 Après validation, Physalix demande de sauvegarder les modifications éventuelles.
-Annuler cette sauvegarde annule aussi l'installation. Le chargeur Inno est lancé
-avec `subprocess.Popen`, sans shell, avec `/SP- /NORESTART`. Aucun `/DIR`, `/SILENT`
+Annuler cette sauvegarde annule aussi l'installation. Depuis 1.1.2, le chargeur Inno
+est lancé avec `ShellExecuteExW`, verbe `runas`, avec `/SP- /NORESTART`. Aucun `/DIR`, `/SILENT`
 ou `/VERYSILENT` : le chemin précédent et l'assistant existant restent utilisés.
 La recherche des DLL PyInstaller est réinitialisée pour ce processus externe.
 Physalix ferme ensuite sa fenêtre et ses traitements vidéo proprement.
 
-Le chargeur Inno demande lui-même l'UAC : cela permet à la case « Lancer Physalix »
-de l'écran final de relancer l'application avec l'utilisateur d'origine. En cas
-de refus UAC ou d'annulation ultérieure de l'assistant, Physalix peut déjà être
-fermé : le relancer normalement ; le projet a été sauvegardé ou son abandon
-explicitement confirmé. Le fichier temporaire lancé est laissé à Windows, pour
-ne pas le supprimer pendant que l'installateur l'utilise. Aucun helper ajouté.
+Windows demande le consentement UAC ou les identifiants d'un administrateur pour
+un compte standard, selon la politique Windows. `SEE_MASK_NOASYNC` attend la fin
+du lancement avant la fermeture ; `SEE_MASK_FLAG_NO_UI` supprime les erreurs du
+Shell mais laisse l'UAC active. L'erreur Windows 1223 (`ERROR_CANCELLED`) affiche
+« La mise à jour a été annulée. » et conserve le projet ouvert. Les autres erreurs
+de lancement conservent également Physalix ouvert. Le PATH et la recherche des DLL
+PyInstaller sont restaurés dans tous ces cas. Aucun état « installé » n'est écrit.
+Après un lancement réussi, le fichier temporaire est laissé à l'installateur ; une
+annulation ultérieure de son assistant nécessite de relancer Physalix normalement.
+
+Le lanceur de 1.1.1 utilisait `Popen`/`CreateProcess`, sans demande explicite
+d'élévation, et prenait la création du processus pour une réussite. Il ne pouvait
+pas recevoir le refus UAC du chargeur. La correction embarquée en 1.1.2 ne modifie
+pas rétroactivement le lanceur de 1.1.1 : le premier saut 1.1.1 → 1.1.2 conserve
+donc l'ancien comportement côté application.
+
+Limite Inno documentée : lorsque Setup est lancé explicitement avec `runas`, la
+case finale « Lancer Physalix » peut hériter du compte et des droits administrateur
+de Setup. Pour vérifier un lancement normal sous le compte standard, utiliser le
+raccourci Windows après avoir quitté Setup. Le manifeste de Physalix reste
+`asInvoker` ; aucun réglage n'impose son exécution en administrateur.
 
 Références : [chargeur et UAC Inno](https://jrsoftware.org/is6help/topic_securitymeasures.htm),
+[ShellExecuteExW et annulation](https://learn.microsoft.com/en-us/windows/win32/api/shellapi/nf-shellapi-shellexecuteexw),
+[verbe runas et options](https://learn.microsoft.com/en-us/windows/win32/api/shellapi/ns-shellapi-shellexecuteinfow),
 [paramètres Inno](https://jrsoftware.org/ishelp/topic_setupcmdline.htm),
 [relance avec l'utilisateur d'origine](https://jrsoftware.org/ishelp/topic_runsection.htm),
 [processus externes PyInstaller](https://pyinstaller.org/en/stable/common-issues-and-pitfalls.html#launching-external-programs-from-the-frozen-application).
 
 ## Commandes de release
+
+### Validation de la préparation 1.1.2
+
+- Notes : « Amélioration du lancement des mises à jour nécessitant les droits administrateur. »
+- Tests ciblés updater/UI : 33 réussis ; suite complète : 161 réussis.
+- Appels Windows simulés : `runas`, chemin Unicode avec espaces, paramètres,
+  refus UAC 1223, accès refusé, fichier disparu, fichier absent et dossier rejetés,
+  restauration DLL/PATH après réussite, annulation et erreur.
+- Tests UI : sauvegarde avant lancement, fermeture après réussite uniquement,
+  annulation sans traceback avec possibilité de réessayer, hash invalide bloquant
+  la chaîne téléchargement → lancement.
+- Le test interactif UAC, notamment la saisie d'identifiants depuis un compte
+  standard, reste à effectuer : les mocks vérifient le contrat Windows mais ne
+  simulent ni le bureau sécurisé ni les stratégies de sécurité de la machine.
+- Aucun installateur 1.1.2 exécuté ; conserver 1.1.1 pour le test réel de mise à
+  jour. Aucune publication et aucun push dans cette préparation.
 
 Prérequis et environnement verrouillé : [BUILD_WINDOWS.md](BUILD_WINDOWS.md).
 Depuis la racine, modifier uniquement la version dans `physalix/_version.py`

@@ -1,1 +1,1 @@
-Le champ de longueur de l'étalon du pointage vidéo accepte désormais le point ou la virgule comme séparateur décimal.
+Amélioration du lancement des mises à jour nécessitant les droits administrateur.
