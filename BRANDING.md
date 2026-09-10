@@ -23,8 +23,8 @@ résolveur. La configuration existante `Physalix.spec` embarque déjà tout le
 dossier de ressources, y compris le nouveau sous-dossier de marque, et définit
 maintenant l'ICO de l'exécutable.
 
-Reconstruction : `./build-demo.ps1`. Résultat : `dist/Physalix/Physalix.exe`.
-Distribuer le dossier `dist/Physalix` complet avec son sous-dossier `_internal`.
+Reconstruction de distribution : `./scripts/build_release.ps1` ; procédure dans
+`BUILD_WINDOWS.md`. `build-demo.ps1` reste disponible pour le seul dossier autonome.
 La reconstruction complète utilise uniquement `build/Physalix` et `dist/Physalix`.
 Les exécutables précédemment distribués doivent être remplacés pour obtenir
 la nouvelle identité. Aucun installateur n'est présent dans le dépôt ; l'ICO
@@ -46,8 +46,8 @@ Validation : `.venv/Scripts/python.exe -m unittest discover -s tests -v`.
   pour octet aux originaux. Les sept images de l'ICO sont présentes dans
   les ressources PE de l'exécutable.
 - Métadonnées Windows : produit, description et nom interne `Physalix`,
-  fichier original `Physalix.exe`. La version technique est `0.0.0.0`
-  en attendant la définition d'une numérotation de publication.
+  fichier original `Physalix.exe`. La version technique vient de `physalix/_version.py`
+  et est partagée avec l'installateur de distribution.
 - EXE lancé depuis un autre dossier : fenêtre `Physalix` détectée, réactive,
   icône native présente, sortie d'erreur vide.
 - Le contrôle supplémentaire de toute la suite avec le moteur Qt Windows

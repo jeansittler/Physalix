@@ -5,3 +5,15 @@ __pycache__/
 build/
 dist/
 artifacts/
+.venv-build/
+*.tmp
+*.log
+*.pfx
+*.p12
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.cer
+*.crt

@@ -442,28 +442,20 @@ Le tableau de données possède son propre module, avec un modèle Qt séparé d
 vue et de l’éditeur des cellules. Les futurs calculs et traitements seront placés hors
 de l’interface afin de pouvoir être testés indépendamment de Qt.
 
-## Objectif de distribution Windows
+## Distribution Windows
 
-Python est nécessaire uniquement pour le développement de cette version.
-La distribution finale devra embarquer Python, PySide6 et les dépendances dans
-un exécutable Windows, puis éventuellement un installateur. Les utilisateurs
-n’auront alors ni Python à installer ni terminal à utiliser.
-
-La dernière version portable Windows 64 bits se lance depuis
-`dist/Physalix/Physalix.exe`, en conservant son dossier `_internal` à côté.
-Le script de construction produit uniquement la version locale, sans archive ZIP.
-Le partage sera préparé une fois les modifications terminées.
-La notice `LISEZ-MOI.txt` accompagne la démonstration.
-
-Pour reconstruire cette version depuis l'environnement de développement :
+La chaîne produit un dossier autonome PyInstaller puis un installateur Inno Setup.
+Python est nécessaire uniquement sur le PC développeur. Voir
+[BUILD_WINDOWS.md](BUILD_WINDOWS.md) pour la préparation et la validation.
 
 ```powershell
-.\.venv\Scripts\python.exe -m pip install pyinstaller==6.22.2
-.\build-demo.ps1
+.\scripts\build_release.ps1
 ```
 
-La configuration `Physalix.spec` inclut les dépendances vidéo et les métadonnées
-des bibliothèques. La construction doit être effectuée sous Windows.
+Résultat attendu : `artifacts/Physalix-Setup-<version>.exe`.
+Le dossier autonome reste dans `dist/Physalix`, avec son sous-dossier `_internal`.
+`build-demo.ps1` construit uniquement ce dossier. `NOTICE-DEMO.txt` est une archive
+historique exclue de la distribution actuelle.
 
 Le package Python principal est `physalix`. Les nouveaux projets utilisent
 l'extension `.physalix` et la signature interne `Physalix` (version 1).

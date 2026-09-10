@@ -1,0 +1,17 @@
+Physalix
+========
+
+Ouvrez Physalix depuis le menu Démarrer ou le raccourci Bureau choisi à
+l'installation. Python n'est pas nécessaire.
+
+Enregistrez vos travaux avec Fichier > Enregistrer, dans Documents ou un autre
+dossier personnel. Les projets .physalix contiennent aussi les vidéos préparées.
+La mise à jour et la désinstallation n'effacent pas vos projets personnels.
+
+Si vous utilisez le dossier autonome, conservez impérativement le sous-dossier
+_internal à côté de Physalix.exe.
+
+Composants : Python, PySide6/Qt, shiboken6, pyqtgraph, NumPy, SciPy, PyAV/FFmpeg.
+Les notices livrées par ces distributions se trouvent dans _internal, dans les
+répertoires *.dist-info, leurs sous-dossiers licenses et licenses/python.
+Le numéro de version apparaît dans les propriétés Windows de Physalix.exe.
