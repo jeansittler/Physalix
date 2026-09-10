@@ -444,6 +444,12 @@ de l’interface afin de pouvoir être testés indépendamment de Qt.
 
 ## Distribution Windows
 
+**Aide → À propos de Physalix** affiche la version et propose **Rechercher les
+mises à jour**. Une vérification automatique discrète peut proposer une version
+plus récente ; téléchargement et installation restent à votre choix.
+Voir [RELEASE.md](RELEASE.md) pour le fonctionnement, les essais locaux et les
+commandes de préparation/publication des prochaines versions.
+
 La chaîne produit un dossier autonome PyInstaller puis un installateur Inno Setup.
 Python est nécessaire uniquement sur le PC développeur. Voir
 [BUILD_WINDOWS.md](BUILD_WINDOWS.md) pour la préparation et la validation.

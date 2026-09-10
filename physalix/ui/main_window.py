@@ -14,6 +14,7 @@ from physalix.ui.calculations_tab import CalculationsTab
 from physalix.ui.statistics_tab import StatisticsTab
 from physalix.ui.graph_workspace import GraphWorkspace, ModelingWorkspace
 from physalix.ui.project_files import ProjectFiles
+from physalix.ui.updates import UpdateController
 
 
 class MainWindow(QMainWindow, ProjectFiles):
@@ -57,6 +58,7 @@ class MainWindow(QMainWindow, ProjectFiles):
 
         self.statusBar().showMessage("Prêt")
         self.setup_files()
+        self.updater = UpdateController(self)
 
     def update_navigation(self, *args):
         for index, name in enumerate(("data", "graph", "model", "video", "calculations", "statistics")):
@@ -66,5 +68,6 @@ class MainWindow(QMainWindow, ProjectFiles):
         if not self.confirm_save():
             event.ignore()
             return
+        self.updater.stop()
         self.video_tab.shutdown()
         super().closeEvent(event)

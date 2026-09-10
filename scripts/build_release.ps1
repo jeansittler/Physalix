@@ -80,6 +80,8 @@ try {
     }
     $hash = (Get-FileHash -LiteralPath $installer -Algorithm SHA256).Hash.ToLowerInvariant()
     "$hash  Physalix-Setup-$version.exe" | Set-Content -LiteralPath "$installer.sha256" -Encoding ascii
+    & $Python scripts/prepare_release.py
+    if ($LASTEXITCODE -ne 0) { throw 'Update manifest generation failed.' }
     Get-Item -LiteralPath $installer | Select-Object FullName, Length
     Write-Host "Release $version ready. No publication performed."
 } finally { Pop-Location }

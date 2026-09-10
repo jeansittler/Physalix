@@ -21,5 +21,7 @@ def main() -> int:
 
     window = MainWindow()
     window.show()
+    window.updater.start()
+    app.aboutToQuit.connect(window.updater.stop)
 
     return app.exec()

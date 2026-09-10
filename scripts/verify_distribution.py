@@ -44,6 +44,7 @@ def bundle(directory):
     pe.close()
     modules = CArchiveReader(str(exe)).open_embedded_archive("PYZ.pyz").toc
     assert "physalix.app" in modules and "numpy" in modules and "scipy" in modules
+    assert all(name in modules for name in ("physalix.updates", "physalix.ui.updates", "urllib.request", "ssl"))
     assert not any(n.startswith(("physlab", "physalyx", "tests.")) for n in modules)
     forbidden = {".venv", ".git", ".github", ".pytest_cache", "__pycache__", "tests", "build", "dist"}
     for path in directory.rglob("*"):

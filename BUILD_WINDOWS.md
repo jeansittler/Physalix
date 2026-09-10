@@ -1,5 +1,10 @@
 # Construire Physalix sous Windows
 
+Pour les versions avec mise à jour intégrée, suivre **[RELEASE.md](RELEASE.md)** :
+le build existant génère désormais aussi `artifacts/update.json`, après la signature
+éventuelle de l'installateur. Les comptes rendus 1.0.0 ci-dessous restent historiques.
+La version de l'application, du bundle et de l'installateur vient de `_version.py`.
+
 ## Première préparation
 
 PC développeur : Windows x64, CPython **3.12 x64**, PowerShell et

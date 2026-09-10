@@ -28,6 +28,7 @@ def run(report_path):
         from physalix.ui.resources import resource_path
         from physalix.ui.theme import apply_theme
         from physalix.video import prepare_video
+        from physalix.updates import Manifest, MANIFEST_URL, manifest_url, is_newer
 
         set_windows_app_id()
         app = QApplication([])
@@ -35,6 +36,10 @@ def run(report_path):
         app.setApplicationVersion(__version__)
         app.setWindowIcon(application_icon())
         apply_theme(app)
+        assert manifest_url() == MANIFEST_URL  # Frozen builds ignore development overrides.
+        assert is_newer("1.10.0", "1.9.9")
+        Manifest.parse(json.dumps(dict(version=__version__, installer_url="https://github.com/installer.exe",
+                                       sha256="a" * 64, notes="Diagnostic", mandatory=False)))
         assert not application_icon().isNull()
         assert not QImage(str(resource_path("branding", "logo_physalix.png"))).isNull()
         assert resource_path("check.svg").is_file()
@@ -79,7 +84,7 @@ def run(report_path):
         report.update(ok=True, version=__version__, platform=app.platformName(),
                       executable=sys.executable, cwd=str(Path.cwd()),
                       dependencies={m.__name__: m.__version__ for m in (np, scipy, av, PySide6, pyqtgraph)},
-                      checks=["resources", "numpy-linalg", "scipy-fit", "graph", "project-roundtrip", "video-codec", "qt-window-event-loop"])
+                      checks=["resources", "numpy-linalg", "scipy-fit", "graph", "project-roundtrip", "video-codec", "qt-window-event-loop", "updater-imports-manifest-version"])
     except Exception:
         report["error"] = traceback.format_exc()
     finally:
