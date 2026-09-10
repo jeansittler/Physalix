@@ -12,6 +12,8 @@ Si vous utilisez le dossier autonome, conservez impérativement le sous-dossier
 _internal à côté de Physalix.exe.
 
 Composants : Python, PySide6/Qt, shiboken6, pyqtgraph, NumPy, SciPy, PyAV/FFmpeg.
-Les notices livrées par ces distributions se trouvent dans _internal, dans les
-répertoires *.dist-info, leurs sous-dossiers licenses et licenses/python.
+La licence de Physalix et l'inventaire des composants tiers sont fournis dans
+LICENSE et THIRD_PARTY_NOTICES.md. Les notices livrées par les distributions
+Python se trouvent aussi dans _internal, dans les répertoires *.dist-info,
+leurs sous-dossiers licenses et licenses/python.
 Le numéro de version apparaît dans les propriétés Windows de Physalix.exe.

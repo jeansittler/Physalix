@@ -1,9 +1,15 @@
 # Physalix
 
-Base d’une application Windows de bureau pour les TP de physique-chimie au lycée,
-inspirée dans l’esprit de Latis Pro, avec une interface simple et moderne.
+Physalix est une application de bureau Windows destinée à l’exploitation,
+l’analyse et la visualisation de données expérimentales en physique-chimie,
+notamment dans l’enseignement secondaire. Le projet privilégie une interface
+simple, des fichiers de travail échangeables et des calculs reproductibles.
 
-Cette version contient une fenêtre et six onglets : **Données / Tableur**,
+La version actuelle est **Physalix 1.1.3**. Le dépôt source est en préparation
+pour sa publication sous licence GPL‑3.0 ; aucune intégration SignPath n’est
+encore active et les exécutables publiés à ce jour ne sont pas signés.
+
+L’application contient six espaces : **Données / Tableur**,
 **Graphique**, **Modélisation**, **Pointage vidéo**, **Calculs** et **Statistiques**. L’onglet Données / Tableur permet de saisir des mesures et des formules de cellules.
 L’onglet Graphique affiche les mesures sous forme de nuage de points.
 L’onglet Modélisation ajuste des fonctions aux mesures. Les tableaux peuvent être importés par copier-coller ou depuis un fichier CSV.
@@ -111,9 +117,6 @@ L’onglet Modélisation ajuste des fonctions aux mesures. Les tableaux peuvent 
 - Une erreur apparaît dans la cellule (`#DIV/0!`, `#REF!`, `#CYCLE!`, `#ERREUR!`) ;
   survolez-la pour lire l'explication et modifiez la formule pour la corriger.
   Les références à une colonne supprimée deviennent `#REF!`.
-
-Les données restent uniquement en mémoire : elles sont perdues à la fermeture.
-La sauvegarde sera ajoutée dans une prochaine étape.
 
 ## Statistiques d'une grandeur
 
@@ -253,7 +256,7 @@ utilisés, sans conversion d’unité. Les lignes incomplètes ou non finies son
   supprime uniquement celle sélectionnée. Modifier les données, les unités ou les
   axes de la série retire toutes ses modélisations périmées et nécessite de les recalculer.
 
-Les modélisations restent en mémoire pendant la session, comme les mesures.
+Les modélisations sont enregistrées avec le projet.
 
 ## Pointage vidéo : ouverture et lecture
 
@@ -330,7 +333,7 @@ Les modélisations restent en mémoire pendant la session, comme les mesures.
   s'il est entièrement vierge ; sinon des colonnes sont ajoutées, avec des noms distincts.
 - Ouvrir une nouvelle vidéo conserve les mesures précédentes dans le tableau et
   commence un nouvel étalonnage et un nouveau pointage. Comme les autres données,
-  ces mesures restent en mémoire uniquement pendant la session.
+  ces mesures peuvent ensuite être enregistrées avec le projet.
 
 ## Dérivées et formules
 
@@ -385,9 +388,18 @@ opérateurs à la position du curseur.
   toutes deux en cm/s pour obtenir une norme en cm/s.
 - Les définitions sont ajoutées dans l'ordre et ne peuvent utiliser que des colonnes
   existantes. Le récapitulatif montre les calculs et leur bilan. Les définitions et
-  les données restent en mémoire pendant la session, sans sauvegarde persistante.
+  les données peuvent ensuite être enregistrées avec le projet.
 
 ## Installation et lancement
+
+### Installer la version Windows
+
+Les installateurs publics existants sont disponibles dans
+[Physalix-releases](https://github.com/jeansittler/Physalix-releases/releases).
+Ce dépôt de distribution historique reste utilisé par la version 1.1.3 pour les
+mises à jour. Les téléchargements ne sont pas encore signés numériquement.
+
+### Lancer depuis les sources
 
 Prérequis : Python 3.10 ou supérieur avec le lanceur Windows `py` et pip.
 Depuis PowerShell, dans le dossier du projet :
@@ -439,8 +451,13 @@ Les tests s’exécutent sans ouvrir de fenêtre :
 
 Le démarrage, la fenêtre et les onglets sont séparés pour faciliter les évolutions.
 Le tableau de données possède son propre module, avec un modèle Qt séparé de la
-vue et de l’éditeur des cellules. Les futurs calculs et traitements seront placés hors
-de l’interface afin de pouvoir être testés indépendamment de Qt.
+vue et de l’éditeur des cellules. Les calculs et traitements sont placés autant que
+possible hors de l’interface afin de pouvoir être testés indépendamment de Qt.
+
+Les signalements de bugs et propositions peuvent être ouverts dans les
+[issues GitHub](https://github.com/jeansittler/Physalix/issues). Consultez
+[CONTRIBUTING.md](CONTRIBUTING.md) avant une pull request et [SECURITY.md](SECURITY.md)
+pour signaler une vulnérabilité sans publier de détails sensibles.
 
 ## Distribution Windows
 
@@ -467,6 +484,18 @@ Le package Python principal est `physalix`. Les nouveaux projets utilisent
 l'extension `.physalix` et la signature interne `Physalix` (version 1).
 Les anciens projets `.physalyx` restent lisibles. Leur enregistrement propose
 un nouveau fichier `.physalix` et conserve le fichier original.
+
+## Confidentialité et licence
+
+Physalix n’intègre pas de télémétrie. Il contacte GitHub pour vérifier les mises à
+jour ; les détails sont décrits dans [PRIVACY.md](PRIVACY.md).
+
+Le code de Physalix est distribué sous **GNU GPL version 3 uniquement**
+(`GPL-3.0-only`). Voir [LICENSE](LICENSE). Les composants tiers conservent leurs
+propres licences ; voir [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+
+La [politique de signature du code](SIGNING_POLICY.md) décrit la préparation à
+SignPath Foundation. La signature n’est pas encore active.
 
 ## Modifier une formule existante
 

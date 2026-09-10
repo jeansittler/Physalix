@@ -1,0 +1,157 @@
+{
+  "schema": 1,
+  "release": "1.1.3",
+  "audit_date": "2026-09-10",
+  "video_build": {
+    "pyav": "17.1.0",
+    "ffmpeg": "8.1.1",
+    "pyav_ffmpeg_ref": "8.1.1-2",
+    "pyav_ffmpeg_commit": "b84838a003b1626152ef530750d5c3e0022c3db9",
+    "effective_license": "GPL-2.0-or-later compatible with GPL-3.0-only",
+    "configuration": "--disable-static --enable-shared --libdir=/c/cibw/vendor/lib --prefix=/c/cibw/vendor --disable-programs --disable-doc --disable-libxml2 --disable-lzma --disable-libtheora --disable-libfreetype --disable-libfontconfig --disable-libbluray --disable-libopenjpeg --enable-mediafoundation --enable-version3 --disable-alsa --disable-gnutls --enable-libdav1d --enable-libmp3lame --enable-libopencore-amrnb --enable-libopencore-amrwb --enable-libopus --enable-libsvtav1 --enable-libvpx --enable-libwebp --disable-libxcb --enable-zlib --enable-libx264 --enable-libx265 --enable-nvenc --enable-nvdec --enable-amf --enable-libvpl --disable-encoder='avui,dca,mlp,opus,s302m,sonic,sonic_ls,truehd' --disable-decoder=sonic --disable-libjack --disable-indev=jack --disable-filter=gfxcapture"
+  },
+  "components": [
+    {
+      "name": "PyAV", "version": "17.1.0", "license": "BSD-3-Clause",
+      "copyright": "PyAV contributors", "runtime": true,
+      "source_url": "https://github.com/PyAV-Org/PyAV/archive/refs/tags/v17.1.0.tar.gz",
+      "notice": "Keep the BSD notice; preserve the source and build provenance of the bundled FFmpeg libraries."
+    },
+    {
+      "name": "FFmpeg", "version": "8.1.1", "license": "LGPL-2.1-or-later; effective combined build treated as GPL-2.0-or-later",
+      "copyright": "FFmpeg developers", "runtime": true,
+      "source_url": "https://ffmpeg.org/releases/ffmpeg-8.1.1.tar.xz",
+      "source_sha256": "b6863adde98898f42602017462871b5f6333e65aec803fdd7a6308639c52edf3",
+      "notice": "Provide complete corresponding source, license texts and build scripts; x264/x265 make the distributed combination GPL-compatible copyleft."
+    },
+    {
+      "name": "PyAV FFmpeg build recipes and patches", "version": "8.1.1-2", "license": "repository notices and component licenses",
+      "copyright": "PyAV contributors", "runtime": false,
+      "source_url": "https://github.com/PyAV-Org/pyav-ffmpeg/archive/refs/tags/8.1.1-2.tar.gz",
+      "notice": "Archive this exact ref with the corresponding sources; it records configuration and downstream patches."
+    },
+    {
+      "name": "x264", "version": "b35605ace3ddf7c1a5d67a2eb553f034aef41d55 (DLL ABI 165)", "license": "GPL-2.0-or-later",
+      "copyright": "x264 project contributors", "runtime": true,
+      "source_url": "https://code.videolan.org/videolan/x264/-/archive/b35605ace3ddf7c1a5d67a2eb553f034aef41d55/x264-b35605ace3ddf7c1a5d67a2eb553f034aef41d55.tar.bz2",
+      "source_sha256": "6eeb82934e69fd51e043bd8c5b0d152839638d1ce7aa4eea65a3fedcf83ff224",
+      "notice": "GPL corresponding-source obligation."
+    },
+    {
+      "name": "x265", "version": "4.2+1-e444744", "license": "GPL-2.0-or-later or commercial",
+      "copyright": "MulticoreWare and x265 contributors", "runtime": true,
+      "source_url": "https://bitbucket.org/multicoreware/x265_git/downloads/x265_4.2.tar.gz",
+      "source_sha256": "40b1ea0453e0309f0eba934e0ddf533f8f6295966679e8894e8f1c1c8d5e1210",
+      "notice": "This distribution relies on the GPL option; provide corresponding source."
+    },
+    {
+      "name": "LAME", "version": "3.100", "license": "LGPL-2.0-or-later",
+      "copyright": "LAME project contributors", "runtime": true,
+      "source_url": "http://deb.debian.org/debian/pool/main/l/lame/lame_3.100.orig.tar.gz",
+      "source_sha256": "ddfe36cab873794038ae2c1210557ad34857a4b6bdc515785d1da9e175b1da1e",
+      "notice": "Keep LGPL notice and provide corresponding source/relinking information."
+    },
+    {
+      "name": "Opus", "version": "1.6.1", "license": "BSD-3-Clause",
+      "copyright": "Xiph.Org Foundation and contributors", "runtime": true,
+      "source_url": "https://ftp.osuosl.org/pub/xiph/releases/opus/opus-1.6.1.tar.gz",
+      "source_sha256": "6ffcb593207be92584df15b32466ed64bbec99109f007c82205f0194572411a1",
+      "notice": "Keep the BSD notice."
+    },
+    {
+      "name": "dav1d", "version": "1.5.3", "license": "BSD-2-Clause",
+      "copyright": "VideoLAN and dav1d authors", "runtime": true,
+      "source_url": "https://code.videolan.org/videolan/dav1d/-/archive/1.5.3/dav1d-1.5.3.tar.bz2",
+      "source_sha256": "e099f53253f6c247580c554d53a13f1040638f2066edc3c740e4c2f15174ce22",
+      "notice": "Keep the BSD notice."
+    },
+    {
+      "name": "SVT-AV1", "version": "4.1.0", "license": "BSD-3-Clause",
+      "copyright": "Alliance for Open Media and contributors", "runtime": true,
+      "source_url": "https://gitlab.com/AOMediaCodec/SVT-AV1/-/archive/v4.1.0/SVT-AV1-v4.1.0.tar.bz2",
+      "source_sha256": "184162d3db3a4448882b17230413b4938ca252eef6b3c5e2f1236b2fcf497881",
+      "notice": "Keep the BSD notice."
+    },
+    {
+      "name": "libvpx", "version": "1.16.0", "license": "BSD-3-Clause",
+      "copyright": "WebM Project authors", "runtime": true,
+      "source_url": "https://github.com/webmproject/libvpx/archive/refs/tags/v1.16.0.tar.gz",
+      "source_sha256": "7a479a3c66b9f5d5542a4c6a1b7d3768a983b1e5c14c60a9396edc9b649e015c",
+      "notice": "Keep the BSD notice and patent grant."
+    },
+    {
+      "name": "libwebp", "version": "1.6.0", "license": "BSD-3-Clause",
+      "copyright": "Google LLC and contributors", "runtime": true,
+      "source_url": "https://github.com/webmproject/libwebp/archive/refs/tags/v1.6.0.tar.gz",
+      "source_sha256": "93a852c2b3efafee3723efd4636de855b46f9fe1efddd607e1f42f60fc8f2136",
+      "notice": "Keep the BSD notice."
+    },
+    {
+      "name": "OpenCORE-AMR", "version": "0.1.6", "license": "Apache-2.0",
+      "copyright": "OpenCORE-AMR contributors", "runtime": true,
+      "source_url": "https://downloads.sourceforge.net/project/opencore-amr/opencore-amr/opencore-amr-0.1.6.tar.gz",
+      "source_sha256": "483eb4061088e2b34b358e47540b5d495a96cd468e361050fae615b1809dc4a1",
+      "notice": "Keep the Apache license and any NOTICE file."
+    },
+    {
+      "name": "oneVPL", "version": "2.16.0", "license": "MIT",
+      "copyright": "Intel Corporation and contributors", "runtime": true,
+      "source_url": "https://github.com/intel/libvpl/archive/refs/tags/v2.16.0.tar.gz",
+      "source_sha256": "d60931937426130ddad9f1975c010543f0da99e67edb1c6070656b7947f633b6",
+      "notice": "Keep the MIT notice."
+    },
+    {
+      "name": "zlib", "version": "1.3.2", "license": "Zlib",
+      "copyright": "Jean-loup Gailly and Mark Adler", "runtime": true,
+      "source_url": "https://zlib.net/zlib-1.3.2.tar.gz",
+      "notice": "Keep the zlib notice. Exact MSYS2 package provenance remains to be pinned for a future self-built wheel."
+    },
+    {
+      "name": "GNU libiconv", "version": "1.19", "license": "LGPL-2.1-or-later",
+      "copyright": "Free Software Foundation, Inc.", "runtime": true,
+      "source_url": "https://ftp.gnu.org/pub/gnu/libiconv/libiconv-1.19.tar.gz",
+      "notice": "Provide corresponding source/relinking information. Exact MSYS2 package provenance remains to be pinned."
+    },
+    {
+      "name": "GCC MinGW runtimes", "version": "15.2.0", "license": "GPL-3.0-or-later WITH GCC-exception-3.1",
+      "copyright": "Free Software Foundation, Inc. and MinGW-w64 contributors", "runtime": true,
+      "source_url": "https://ftp.gnu.org/gnu/gcc/gcc-15.2.0/gcc-15.2.0.tar.xz",
+      "notice": "Keep GPL and GCC Runtime Library Exception; pin the exact MSYS2 runtime packages when replacing the upstream wheel."
+    },
+    {
+      "name": "NVIDIA codec headers", "version": "13.0.19.0", "license": "MIT",
+      "copyright": "NVIDIA Corporation", "runtime": false,
+      "source_url": "https://github.com/FFmpeg/nv-codec-headers/archive/refs/tags/n13.0.19.0.tar.gz",
+      "source_sha256": "86d15d1a7c0ac73a0eafdfc57bebfeba7da8264595bf531cf4d8db1c22940116",
+      "notice": "Compile-time headers; keep the MIT notice in source materials."
+    },
+    {
+      "name": "AMD AMF headers", "version": "1.5.0", "license": "MIT",
+      "copyright": "Advanced Micro Devices, Inc.", "runtime": false,
+      "source_url": "https://github.com/GPUOpen-LibrariesAndSDKs/AMF/releases/download/v1.5.0/AMF-headers-v1.5.0.tar.gz",
+      "source_sha256": "d569647fa26f289affe81a206259fa92f819d06db1e80cc334559953e82a3f01",
+      "notice": "Compile-time headers; keep the MIT notice in source materials."
+    },
+    {
+      "name": "PySide6 / Qt for Python", "version": "6.11.2", "license": "LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only (commercial alternative not used)",
+      "copyright": "The Qt Company Ltd. and Qt for Python contributors", "runtime": true,
+      "source_url": "https://download.qt.io/official_releases/QtForPython/pyside6/PySide6-6.11.2-src/pyside-setup-everywhere-src-6.11.2.zip",
+      "source_sha256": "c0fdd62b91a1d36d5ee2e1fb71050a32fbc93fcdeef0fdcb41d29afaaf00d9b5",
+      "notice": "Keep GPL/LGPL texts, copyright notices, and provide corresponding source and relinking information."
+    },
+    {
+      "name": "Qt", "version": "6.11.2", "license": "GPL-3.0-only for Qt Virtual Keyboard in this bundle; other used modules GPL/LGPL/commercial",
+      "copyright": "The Qt Company Ltd. and Qt contributors", "runtime": true,
+      "source_url": "https://download.qt.io/official_releases/qt/6.11/6.11.2/single/qt-everywhere-src-6.11.2.tar.xz",
+      "source_sha256": "6dcfbca271d76a6502741a2c0dc6fc98ef7dd0b7b4cfd0abcebb285a86a26f33",
+      "notice": "The bundle contains Qt6VirtualKeyboard.dll, so the open-source distribution is handled under GPL-3.0; provide exact Qt source and notices."
+    },
+    {
+      "name": "shiboken6", "version": "6.11.2", "license": "LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only",
+      "copyright": "The Qt Company Ltd. and contributors", "runtime": true,
+      "source_url": "https://download.qt.io/official_releases/QtForPython/pyside6/PySide6-6.11.2-src/pyside-setup-everywhere-src-6.11.2.zip",
+      "source_sha256": "c0fdd62b91a1d36d5ee2e1fb71050a32fbc93fcdeef0fdcb41d29afaaf00d9b5",
+      "notice": "Included in the Qt for Python source archive; keep license notices and relinking information."
+    }
+  ]
+}

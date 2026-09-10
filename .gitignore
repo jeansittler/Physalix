@@ -1,19 +1,44 @@
+# Python environments and caches
 .venv/
+.venv-build/
+venv/
 __pycache__/
 *.py[cod]
 .pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+coverage.xml
+htmlcov/
+
+# Generated builds and local release artifacts
 build/
 dist/
 artifacts/
-.venv-build/
+*.exe
+*.msi
 *.tmp
 *.log
-*.pfx
-*.p12
+
+# Local configuration and secrets
 .env
 .env.*
 !.env.example
+*.pfx
+*.p12
 *.pem
 *.key
 *.cer
 *.crt
+*.jks
+*.keystore
+
+# Editors and operating systems
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+Desktop.ini

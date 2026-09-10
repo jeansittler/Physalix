@@ -1,5 +1,37 @@
 # Préparer et publier une version de Physalix
 
+> **Situation de transition.** La version 1.1.3 interroge encore
+> `jeansittler/Physalix-releases`. Les URL et le générateur de manifeste ne doivent
+> pas être modifiés avant la préparation coordonnée de la 1.1.4 décrite ci-dessous.
+> Les commandes de publication historiques de ce document ne sont pas à exécuter
+> pendant l’audit open source.
+
+## Transition prévue après la publication du code source
+
+Cette transition n’est **pas implémentée** dans la version 1.1.3.
+
+1. Préparer Physalix 1.1.4 avec le même `AppId` Inno et publier dans
+   `Physalix-releases` un `update.json` dont l’URL d’installateur pointe vers
+   l’asset 1.1.4 de ce dépôt historique. Ainsi, les installations 1.1.3 trouvent
+   toujours leur mise à jour.
+2. Dans le code embarqué par la 1.1.4, remplacer l’URL de consultation du manifeste
+   par `https://github.com/jeansittler/Physalix/releases/latest/download/update.json`.
+   Le générateur devra distinguer l’emplacement interrogé par l’application de
+   l’emplacement de l’installateur de transition ; aujourd’hui les deux découlent
+   de la même constante.
+3. Laisser la release 1.1.4 comme dernière release stable de
+   `Physalix-releases`. Ne pas supprimer ni remplacer ses assets : les versions
+   1.1.3 continueront ainsi à pouvoir migrer.
+4. À partir de 1.1.5, publier l’installateur et `update.json` dans les Releases du
+   dépôt principal. Une installation 1.1.4 consultera alors ce nouveau manifeste.
+5. Tester réellement 1.1.3 → 1.1.4 puis 1.1.4 → 1.1.5, y compris avec un compte
+   Windows standard, un chemin personnalisé, un projet non enregistré, hors ligne
+   et avec un téléchargement interrompu.
+
+Les changements futurs concerneront au minimum `physalix/updates.py`,
+`scripts/prepare_release.py`, `tests/test_updates.py`, ce document et les notes de
+release. Ils ne doivent pas modifier `packaging/installer/Physalix.iss::AppId`.
+
 ## Préparation 1.1.3
 
 Traduction en français des boutons de la fenêtre de confirmation lors de la fermeture d’un projet non enregistré.
@@ -31,9 +63,9 @@ Traduction en français des boutons de la fenêtre de confirmation lors de la fe
 
 ## Base conservée
 
-Audit avant modification : branche `feature/auto-update`, origin
+Historique de l’audit initial : branche `feature/auto-update`, origin
 `https://github.com/jeansittler/Physalix.git`, tag `v1.0.0` existant.
-Ce dépôt source est privé et son remote reste inchangé. Le dépôt public
+À cette date, le dépôt source était privé et son remote restait inchangé. Le dépôt public
 `https://github.com/jeansittler/Physalix-releases` sert uniquement à distribuer
 les installateurs et le manifeste, sans code source ni identifiants embarqués.
 Entrée : `main.py` → `physalix.app.main` → `MainWindow`, interface PySide6.

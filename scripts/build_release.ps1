@@ -58,6 +58,8 @@ try {
     }
     & $Python scripts/verify_distribution.py bundle $bundle
     if ($LASTEXITCODE -ne 0) { throw 'Frozen executable validation failed.' }
+    & $Python scripts/generate_compliance.py $bundle
+    if ($LASTEXITCODE -ne 0) { throw 'Third-party compliance inventory failed.' }
     & "$PSScriptRoot\test_launch.ps1" -Executable "$bundle\Physalix.exe"
     if ($PackageOnly) { Write-Host "Package verified: $bundle (installer explicitly skipped)."; return }
     if (-not $Iscc) {

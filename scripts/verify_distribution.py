@@ -56,6 +56,13 @@ def bundle(directory):
     for name in ("python312.dll", "VCRUNTIME140.dll", "VCRUNTIME140_1.dll", "MSVCP140.dll"):
         assert list(directory.rglob(name)), f"Missing runtime: {name}"
     assert list(directory.rglob("qwindows.dll")), "Windows Qt plugin missing"
+    for notice in ("LICENSE", "THIRD_PARTY_NOTICES.md", "LISEZ-MOI.txt"):
+        assert (directory / "_internal" / notice).is_file(), f"Missing distribution notice: {notice}"
+    for notice in ("README.md", "components.json"):
+        target = directory / "_internal" / "third_party" / notice
+        assert target.is_file(), f"Missing third-party compliance file: {target}"
+    assert list((directory / "_internal" / "third_party" / "licenses").glob("*.txt")), \
+        "Missing third-party license texts"
     env = os.environ.copy()
     for key in list(env):
         if key.upper().startswith(("PYTHON", "QT_", "PYSIDE", "VIRTUAL_ENV", "CONDA")):
