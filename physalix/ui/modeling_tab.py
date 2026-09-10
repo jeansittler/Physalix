@@ -9,7 +9,7 @@ from PySide6.QtWidgets import (
 from physalix.fitting import MODELS, fit_model
 from physalix.ui.fit_report import report_html, math_text, DETAILS_HTML
 from physalix.ui.graph_tab import paired_values
-from physalix.ui.components import page_layout, panel, label, role, ResponsiveCards
+from physalix.ui.components import page_layout, panel, role, ResponsiveCards
 from physalix.ui.theme import report_stylesheet
 
 
@@ -18,6 +18,7 @@ class ReportView(QTextBrowser):
 
     def __init__(self):
         super().__init__()
+        role(self, "report")
         self.setFrameShape(QFrame.Shape.NoFrame)
         self.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
@@ -109,21 +110,24 @@ class ModelingTab(QWidget):
         form.addRow(self.extend_check)
         actions = QHBoxLayout()
         self.fit_button = role(QPushButton("Calculer la modélisation"), "primary")
-        self.remove_button = role(QPushButton("Retirer cette modélisation"), "danger")
+        self.remove_button = role(QPushButton("Retirer cette modélisation"), "quiet")
         show = QPushButton("Voir le graphique")
-        for button in (self.fit_button, self.remove_button, show):
-            actions.addWidget(button)
+        actions.addWidget(self.fit_button)
+        actions.addWidget(show)
+        actions.addStretch()
+        actions.addWidget(self.remove_button)
         body.addLayout(actions)
         self.result_text = ReportView()
-        body.addWidget(label("Résultats"))
-        body.addWidget(self.result_text)
+        self.result_panel, result_layout = panel("Résultats")
+        result_layout.addWidget(self.result_text)
         self.details_button = QPushButton("Comprendre les indicateurs ▸")
         self.details_button.setCheckable(True)
-        body.addWidget(self.details_button, 0, Qt.AlignmentFlag.AlignLeft)
+        result_layout.addWidget(self.details_button, 0, Qt.AlignmentFlag.AlignLeft)
         self.details_text = ReportView()
         self.details_text.setHtml(DETAILS_HTML)
         self.details_text.hide()
-        body.addWidget(self.details_text)
+        result_layout.addWidget(self.details_text)
+        body.addWidget(self.result_panel)
         self.details_button.toggled.connect(self.toggle_details)
         body.addStretch()
         scroll.setWidget(content)
@@ -298,6 +302,9 @@ class ModelingTab(QWidget):
                                axis_name=self.graph.model.names[item.key()[0]],
                                interval=self.interval() if self.range_check.isChecked() else None)
         except (ValueError, ArithmeticError) as exc:
+            self.result_text.setProperty("status", "error")
+            self.result_text.style().unpolish(self.result_text)
+            self.result_text.style().polish(self.result_text)
             self.result_text.setPlainText(f"Modélisation impossible : {exc}\n\nLe précédent modèle, s’il existe, est conservé sur le graphique.")
             self.graph.interval_hint.setText(f"Modélisation impossible : {exc} Modifiez l’intervalle ou les réglages dans Modélisation.")
             return
@@ -319,6 +326,9 @@ class ModelingTab(QWidget):
         self.show_result()
 
     def show_result(self):
+        self.result_text.setProperty("status", "normal")
+        self.result_text.style().unpolish(self.result_text)
+        self.result_text.style().polish(self.result_text)
         item = self.current_series()
         fit = self.current_fit()
         result = fit.result if fit else None

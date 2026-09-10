@@ -78,7 +78,7 @@ class ResponsiveCards(QWidget):
         self.cards.addWidget(second, 1)
 
     def resizeEvent(self, event):
-        direction = (QBoxLayout.Direction.LeftToRight if event.size().width() >= 1100
+        direction = (QBoxLayout.Direction.LeftToRight if event.size().width() >= LIGHT.wide_layout
                      else QBoxLayout.Direction.TopToBottom)
         if self.cards.direction() != direction:
             self.cards.setDirection(direction)

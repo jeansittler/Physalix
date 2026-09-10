@@ -38,6 +38,7 @@ class Theme:
     card_radius: int = 8
     control_height: int = 32
     button_height: int = 32
+    wide_layout: int = 1480
     small: int = 4
     related: int = 8
     group: int = 12
@@ -76,6 +77,9 @@ def stylesheet(t=LIGHT):
     QLabel[role="cardTitle"] {{ font-size: {t.card_title_px}px; font-weight: 650; }}
     QLabel[role="muted"], QLabel[role="caption"] {{ color: {t.muted}; font-size: {t.caption_px}px; }}
     QLabel[role="caption"] {{ font-weight: 600; }}
+    QLabel[role="cellAddress"] {{ background: {t.secondary}; border: 1px solid {t.border};
+        border-radius: {t.radius}px; padding: 6px 10px; font-weight: 650; }}
+    QLabel[role="formulaMark"] {{ color: {t.primary_pressed}; font-size: {t.card_title_px}px; font-weight: 700; }}
     QLabel[role="error"] {{ color: {t.error}; }}
     QLabel[role="success"] {{ color: {t.success}; }}
     QFrame[role="panel"], QFrame[role="card"], QWidget[role="panel"], QWidget[role="card"], QTextBrowser {{ background: {t.surface};
@@ -151,6 +155,8 @@ def stylesheet(t=LIGHT):
     QStatusBar {{ background: {t.secondary}; color: {t.muted}; border-top: 1px solid {t.border}; }}
     QStatusBar::item {{ border: 0; }}
     QTextBrowser {{ padding: 12px; selection-background-color: {t.selection}; selection-color: {t.text}; }}
+    QTextBrowser[role="report"] {{ background: transparent; border: 0; border-radius: 0; padding: 4px 0; }}
+    QTextBrowser[status="error"] {{ color: {t.error}; }}
     """
 
 

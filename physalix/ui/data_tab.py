@@ -18,7 +18,7 @@ from PySide6.QtWidgets import (
 from physalix.ui.fill_table import FillTableView
 from physalix.ui.units import COMMON_UNITS
 from physalix.ui.theme import LIGHT
-from physalix.ui.components import help_toggle, page_layout, role
+from physalix.ui.components import help_toggle, page_layout, panel, role
 from physalix.ui.math_help import math_help_button
 from physalix.spreadsheet import CellFormula, CellError, column_label, remove_formula_column, translate_formula
 
@@ -114,7 +114,12 @@ class MeasurementsModel(QAbstractTableModel):
         if role == Qt.ItemDataRole.ToolTipRole and key in self.formulas:
             return self.formulas[key] + ("\n" + self.formula_errors[key] if key in self.formula_errors else "")
         if role == Qt.ItemDataRole.ForegroundRole and key in self.formulas:
-            return QBrush(QColor("#b42318" if key in self.formula_errors else LIGHT.primary))
+            return QBrush(QColor(LIGHT.error if key in self.formula_errors else LIGHT.primary))
+        if role == Qt.ItemDataRole.BackgroundRole:
+            if index.row() < self.first_data_row:
+                return QBrush(QColor(LIGHT.secondary))
+            if index.column() in self.calculated_columns:
+                return QBrush(QColor(LIGHT.primary_soft))
         if role == Qt.ItemDataRole.TextAlignmentRole:
             return int(Qt.AlignmentFlag.AlignVCenter | (
                 Qt.AlignmentFlag.AlignLeft if index.row() < self.first_data_row
@@ -574,7 +579,7 @@ class DataTab(QWidget):
         delegate = MeasurementDelegate(self.table)
         delegate.advance.connect(self.table.advance_down)
         self.table.setItemDelegate(delegate)
-        self.table.setAlternatingRowColors(False)
+        self.table.setAlternatingRowColors(True)
         self.table.verticalHeader().setDefaultSectionSize(32)
         self.table.setEditTriggers(
             QAbstractItemView.EditTrigger.DoubleClicked
@@ -589,6 +594,7 @@ class DataTab(QWidget):
         self.add_quantity_button.setToolTip("Ajouter une colonne vide et saisir son nom")
         self.add_quantity_button.setMinimumHeight(34)
         self.add_quantity_button.clicked.connect(self.add_quantity)
+        toolbar, toolbar_layout = panel()
         actions = QHBoxLayout()
         actions.addWidget(self.add_quantity_button)
         self.undo_button = QPushButton("Annuler")
@@ -602,18 +608,19 @@ class DataTab(QWidget):
         self.undo_button.setToolTip("Ctrl+Z · Annuler la dernière modification du tableau")
         self.redo_button.setToolTip("Ctrl+Y · Rétablir la dernière modification annulée")
         actions.addStretch()
-        layout.addLayout(actions)
+        toolbar_layout.addLayout(actions)
         formula_row = QHBoxLayout()
-        self.cell_address = QLabel("—")
+        self.cell_address = role(QLabel("—"), "cellAddress")
         self.cell_address.setMinimumWidth(70)
         self.formula_bar = QLineEdit()
         self.formula_bar.setAccessibleName("Valeur ou formule de la cellule")
         self.formula_bar.setPlaceholderText("Valeur ou formule, par exemple =A1*2")
         formula_row.addWidget(self.cell_address)
-        formula_row.addWidget(QLabel("fx"))
+        formula_row.addWidget(role(QLabel("fx"), "formulaMark"))
         formula_row.addWidget(self.formula_bar, 1)
         formula_row.addWidget(math_help_button(self, spreadsheet=True))
-        layout.addLayout(formula_row)
+        toolbar_layout.addLayout(formula_row)
+        layout.addWidget(toolbar)
         self.table.selectionModel().currentChanged.connect(self.update_formula_bar)
         self.model.dataChanged.connect(self.update_formula_bar)
         self.model.columnsRemoved.connect(self.update_formula_bar)

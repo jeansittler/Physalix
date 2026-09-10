@@ -4,7 +4,7 @@ import unittest
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 from PySide6.QtTest import QTest
-from PySide6.QtWidgets import QApplication, QPushButton, QScrollArea
+from PySide6.QtWidgets import QApplication, QFrame, QPushButton, QScrollArea
 from physalix.ui.main_window import MainWindow
 from physalix.ui.theme import LIGHT, apply_theme, stylesheet
 
@@ -50,11 +50,25 @@ class ThemeLayoutTests(unittest.TestCase):
         self.assertNotEqual(LIGHT.background, LIGHT.surface)
         self.assertNotEqual(LIGHT.border, LIGHT.border_strong)
         self.assertGreaterEqual(LIGHT.control_height, 32)
+        self.assertGreaterEqual(LIGHT.wide_layout, 1400)
         qss = stylesheet()
         for state in (":hover", ":focus", ":pressed", ":selected", ":disabled"):
             self.assertIn(state, qss)
         for role in ('role="primary"', 'role="danger"', 'role="card"'):
             self.assertIn(role, qss)
+
+    def test_reference_views_use_cards_and_clear_action_hierarchy(self):
+        data = self.window.data_tab
+        modeling = self.window.modeling_tab
+        self.assertTrue(data.table.alternatingRowColors())
+        self.assertGreaterEqual(len([w for w in data.findChildren(QFrame) if w.property("role") == "card"]), 2)
+        self.assertEqual(modeling.fit_button.property("role"), "primary")
+        self.assertEqual(modeling.remove_button.property("role"), "quiet")
+        self.assertEqual(modeling.result_panel.property("role"), "card")
+        self.window.resize(1440, 900)
+        self.window.tabs.setCurrentWidget(modeling)
+        self.app.processEvents()
+        self.assertEqual(modeling.findChild(QScrollArea).horizontalScrollBar().maximum(), 0)
 
     def test_navigation_and_plot_after_resize(self):
         for size in ((1366, 700), (1920, 1000), (900, 620), (1366, 700)):
