@@ -1,5 +1,34 @@
 # Préparer et publier une version de Physalix
 
+## Préparation 1.1.3
+
+Traduction en français des boutons de la fenêtre de confirmation lors de la fermeture d’un projet non enregistré.
+
+- Correction locale dans `ProjectFiles.confirm_save()` : mêmes boutons standard
+  Save/Discard/Cancel et mêmes retours, libellés français explicites. Aucun
+  traducteur Qt global ajouté ; logique de sauvegarde inchangée.
+- 18 tests projet et 33 tests updater ciblés réussis, puis 164 tests réussis
+  dans le pipeline `scripts/build_release.ps1`. Les tests du dialogue cliquent
+  les vrais boutons Qt et couvrent fermeture/remplacement, sauvegarde réussie,
+  abandon, annulation, fermeture de la boîte, annulation du choix de fichier,
+  erreur d'écriture, vidéo en préparation et refus d'écrasement.
+- Source de version : `physalix/_version.py`. Artefacts générés et vérifiés :
+  `artifacts/Physalix-Setup-1.1.3.exe` et `artifacts/update.json`, URL publique
+  `https://github.com/jeansittler/Physalix-releases/releases/download/v1.1.3/Physalix-Setup-1.1.3.exe`.
+- Build PyInstaller et lancement autonome réussis ; version embarquée et
+  métadonnées PE de l'application et de l'installateur vérifiées en 1.1.3.
+  Installateur : 84 108 427 octets ; SHA-256 identique au manifeste et au `.sha256` :
+  `3081ac465b0810b99858b7e3cf07f58f9e9e0a41df8f8a8f35eb6412dfb79876`.
+- Pipeline, AppId, destination Program Files, `PrivilegesRequired=admin` et
+  lancement `runas` de 1.1.2 conservés. Garder 1.1.2 installé pour le test réel
+  de mise à jour 1.1.2 → 1.1.3 ; ne pas lancer l'installateur pendant cette
+  préparation. Aucune publication ni aucun push automatique.
+- Installation 1.1.2 contrôlée avant/après : EXE dans Program Files inchangé
+  octet pour octet. Aucun installateur exécuté. Aucun secret ajouté ;
+  `git diff --check` réussi. L'avertissement Inno préexistant sur `userdocs`
+  en mode administrateur reste inchangé. Le test interactif de mise à jour
+  avec UAC reste à effectuer après cette préparation.
+
 ## Base conservée
 
 Audit avant modification : branche `feature/auto-update`, origin

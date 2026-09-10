@@ -101,10 +101,15 @@ class ProjectFiles:
             focus.clearFocus()
         if self._discard_on_close or self.document_signature() == self._saved_state:
             return True
-        answer = QMessageBox.question(self, 'Enregistrer le projet ?',
+        dialog = QMessageBox(QMessageBox.Icon.Question, 'Enregistrer le projet ?',
             'Le projet contient des modifications non enregistrées.',
             QMessageBox.StandardButton.Save | QMessageBox.StandardButton.Discard | QMessageBox.StandardButton.Cancel,
-            QMessageBox.StandardButton.Save)
+            self)
+        dialog.setDefaultButton(QMessageBox.StandardButton.Save)
+        dialog.button(QMessageBox.StandardButton.Save).setText('Enregistrer')
+        dialog.button(QMessageBox.StandardButton.Discard).setText('Ne pas enregistrer')
+        dialog.button(QMessageBox.StandardButton.Cancel).setText('Annuler')
+        answer = dialog.exec()
         if answer == QMessageBox.StandardButton.Save:
             return self.save_project()
         return answer == QMessageBox.StandardButton.Discard

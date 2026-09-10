@@ -1,1 +1,1 @@
-Amélioration du lancement des mises à jour nécessitant les droits administrateur.
+Traduction en français des boutons de la fenêtre de confirmation lors de la fermeture d’un projet non enregistré.

@@ -8,7 +8,7 @@ import unittest
 from unittest.mock import patch
 import zipfile
 
-from PySide6.QtCore import QPointF
+from PySide6.QtCore import QPointF, QTimer
 from PySide6.QtWidgets import QApplication, QMessageBox, QFileDialog
 from physalix.fitting import fit_model
 from physalix.project import read_project, write_project, read_csv, write_csv, atomic_write
@@ -168,9 +168,9 @@ class ProjectTests(unittest.TestCase):
     def test_save_cancel_and_discard(self):
         w = self.window
         w.data_tab.model.setData(w.data_tab.model.index(2, 0), '3')
-        with patch.object(QMessageBox, 'question', return_value=QMessageBox.StandardButton.Cancel):
+        with patch.object(QMessageBox, 'exec', return_value=QMessageBox.StandardButton.Cancel):
             self.assertFalse(w.confirm_save())
-        with patch.object(QMessageBox, 'question', return_value=QMessageBox.StandardButton.Save), patch.object(
+        with patch.object(QMessageBox, 'exec', return_value=QMessageBox.StandardButton.Save), patch.object(
                 QFileDialog, 'getSaveFileName', return_value=('', '')):
             self.assertFalse(w.confirm_save())
         with patch.object(QFileDialog, 'getSaveFileName', return_value=(str(self.path), '')):
@@ -179,12 +179,112 @@ class ProjectTests(unittest.TestCase):
 
     def test_replace_project(self):
         state = snapshot(self.populated())
-        with patch.object(QMessageBox, 'question', return_value=QMessageBox.StandardButton.Discard):
+        with patch.object(QMessageBox, 'exec', return_value=QMessageBox.StandardButton.Discard):
             self.assertTrue(self.window.replace_project(state))
         self.app.processEvents()
         self.assertEqual(len(self.window.graph_tab.windows), 2)
         self.assertEqual(len(self.window.calculations_tab.engine.items), 2)
         self.assertEqual(self.window.document_signature(), self.window._saved_state)
+
+    def french_confirmation(self, choice):
+        """Click the real standard button through the modal Qt event loop."""
+        original_exec = QMessageBox.exec
+
+        def execute(dialog):
+            self.assertEqual(dialog.windowTitle(), 'Enregistrer le projet ?')
+            self.assertEqual(dialog.text(), 'Le projet contient des modifications non enregistrées.')
+            self.assertEqual(dialog.icon(), QMessageBox.Icon.Question)
+            labels = {
+                QMessageBox.StandardButton.Save: 'Enregistrer',
+                QMessageBox.StandardButton.Discard: 'Ne pas enregistrer',
+                QMessageBox.StandardButton.Cancel: 'Annuler',
+            }
+            self.assertEqual(dialog.standardButtons(),
+                             QMessageBox.StandardButton.Save | QMessageBox.StandardButton.Discard |
+                             QMessageBox.StandardButton.Cancel)
+            for button, label in labels.items():
+                self.assertEqual(dialog.button(button).text(), label)
+                self.assertEqual(dialog.standardButton(dialog.button(button)), button)
+            self.assertIs(dialog.defaultButton(), dialog.button(QMessageBox.StandardButton.Save))
+            if choice == 'close':
+                QTimer.singleShot(0, dialog.close)
+            else:
+                QTimer.singleShot(0, dialog.button(choice).click)
+            result = original_exec(dialog)
+            self.assertEqual(result, QMessageBox.StandardButton.Cancel if choice == 'close' else choice)
+            return result
+
+        return patch.object(QMessageBox, 'exec', execute)
+
+    def test_french_confirmation_close_and_replace_paths(self):
+        for action in ('close', 'replace'):
+            for choice in (QMessageBox.StandardButton.Save, QMessageBox.StandardButton.Discard,
+                           QMessageBox.StandardButton.Cancel, 'close'):
+                with self.subTest(action=action, choice=choice):
+                    w = MainWindow()
+                    self.windows.append(w)
+                    model = w.data_tab.model
+                    model.setData(model.index(2, 0), '42')
+                    signature = w.document_signature()
+                    path = Path(self.directory.name) / f'{action}-{choice}.physalix'
+                    with self.french_confirmation(choice), patch.object(
+                            QFileDialog, 'getSaveFileName', return_value=(str(path), '')) as destination:
+                        result = w.close() if action == 'close' else w.replace_project()
+                    accepted = choice in (QMessageBox.StandardButton.Save, QMessageBox.StandardButton.Discard)
+                    self.assertEqual(result, accepted)
+                    self.assertEqual(path.exists(), choice == QMessageBox.StandardButton.Save)
+                    if choice == QMessageBox.StandardButton.Save:
+                        destination.assert_called_once()
+                        self.assertEqual(read_project(path)['table']['rows'][0][0], '42')
+                    else:
+                        destination.assert_not_called()
+                    if not accepted:
+                        self.assertIs(w.data_tab.model, model)
+                        self.assertEqual(w.document_signature(), signature)
+                    elif action == 'replace':
+                        self.assertIsNot(w.data_tab.model, model)
+
+    def test_french_save_failure_or_cancel_prevents_close_and_replace(self):
+        for action in ('close', 'replace'):
+            for failure in ('cancel', 'write_error', 'video_loading', 'overwrite_declined'):
+                with self.subTest(action=action, failure=failure):
+                    w = MainWindow()
+                    self.windows.append(w)
+                    model = w.data_tab.model
+                    model.setData(model.index(2, 0), '42')
+                    signature = w.document_signature()
+                    self.path.write_bytes(b'previous file')
+                    selected = '' if failure == 'cancel' else str(
+                        self.path.with_suffix('') if failure == 'overwrite_declined' else self.path)
+                    if failure == 'video_loading':
+                        w.video_tab.loader = object()
+                    try:
+                        with self.french_confirmation(QMessageBox.StandardButton.Save), patch.object(
+                                QFileDialog, 'getSaveFileName', return_value=(selected, '')), patch(
+                                'physalix.ui.project_files.write_project', side_effect=OSError('disk full')) as write, \
+                                patch.object(QMessageBox, 'critical') as error, \
+                                patch.object(QMessageBox, 'information') as info, \
+                                patch.object(QMessageBox, 'question', return_value=QMessageBox.StandardButton.No):
+                            self.assertFalse(w.close() if action == 'close' else w.replace_project())
+                        self.assertEqual(write.call_count, int(failure == 'write_error'))
+                        self.assertEqual(error.call_count, int(failure == 'write_error'))
+                        self.assertEqual(info.call_count, int(failure == 'video_loading'))
+                    finally:
+                        if failure == 'video_loading':
+                            w.video_tab.loader = None
+                    self.assertIs(w.data_tab.model, model)
+                    self.assertEqual(w.document_signature(), signature)
+                    self.assertEqual(self.path.read_bytes(), b'previous file')
+                    self.assertIsNone(w.project_path)
+
+    def test_clean_or_explicitly_discarded_project_needs_no_confirmation(self):
+        with patch.object(QMessageBox, 'exec') as dialog:
+            self.assertTrue(self.window.confirm_save())
+            model = self.window.data_tab.model
+            model.setData(model.index(2, 0), '42')
+            self.window._discard_on_close = True
+            self.assertTrue(self.window.confirm_save())
+        dialog.assert_not_called()
 
     def test_csv_decimal_quotes_headers_blanks_and_append(self):
         path = Path(self.directory.name) / 'mesures.csv'
