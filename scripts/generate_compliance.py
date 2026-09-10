@@ -9,7 +9,9 @@ from pathlib import Path
 import runpy
 
 ROOT = Path(__file__).resolve().parents[1]
-VERSION = runpy.run_path(str(ROOT / "physalix/_version.py"))["__version__"]
+VERSION_DATA = runpy.run_path(str(ROOT / "physalix/_version.py"))
+VERSION = VERSION_DATA["__version__"]
+DEVELOPMENT = VERSION_DATA["__development__"]
 MANIFEST = ROOT / "third_party/components.json"
 
 EXPECTED_PACKAGES = {
@@ -40,7 +42,8 @@ def sha256(path: Path) -> str:
 
 def main(bundle: Path, target: Path) -> None:
     data = json.loads(MANIFEST.read_text(encoding="utf-8"))
-    assert data["release"] == VERSION, "third-party manifest version is stale"
+    if not DEVELOPMENT:
+        assert data["release"] == VERSION, "third-party manifest version is stale"
     installed = {name: importlib.metadata.version(name) for name in EXPECTED_PACKAGES}
     assert installed == EXPECTED_PACKAGES, f"unexpected runtime packages: {installed}"
     assert bundle.is_dir(), f"bundle not found: {bundle}"
@@ -61,6 +64,7 @@ def main(bundle: Path, target: Path) -> None:
     output = {
         "schema": 1,
         "physalix": VERSION,
+        "component_audit_release": data["release"],
         "declared_components": data["components"],
         "python_packages": installed,
         "audited_binaries": binaries,

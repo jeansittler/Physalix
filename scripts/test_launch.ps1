@@ -1,6 +1,8 @@
 param([Parameter(Mandatory=$true)][string]$Executable)
 $ErrorActionPreference = 'Stop'
 $Executable = (Resolve-Path -LiteralPath $Executable).Path
+$productVersion = (Get-Item -LiteralPath $Executable).VersionInfo.ProductVersion
+$expectedTitle = if ($productVersion -like '*-dev') { "Physalix — $productVersion" } else { 'Physalix' }
 $root = Split-Path -Parent $PSScriptRoot
 $savedEnvironment = @{}
 Get-ChildItem Env: | Where-Object { $_.Name -match '^(PATH$|PYTHON|QT_|PYSIDE|VIRTUAL_ENV|CONDA)' } |
@@ -16,8 +18,8 @@ try {
         Start-Sleep -Milliseconds 200
         $process.Refresh()
         if ($process.HasExited) { throw "Physalix exited during startup: $($process.ExitCode)" }
-    } while ($process.MainWindowTitle -ne 'Physalix' -and [DateTime]::UtcNow -lt $deadline)
-    if ($process.MainWindowTitle -ne 'Physalix' -or -not $process.Responding) { throw 'No responsive Physalix window.' }
+    } while ($process.MainWindowTitle -ne $expectedTitle -and [DateTime]::UtcNow -lt $deadline)
+    if ($process.MainWindowTitle -ne $expectedTitle -or -not $process.Responding) { throw 'No responsive Physalix window.' }
     $modules = @($process.Modules | ForEach-Object { $_.FileName })
     if ($modules | Where-Object { $_ -match '\\.venv\\|\\codex-runtimes\\' }) { throw 'Developer DLL used by the application.' }
     $pythonDll = @($modules | Where-Object { $_ -like '*\python312.dll' })
