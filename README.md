@@ -5,9 +5,10 @@ l’analyse et la visualisation de données expérimentales en physique-chimie,
 notamment dans l’enseignement secondaire. Le projet privilégie une interface
 simple, des fichiers de travail échangeables et des calculs reproductibles.
 
-La version actuelle est **Physalix 1.1.3**. Le dépôt source est en préparation
-pour sa publication sous licence GPL‑3.0 ; aucune intégration SignPath n’est
-encore active et les exécutables publiés à ce jour ne sont pas signés.
+La version actuelle est **Physalix 1.1.3**. Son code source est publié sous
+licence **GNU GPL-3.0-only**. Les exécutables publiés actuellement ne sont pas
+encore signés numériquement ; la signature numérique des futures versions est
+en cours de préparation.
 
 L’application contient six espaces : **Données / Tableur**,
 **Graphique**, **Modélisation**, **Pointage vidéo**, **Calculs** et **Statistiques**. L’onglet Données / Tableur permet de saisir des mesures et des formules de cellules.
@@ -494,8 +495,13 @@ Le code de Physalix est distribué sous **GNU GPL version 3 uniquement**
 (`GPL-3.0-only`). Voir [LICENSE](LICENSE). Les composants tiers conservent leurs
 propres licences ; voir [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
 
-La [politique de signature du code](SIGNING_POLICY.md) décrit la préparation à
-SignPath Foundation. La signature n’est pas encore active.
+## Code signing policy
+
+La [politique de signature du code](SIGNING_POLICY.md) décrit la préparation de
+la signature numérique des futures versions. La [politique de confidentialité](PRIVACY.md)
+précise le traitement des données et les connexions réseau de l’application.
+
+Free code signing provided by SignPath.io, certificate by SignPath Foundation
 
 ## Modifier une formule existante
 
