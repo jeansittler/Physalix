@@ -24,13 +24,13 @@ def page_layout(layout):
 
 
 def panel(title=None):
-    widget = role(QFrame(), "panel")
+    widget = role(QFrame(), "card")
     layout = QVBoxLayout(widget)
     layout.setContentsMargins(LIGHT.section, LIGHT.group, LIGHT.section, LIGHT.group)
     layout.setSpacing(LIGHT.group)
     if title:
         layout.setAlignment(Qt.AlignmentFlag.AlignTop)
-        layout.addWidget(label(title))
+        layout.addWidget(label(title, "cardTitle"))
     return widget, layout
 
 

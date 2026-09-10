@@ -6,7 +6,7 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication, QPushButton, QScrollArea
 from physalix.ui.main_window import MainWindow
-from physalix.ui.theme import apply_theme
+from physalix.ui.theme import LIGHT, apply_theme, stylesheet
 
 
 class ThemeLayoutTests(unittest.TestCase):
@@ -45,6 +45,16 @@ class ThemeLayoutTests(unittest.TestCase):
                 center = button.mapTo(scroll.viewport(), button.rect().center())
                 self.assertTrue(scroll.viewport().rect().contains(center))
                 self.assertGreaterEqual(button.height(), 30)
+
+    def test_design_tokens_and_interaction_states_are_centralized(self):
+        self.assertNotEqual(LIGHT.background, LIGHT.surface)
+        self.assertNotEqual(LIGHT.border, LIGHT.border_strong)
+        self.assertGreaterEqual(LIGHT.control_height, 32)
+        qss = stylesheet()
+        for state in (":hover", ":focus", ":pressed", ":selected", ":disabled"):
+            self.assertIn(state, qss)
+        for role in ('role="primary"', 'role="danger"', 'role="card"'):
+            self.assertIn(role, qss)
 
     def test_navigation_and_plot_after_resize(self):
         for size in ((1366, 700), (1920, 1000), (900, 620), (1366, 700)):

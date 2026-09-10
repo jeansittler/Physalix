@@ -29,8 +29,9 @@ class MainWindow(QMainWindow, ProjectFiles):
         self.setMinimumSize(640, 420)
 
         self.tabs = QTabWidget()
+        self.tabs.setObjectName("mainNavigation")
         self.tabs.setDocumentMode(True)
-        self.tabs.setIconSize(QSize(20, 20))
+        self.tabs.setIconSize(QSize(22, 22))
         self.tabs.tabBar().setExpanding(False)
         self.tabs.tabBar().setUsesScrollButtons(True)
         brand = role(QWidget(), "brand")
