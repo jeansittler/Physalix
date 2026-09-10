@@ -19,6 +19,7 @@ from physalix.ui.fill_table import FillTableView
 from physalix.ui.units import COMMON_UNITS
 from physalix.ui.theme import LIGHT
 from physalix.ui.components import help_toggle, page_layout, panel, role
+from physalix.ui.icons import icon
 from physalix.ui.math_help import math_help_button
 from physalix.spreadsheet import CellFormula, CellError, column_label, remove_formula_column, translate_formula
 
@@ -117,7 +118,7 @@ class MeasurementsModel(QAbstractTableModel):
             return QBrush(QColor(LIGHT.error if key in self.formula_errors else LIGHT.primary))
         if role == Qt.ItemDataRole.BackgroundRole:
             if index.row() < self.first_data_row:
-                return QBrush(QColor(LIGHT.secondary))
+                return QBrush(QColor(LIGHT.table_metadata))
             if index.column() in self.calculated_columns:
                 return QBrush(QColor(LIGHT.primary_soft))
         if role == Qt.ItemDataRole.TextAlignmentRole:
@@ -562,19 +563,22 @@ class DataTab(QWidget):
     def __init__(self):
         super().__init__()
         layout = page_layout(QVBoxLayout(self))
-        instructions = help_toggle("Saisie des données · Une grandeur par colonne, une mesure par ligne",
+        instructions = help_toggle("Données / Tableur",
             "Grandeur et Unité : nommez les colonnes. Entrée : descendre · Tab : aller à droite.\n"
             "Ctrl+C / Ctrl+V : copier / coller · Ctrl+Z / Ctrl+Y : annuler / rétablir les modifications de cellules.\n"
             "Glissez un en-tête pour déplacer sa colonne. Clic droit : supprimer une grandeur.\n"
             "Formules : =A1*2 ou =SOMME(A1:A5). A1 = première mesure de A ; $A$1 reste fixe.\n"
             "Tirez le carré de sélection vers le bas pour recopier une formule ou prolonger deux valeurs.\n"
-            "Décimales : virgule ou point. Les données restent en mémoire pendant cette session."
+            "Décimales : virgule ou point. Les données restent en mémoire pendant cette session.",
+            "Une grandeur par colonne · une mesure par ligne",
         )
         layout.addWidget(instructions)
 
         self.model = MeasurementsModel(self)
         self.table = MeasurementsTable(self)
         self.table.setModel(self.model)
+        self.table.horizontalHeader().setObjectName("quantityHeader")
+        self.table.verticalHeader().setObjectName("rowHeader")
         self.table.add_quantity_requested.connect(self.add_quantity)
         delegate = MeasurementDelegate(self.table)
         delegate.advance.connect(self.table.advance_down)
@@ -591,11 +595,14 @@ class DataTab(QWidget):
         self.table.setCurrentIndex(self.model.index(0, 0))
 
         self.add_quantity_button = role(QPushButton("Ajouter une grandeur"), "primary")
+        self.add_quantity_button.setIcon(icon("add", active=True))
         self.add_quantity_button.setToolTip("Ajouter une colonne vide et saisir son nom")
         self.add_quantity_button.setMinimumHeight(34)
         self.add_quantity_button.clicked.connect(self.add_quantity)
-        toolbar, toolbar_layout = panel()
+        toolbar, toolbar_layout = panel(kind="toolbar")
         actions = QHBoxLayout()
+        actions.setSpacing(LIGHT.related)
+        actions.addWidget(role(QLabel("GRANDEURS"), "toolbarLabel"))
         actions.addWidget(self.add_quantity_button)
         self.undo_button = QPushButton("Annuler")
         self.redo_button = QPushButton("Rétablir")
@@ -610,11 +617,14 @@ class DataTab(QWidget):
         actions.addStretch()
         toolbar_layout.addLayout(actions)
         formula_row = QHBoxLayout()
+        formula_row.setSpacing(LIGHT.related)
+        formula_row.addWidget(role(QLabel("CELLULE"), "toolbarLabel"))
         self.cell_address = role(QLabel("—"), "cellAddress")
         self.cell_address.setMinimumWidth(70)
         self.formula_bar = QLineEdit()
         self.formula_bar.setAccessibleName("Valeur ou formule de la cellule")
         self.formula_bar.setPlaceholderText("Valeur ou formule, par exemple =A1*2")
+        self.formula_bar.setMaximumWidth(LIGHT.formula_wide)
         formula_row.addWidget(self.cell_address)
         formula_row.addWidget(role(QLabel("fx"), "formulaMark"))
         formula_row.addWidget(self.formula_bar, 1)

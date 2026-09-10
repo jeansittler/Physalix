@@ -14,12 +14,14 @@ PATHS = {
     "video": '<rect x="3" y="5" width="18" height="14" rx="2"/><path d="m10 9 5 3-5 3Z"/>',
     "calculations": '<rect x="5" y="2" width="14" height="20" rx="2"/><path d="M8 6h8M8 11h2m4 0h2M8 15h2m4 0h2M8 19h2m4 0h2"/>',
     "statistics": '<path d="M3 3v18h18M7 17v-5h3v5M12 17V6h3v11M17 17V9h3v8"/>',
+    "add": '<path d="M12 5v14M5 12h14"/><circle cx="12" cy="12" r="9"/>',
 }
 
 
-def icon(name, active=False):
+def icon(name, active=False, navigation=False):
     result = QIcon()
-    for mode, color in ((QIcon.Normal, LIGHT.surface if active else LIGHT.text),
+    normal = LIGHT.surface if active else (LIGHT.nav_text if navigation else LIGHT.text)
+    for mode, color in ((QIcon.Normal, normal),
                         (QIcon.Selected, LIGHT.surface), (QIcon.Disabled, LIGHT.disabled)):
         svg = f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="{color}" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">{PATHS[name]}</svg>'
         renderer = QSvgRenderer(QByteArray(svg.encode()))

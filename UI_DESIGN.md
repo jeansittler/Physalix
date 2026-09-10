@@ -2,14 +2,17 @@
 
 Le thème clair est centralisé dans `physalix/ui/theme.py`. La structure `Theme`
 contient la palette, les niveaux typographiques, les rayons, les dimensions de
-contrôles et l’échelle d’espacement (4, 8, 12, 16 et 24 px). Le bleu du logo reste
-la couleur primaire ; les couleurs d’état ne doivent pas remplacer un libellé ou
-une autre indication visible.
+contrôles et l’échelle d’espacement (4, 8, 12, 16 et 24 px). Le bleu marine
+structure la navigation et les titres ; le bleu vif du logo reste réservé aux
+actions, sélections, focus et accents. Les couleurs d’état ne doivent pas remplacer
+un libellé ou une autre indication visible.
 
 Les règles Qt communes sont produites par `stylesheet()`. Elles couvrent les
 boutons, champs, listes, cases à cocher, cartes, tableaux, menus, barres de
-défilement et leurs états interactifs. Les composants de présentation réutilisables
-se trouvent dans `physalix/ui/components.py`.
+défilement et leurs états interactifs. Les cartes utilisent un en-tête légèrement
+bleuté et un accent vertical commun. Les composants de présentation réutilisables
+(`page_header`, `panel`, `ResponsiveCards`) se trouvent dans
+`physalix/ui/components.py`.
 
 Pour ajouter un écran ou un composant :
 

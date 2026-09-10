@@ -9,8 +9,10 @@ from PySide6.QtWidgets import (
 from physalix.fitting import MODELS, fit_model
 from physalix.ui.fit_report import report_html, math_text, DETAILS_HTML
 from physalix.ui.graph_tab import paired_values
-from physalix.ui.components import page_layout, panel, role, ResponsiveCards
-from physalix.ui.theme import report_stylesheet
+from physalix.ui.components import (page_header, page_layout, panel, refresh_style,
+                                    role, ResponsiveActions, ResponsiveCards)
+from physalix.ui.icons import icon
+from physalix.ui.theme import LIGHT, report_stylesheet
 
 
 class ReportView(QTextBrowser):
@@ -47,25 +49,29 @@ class ModelingTab(QWidget):
         body = QVBoxLayout(content)
         body.setContentsMargins(0, 0, 0, 0)
         body.setSpacing(16)
-        intro = QLabel("Modélisez les mesures d’une série avec une fonction de votre choix. Vous pouvez conserver plusieurs modélisations, sur l’ensemble des mesures ou sur des intervalles différents.")
-        intro.setWordWrap(True)
-        role(intro, "muted")
-        body.addWidget(intro)
+        body.addWidget(page_header(
+            "Modélisation",
+            "Ajustez un modèle mathématique aux mesures et analysez la qualité du résultat.",
+        ))
         model_panel, model_layout = panel("Modèle")
         form = QFormLayout()
         form.setVerticalSpacing(12)
         form.setRowWrapPolicy(QFormLayout.RowWrapPolicy.WrapLongRows)
+        form.setLabelAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
         model_layout.addLayout(form)
         self.series_choice = QComboBox()
+        self.series_choice.setMaximumWidth(LIGHT.field_wide)
         form.addRow("Série à modéliser", self.series_choice)
-        fit_row = QHBoxLayout()
         self.fit_choice = QComboBox()
-        self.new_fit_button = QPushButton("Ajouter une modélisation")
+        self.fit_choice.setMaximumWidth(LIGHT.field_medium)
+        self.new_fit_button = QPushButton("Nouvelle modélisation")
+        self.new_fit_button.setMaximumWidth(LIGHT.action_wide)
+        self.new_fit_button.setIcon(icon("add"))
         self.new_fit_button.setToolTip("Créer une nouvelle modélisation sans modifier les précédentes, avec le même modèle ou un autre.")
-        fit_row.addWidget(self.fit_choice, 1)
-        fit_row.addWidget(self.new_fit_button)
-        form.addRow("Modélisation", fit_row)
+        form.addRow("Modélisation", self.fit_choice)
+        form.addRow("", self.new_fit_button)
         self.model_choice = QComboBox()
+        self.model_choice.setMaximumWidth(LIGHT.field_medium)
         for key, (title, formula) in MODELS.items():
             self.model_choice.addItem(title, key)
         self.model_choice.setCurrentIndex(2)
@@ -73,9 +79,13 @@ class ModelingTab(QWidget):
         self.formula_label = QLabel()
         self.formula_label.setTextFormat(Qt.TextFormat.RichText)
         self.formula_label.setWordWrap(True)
+        self.formula_label.setMaximumWidth(LIGHT.field_wide)
+        role(self.formula_label, "expression")
         form.addRow("Expression", self.formula_label)
         self.expression = QLineEdit("a*x^2+b*x+c")
         self.initial = QLineEdit("a=1 ; b=0 ; c=0")
+        self.expression.setMaximumWidth(LIGHT.field_wide)
+        self.initial.setMaximumWidth(LIGHT.field_wide)
         self.custom_box = QWidget()
         custom_layout = QFormLayout(self.custom_box)
         custom_layout.setContentsMargins(0, 0, 0, 0)
@@ -88,35 +98,43 @@ class ModelingTab(QWidget):
         custom_layout.addRow(self.custom_help)
         form.addRow(self.custom_box)
         interval_panel, interval_layout = panel("Intervalle et options")
-        body.addWidget(ResponsiveCards(model_panel, interval_panel))
-        form = QFormLayout()
-        form.setVerticalSpacing(12)
-        form.setRowWrapPolicy(QFormLayout.RowWrapPolicy.WrapLongRows)
-        interval_layout.addLayout(form)
-        self.range_check = QCheckBox("Limiter la modélisation à un intervalle d’abscisses")
-        form.addRow(self.range_check)
+        body.addWidget(ResponsiveCards(model_panel, interval_panel, 11, 9))
+        self.range_check = QCheckBox("Limiter à un intervalle d’abscisses")
+        interval_layout.addWidget(self.range_check)
+        self.range_fields = role(QFrame(), "optionArea")
+        range_layout = QVBoxLayout(self.range_fields)
+        range_layout.setContentsMargins(LIGHT.group, LIGHT.related, LIGHT.group, LIGHT.group)
+        range_layout.setSpacing(LIGHT.related)
+        range_layout.addWidget(role(QLabel("BORNES INCLUSES"), "toolbarLabel"))
         range_row = QHBoxLayout()
+        range_row.setSpacing(LIGHT.related)
         self.minimum, self.maximum = QLineEdit(), QLineEdit()
+        self.minimum.setMaximumWidth(150)
+        self.maximum.setMaximumWidth(150)
         self.minimum.setPlaceholderText("Minimum")
         self.maximum.setPlaceholderText("Maximum")
         self.select_button = QPushButton("Sélectionner sur le graphique")
+        self.select_button.setMaximumWidth(LIGHT.action_wide)
+        self.select_button.setIcon(icon("graph"))
         range_row.addWidget(self.minimum)
         range_row.addWidget(self.maximum)
         range_row.addWidget(self.select_button)
-        form.addRow("Bornes incluses", range_row)
-        self.extend_check = QCheckBox("Prolonger la droite sur le domaine des mesures")
+        range_row.addStretch()
+        range_layout.addLayout(range_row)
+        interval_layout.addWidget(self.range_fields)
+        self.extend_check = QCheckBox("Prolonger sur le domaine des mesures")
         self.extend_check.setChecked(True)
         self.extend_check.setToolTip("Afficher la droite au-delà de l’intervalle utilisé pour le calcul, dans les limites des abscisses mesurées. Le prolongement en pointillés fins ne modifie pas les coefficients.")
-        form.addRow(self.extend_check)
-        actions = QHBoxLayout()
+        interval_layout.addWidget(self.extend_check)
+        interval_layout.addStretch()
         self.fit_button = role(QPushButton("Calculer la modélisation"), "primary")
         self.remove_button = role(QPushButton("Retirer cette modélisation"), "quiet")
-        show = QPushButton("Voir le graphique")
-        actions.addWidget(self.fit_button)
-        actions.addWidget(show)
-        actions.addStretch()
-        actions.addWidget(self.remove_button)
-        body.addLayout(actions)
+        self.show_graph_button = QPushButton("Voir le graphique")
+        self.show_graph_button.setIcon(icon("graph"))
+        self.action_bar = ResponsiveActions(
+            self.fit_button, self.show_graph_button, self.remove_button
+        )
+        body.addWidget(self.action_bar)
         self.result_text = ReportView()
         self.result_panel, result_layout = panel("Résultats")
         result_layout.addWidget(self.result_text)
@@ -137,7 +155,7 @@ class ModelingTab(QWidget):
         self.extend_check.toggled.connect(self.extension_changed)
         self.fit_button.clicked.connect(self.calculate)
         self.remove_button.clicked.connect(self.remove_fit)
-        show.clicked.connect(self.graph_requested)
+        self.show_graph_button.clicked.connect(self.graph_requested)
         self.select_button.clicked.connect(self.select_interval)
         graph.calculate_interval_button.clicked.connect(self.calculate)
         graph.hide_interval_button.clicked.connect(lambda: graph.set_interval_editing(False))
@@ -245,6 +263,8 @@ class ModelingTab(QWidget):
             "Les angles sont en radians. Exemple : A*exp(-x/tau)+c avec A=5 ; tau=1 ; c=0.")
 
     def range_toggled(self, enabled):
+        self.range_fields.setProperty("active", enabled)
+        refresh_style(self.range_fields)
         for widget in (self.minimum, self.maximum, self.select_button):
             widget.setEnabled(enabled)
         self.graph.set_interval_editing(False)
@@ -303,8 +323,7 @@ class ModelingTab(QWidget):
                                interval=self.interval() if self.range_check.isChecked() else None)
         except (ValueError, ArithmeticError) as exc:
             self.result_text.setProperty("status", "error")
-            self.result_text.style().unpolish(self.result_text)
-            self.result_text.style().polish(self.result_text)
+            refresh_style(self.result_text)
             self.result_text.setPlainText(f"Modélisation impossible : {exc}\n\nLe précédent modèle, s’il existe, est conservé sur le graphique.")
             self.graph.interval_hint.setText(f"Modélisation impossible : {exc} Modifiez l’intervalle ou les réglages dans Modélisation.")
             return
@@ -327,11 +346,12 @@ class ModelingTab(QWidget):
 
     def show_result(self):
         self.result_text.setProperty("status", "normal")
-        self.result_text.style().unpolish(self.result_text)
-        self.result_text.style().polish(self.result_text)
+        refresh_style(self.result_text)
         item = self.current_series()
         fit = self.current_fit()
         result = fit.result if fit else None
+        self.result_panel.setProperty("state", "ready" if result is not None else "empty")
+        refresh_style(self.result_panel)
         self.remove_button.setEnabled(result is not None)
         self.details_button.setVisible(result is not None)
         if result is None:

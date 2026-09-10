@@ -12,10 +12,19 @@ class Theme:
     primary_hover: str = "#0E75D8"
     primary_pressed: str = "#095EB2"
     primary_soft: str = "#E1F0FF"
+    navy: str = "#0B2744"
+    navy_hover: str = "#163A5D"
+    nav_text: str = "#E6F0F8"
+    nav_muted: str = "#AFC2D3"
     selection: str = "#DCEEFF"
-    background: str = "#EDF3F8"
+    background: str = "#E9F1F7"
     surface: str = "#FFFFFF"
     secondary: str = "#F5F8FB"
+    card_header: str = "#EDF5FB"
+    toolbar_background: str = "#E5F0F9"
+    table_header: str = "#D8E9F6"
+    table_metadata: str = "#ECF4FA"
+    table_grid: str = "#B8C9D9"
     text: str = "#10243E"
     muted: str = "#4E6073"
     text_disabled: str = "#7C8998"
@@ -32,13 +41,17 @@ class Theme:
     font_px: int = 13
     title_px: int = 22
     section_title_px: int = 17
-    card_title_px: int = 15
+    card_title_px: int = 16
     caption_px: int = 12
     radius: int = 6
     card_radius: int = 8
     control_height: int = 32
     button_height: int = 32
-    wide_layout: int = 1480
+    wide_layout: int = 1120
+    field_medium: int = 360
+    field_wide: int = 620
+    formula_wide: int = 880
+    action_wide: int = 300
     small: int = 4
     related: int = 8
     group: int = 12
@@ -52,11 +65,12 @@ SERIES_COLORS = (LIGHT.primary, "#d84315", "#2e7d32", "#7b1fa2", "#00838f", "#ad
 
 def report_stylesheet(t=LIGHT):
     return (f"body {{ color: {t.text}; font-family: '{t.font}'; font-size: {t.font_px}px; }}"
-            "h2 { font-size: 17px; margin-top: 4px; margin-bottom: 8px; }"
-            "h3 { font-size: 15px; margin-top: 16px; margin-bottom: 8px; }"
+            f"h2 {{ color: {t.navy}; font-size: 19px; margin-top: 4px; margin-bottom: 8px; }}"
+            f"h3 {{ color: {t.navy}; font-size: 16px; margin-top: 16px; margin-bottom: 8px; }}"
             "p { margin-top: 6px; margin-bottom: 10px; }"
             "td { vertical-align: middle; }"
-            ".metric { font-size: 18px; } .equation { font-size: 20px; }")
+            f".metric {{ color: {t.primary_pressed}; font-size: 19px; font-weight: 600; }}"
+            f".equation {{ color: {t.navy}; font-size: 22px; }}")
 
 
 def stylesheet(t=LIGHT):
@@ -65,16 +79,24 @@ def stylesheet(t=LIGHT):
     QWidget {{ color: {t.text}; font-family: '{t.font}'; font-size: {t.font_px}px; }}
     QMainWindow, QDialog, QTabWidget::pane, QScrollArea > QWidget > QWidget {{ background: {t.background}; }}
     QTabWidget::pane {{ border: 0; border-top: 1px solid {t.border_strong}; }}
-    QTabWidget#mainNavigation QTabBar {{ background: {t.surface}; }}
-    QTabBar::tab {{ background: {t.surface}; color: {t.muted}; border: 1px solid transparent;
-        border-radius: {t.radius}px; padding: 11px 16px; margin: 9px 3px; font-weight: 600; }}
-    QTabBar::tab:hover {{ background: {t.primary_soft}; color: {t.text}; border-color: {t.border}; }}
-    QTabBar::tab:selected {{ background: {t.primary}; color: white; }}
-    QTabBar::tab:focus {{ border: 2px solid {t.primary_pressed}; }}
-    QWidget[role="brand"] {{ background: {t.surface}; border-right: 1px solid {t.border}; }}
+    QTabWidget#mainNavigation::pane {{ border-top: 3px solid {t.navy}; }}
+    QTabWidget#mainNavigation QTabBar {{ background: {t.navy}; }}
+    QTabWidget#mainNavigation QTabBar::tab {{ background: transparent; color: {t.nav_text};
+        border: 1px solid transparent; border-radius: {t.radius}px; padding: 10px 16px;
+        margin: 8px 3px; font-weight: 600; }}
+    QTabWidget#mainNavigation QTabBar::tab:hover {{ background: {t.navy_hover}; color: white; }}
+    QTabWidget#mainNavigation QTabBar::tab:selected {{ background: {t.primary}; color: white; }}
+    QTabWidget#mainNavigation QTabBar::tab:focus {{ border: 2px solid white; padding: 9px 15px; }}
+    QWidget[role="brand"] {{ background: {t.surface}; border-right: 3px solid {t.primary}; }}
     QLabel[role="brandTitle"] {{ font-size: {t.title_px}px; font-weight: 700; }}
-    QLabel[role="sectionTitle"] {{ font-size: {t.section_title_px}px; font-weight: 650; }}
-    QLabel[role="cardTitle"] {{ font-size: {t.card_title_px}px; font-weight: 650; }}
+    QLabel[role="pageTitle"] {{ color: {t.navy}; font-size: {t.title_px}px; font-weight: 700; }}
+    QLabel[role="pageSubtitle"] {{ color: {t.muted}; font-size: {t.font_px}px; }}
+    QLabel[role="sectionTitle"] {{ color: {t.navy}; font-size: {t.section_title_px}px; font-weight: 650; }}
+    QLabel[role="cardTitle"] {{ color: {t.navy}; font-size: {t.card_title_px}px; font-weight: 650; }}
+    QLabel[role="fieldLabel"] {{ color: {t.text}; font-size: {t.caption_px}px; font-weight: 650; }}
+    QLabel[role="toolbarLabel"] {{ color: {t.navy}; font-size: 11px; font-weight: 700; }}
+    QLabel[role="context"] {{ color: {t.navy}; background: {t.primary_soft}; border: 1px solid {t.border};
+        border-radius: {t.radius}px; padding: 5px 10px; font-weight: 600; }}
     QLabel[role="muted"], QLabel[role="caption"] {{ color: {t.muted}; font-size: {t.caption_px}px; }}
     QLabel[role="caption"] {{ font-weight: 600; }}
     QLabel[role="cellAddress"] {{ background: {t.secondary}; border: 1px solid {t.border};
@@ -82,8 +104,21 @@ def stylesheet(t=LIGHT):
     QLabel[role="formulaMark"] {{ color: {t.primary_pressed}; font-size: {t.card_title_px}px; font-weight: 700; }}
     QLabel[role="error"] {{ color: {t.error}; }}
     QLabel[role="success"] {{ color: {t.success}; }}
+    QWidget[role="pageHeader"] {{ background: transparent; }}
+    QFrame[role="pageAccent"], QFrame[role="cardAccent"] {{ background: {t.primary}; border: 0; border-radius: 2px; }}
+    QWidget[role="cardHeader"] {{ background: {t.card_header}; border-top-left-radius: {t.card_radius}px;
+        border-top-right-radius: {t.card_radius}px; }}
+    QFrame[role="cardDivider"] {{ background: {t.border}; border: 0; }}
     QFrame[role="panel"], QFrame[role="card"], QWidget[role="panel"], QWidget[role="card"], QTextBrowser {{ background: {t.surface};
         border: 1px solid {t.border}; border-radius: {t.card_radius}px; }}
+    QFrame[role="card"][state="ready"] {{ border-color: {t.primary}; }}
+    QFrame[role="toolbar"] {{ background: {t.toolbar_background}; border: 1px solid {t.border_strong};
+        border-radius: {t.card_radius}px; }}
+    QFrame[role="help"] {{ background: {t.secondary}; border: 1px solid {t.border}; border-radius: {t.card_radius}px; }}
+    QFrame[role="optionArea"] {{ background: {t.secondary}; border: 1px solid {t.border}; border-radius: {t.radius}px; }}
+    QFrame[role="optionArea"][active="true"] {{ background: {t.primary_soft}; border-color: {t.primary}; }}
+    QLabel[role="expression"] {{ color: {t.navy}; background: {t.secondary}; border-left: 3px solid {t.primary};
+        border-radius: {t.radius}px; padding: 9px 12px; font-size: {t.card_title_px}px; }}
     QGroupBox {{ background: {t.surface}; border: 1px solid {t.border};
         border-radius: {t.card_radius}px; margin-top: 12px; padding: 20px 12px 12px;
         font-size: {t.card_title_px}px; font-weight: 600; }}
@@ -113,7 +148,7 @@ def stylesheet(t=LIGHT):
     QAbstractSpinBox::up-button, QAbstractSpinBox::down-button {{ width: 20px; border: 0; }}
     QAbstractSpinBox::up-arrow {{ image: url("{assets}/chevron-up.svg"); width: 12px; height: 12px; }}
     QAbstractSpinBox::down-arrow {{ image: url("{assets}/chevron-down.svg"); width: 12px; height: 12px; }}
-    QTabBar QToolButton {{ padding: 0; width: 24px; border-radius: 0; }}
+    QTabBar QToolButton {{ background: {t.surface}; padding: 0; width: 24px; border-radius: 0; }}
     QTabBar QToolButton::left-arrow {{ image: url("{assets}/chevron-left.svg"); }}
     QTabBar QToolButton::right-arrow {{ image: url("{assets}/chevron-right.svg"); }}
     QComboBox {{ padding-right: 26px; }}
@@ -127,14 +162,19 @@ def stylesheet(t=LIGHT):
     QCheckBox::indicator:disabled {{ background: {t.disabled}; border-color: {t.disabled}; }}
     QCheckBox::indicator:checked:disabled {{ background: {t.text_disabled}; }}
     QTableView {{ background: {t.surface}; alternate-background-color: {t.secondary};
-        gridline-color: {t.border}; border: 1px solid {t.border_strong}; border-radius: {t.radius}px;
+        gridline-color: {t.table_grid}; border: 1px solid {t.border_strong}; border-radius: {t.radius}px;
         selection-background-color: {t.selection}; selection-color: {t.text}; }}
     QTableView::item {{ padding: 4px 8px; border: 0; }}
     QTableView::item:hover {{ background: {t.primary_soft}; }}
     QTableView::item:selected {{ background: {t.selection}; color: {t.text}; border: 1px solid {t.primary}; }}
+    QHeaderView#quantityHeader::section {{ background: {t.table_header}; color: {t.navy}; padding: 8px 10px;
+        border: 0; border-right: 1px solid {t.table_grid}; border-bottom: 2px solid {t.primary}; font-weight: 650; }}
+    QHeaderView#rowHeader::section {{ background: {t.secondary}; color: {t.muted}; padding: 7px 8px;
+        border: 0; border-right: 1px solid {t.table_grid}; border-bottom: 1px solid {t.table_grid}; font-weight: 600; }}
     QHeaderView::section {{ background: {t.secondary}; color: {t.text}; padding: 7px 10px;
-        border: 0; border-right: 1px solid {t.border}; border-bottom: 1px solid {t.border}; font-weight: 600; }}
-    QTableCornerButton::section {{ background: {t.secondary}; border: 0; }}
+        border: 0; border-right: 1px solid {t.table_grid}; border-bottom: 1px solid {t.table_grid}; font-weight: 600; }}
+    QTableCornerButton::section {{ background: {t.table_header}; border: 0; border-right: 1px solid {t.table_grid};
+        border-bottom: 2px solid {t.primary}; }}
     QTableView QLineEdit, QTableView QComboBox {{ min-height: 0; padding: 0 4px; border-radius: 0; }}
     QScrollArea {{ border: 0; background: transparent; }}
     QScrollBar:vertical {{ background: {t.secondary}; width: 12px; margin: 0; }}
@@ -150,7 +190,7 @@ def stylesheet(t=LIGHT):
     QMenu {{ background: {t.surface}; border: 1px solid {t.border}; padding: 4px; }}
     QMenu::item {{ padding: 7px 24px; border-radius: 4px; }}
     QMenu::item:selected {{ background: {t.selection}; }}
-    QMenu::item:disabled {{ color: {t.muted}; }}
+    QMenu::item:disabled {{ color: {t.text_disabled}; }}
     QToolTip {{ background: {t.surface}; color: {t.text}; border: 1px solid {t.border}; padding: 6px; }}
     QStatusBar {{ background: {t.secondary}; color: {t.muted}; border-top: 1px solid {t.border}; }}
     QStatusBar::item {{ border: 0; }}
@@ -174,6 +214,6 @@ def apply_theme(app):
                         (QPalette.HighlightedText, LIGHT.surface), (QPalette.PlaceholderText, LIGHT.muted)):
         palette.setColor(role, QColor(color))
     for role in (QPalette.Text, QPalette.ButtonText, QPalette.WindowText):
-        palette.setColor(QPalette.Disabled, role, QColor(LIGHT.muted))
+        palette.setColor(QPalette.Disabled, role, QColor(LIGHT.text_disabled))
     app.setPalette(palette)
     app.setStyleSheet(stylesheet())

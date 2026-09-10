@@ -67,7 +67,7 @@ class MainWindow(QMainWindow, ProjectFiles):
 
     def update_navigation(self, *args):
         for index, name in enumerate(("data", "graph", "model", "video", "calculations", "statistics")):
-            self.tabs.setTabIcon(index, icon(name, index == self.tabs.currentIndex()))
+            self.tabs.setTabIcon(index, icon(name, index == self.tabs.currentIndex(), navigation=True))
 
     def closeEvent(self, event):
         if not self.confirm_save():

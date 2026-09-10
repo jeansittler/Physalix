@@ -2,6 +2,7 @@
 from PySide6.QtCore import Qt, Signal, QRect
 from PySide6.QtWidgets import (QComboBox, QHBoxLayout, QInputDialog, QLabel, QMdiArea,
                                QMdiSubWindow, QPushButton, QStackedWidget, QTabBar, QVBoxLayout, QWidget)
+from physalix.ui.components import role
 from physalix.ui.graph_tab import GraphTab
 from physalix.ui.modeling_tab import ModelingTab
 
@@ -172,6 +173,7 @@ class ModelingWorkspace(QStackedWidget):
         page = ModelingTab(graph)
         window = next(w for w in self.graphs.windows if w.graph is graph)
         caption = QLabel('Graphique actif : ' + window.windowTitle())
+        role(caption, "context")
         caption.setTextFormat(Qt.TextFormat.PlainText)
         page.layout().insertWidget(0, caption)
         window.windowTitleChanged.connect(lambda title: caption.setText('Graphique actif : ' + title))
