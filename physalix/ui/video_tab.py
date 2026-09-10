@@ -214,7 +214,7 @@ class VideoTab(QWidget):
         stored = self.tracking.points.get(highlight)
         self.screen.point = stored[0] if stored else None
         self.screen.update()
-        scale = (f"Étalon : {self.tracking.length:g} {self.tracking.unit}"
+        scale = (f"Étalon : {format(self.tracking.length, 'g').replace('.', ',')} {self.tracking.unit}"
                  if self.tracking.scale is not None else "Étalon : à définir")
         origin = "Origine définie" if self.tracking.origin is not None else "Origine : à définir"
         horizontal = "droite" if self.tracking.x_direction == 1 else "gauche"

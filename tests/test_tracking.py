@@ -6,16 +6,82 @@ from unittest.mock import patch
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from PySide6.QtCore import QPoint, QPointF, Qt
-from PySide6.QtGui import QPixmap
+from PySide6.QtCore import QLocale, QPoint, QPointF, Qt
+from PySide6.QtGui import QPixmap, QValidator
 from PySide6.QtTest import QTest
-from PySide6.QtWidgets import QDialog
+from PySide6.QtWidgets import QDialog, QDialogButtonBox
 
 import test_video
 from physalix.ui.data_tab import MeasurementsModel
 from physalix.ui.video_canvas import VideoCanvas
 from physalix.ui.video_tracking import CalibrationDialog, TrackingSession
 from physalix.ui.main_window import MainWindow
+from physalix.ui.video_tab import VideoTab
+
+
+class CalibrationInputTests(unittest.TestCase):
+    setUpClass = classmethod(test_video.VideoTests.setUpClass.__func__)
+
+    def test_decimal_keyboard_and_paste_conversion_and_french_display(self):
+        locale = QLocale().name()
+        for text, expected in (("0,3", .3), ("0.3", .3), ("1,25", 1.25),
+                               ("1.25", 1.25), ("12", 12), ("0.000001", .000001),
+                               ("1000000000", 1e9)):
+            for paste in (False, True):
+                with self.subTest(text=text, paste=paste):
+                    dialog = CalibrationDialog(None)
+                    try:
+                        field = dialog.length
+                        self.assertEqual(field.validate(text, len(text))[0], QValidator.State.Acceptable)
+                        self.assertEqual(field.valueFromText(text), expected)
+                        field.selectAll()
+                        if paste:
+                            self.app.clipboard().setText(text)
+                            field.lineEdit().paste()
+                        else:
+                            QTest.keyClicks(field, text)
+                        QTest.keyClick(field, Qt.Key.Key_Return)
+                        self.assertEqual(field.value(), expected)
+                        self.assertIn(",", field.text())
+                        self.assertNotIn(".", field.text())
+                    finally:
+                        dialog.close()
+        self.assertEqual(QLocale().name(), locale)
+
+    def test_invalid_ambiguous_and_out_of_range_input(self):
+        dialog = CalibrationDialog(None)
+        try:
+            for text in ("abc", "", "0", "-1", "nan", "inf", "1.2,5", "1,2.5",
+                         "1..25", "1,,25", "1 000", "1\u202f000", "1000000001", "0.0000001"):
+                with self.subTest(text=text):
+                    self.assertNotEqual(dialog.length.validate(text, len(text))[0], QValidator.State.Acceptable)
+                    with self.assertRaises(ValueError):
+                        dialog.length.valueFromText(text)
+            # A whole invalid paste must not become a different, valid length.
+            dialog.length.setValue(10)
+            dialog.length.selectAll()
+            self.app.clipboard().setText("1.2,5")
+            dialog.length.lineEdit().paste()
+            self.assertEqual(dialog.length.value(), 10)
+        finally:
+            dialog.close()
+
+    def test_cancel_button(self):
+        dialog = CalibrationDialog(None)
+        dialog.length.setValue(.3)
+        buttons = dialog.findChild(QDialogButtonBox)
+        buttons.button(QDialogButtonBox.StandardButton.Cancel).click()
+        self.assertEqual(dialog.result(), QDialog.DialogCode.Rejected)
+
+    def test_tracking_summary_is_french(self):
+        tab = VideoTab()
+        try:
+            for value, expected in ((.3, "0,3"), (1.25, "1,25"), (12, "12")):
+                tab.tracking.calibrate(QPointF(0, 0), QPointF(10, 0), value, "m")
+                tab._controls()
+                self.assertIn(f"Étalon : {expected} m", tab.tracking_info.text())
+        finally:
+            tab.close()
 
 
 class TrackingMathTests(unittest.TestCase):
@@ -218,9 +284,11 @@ class TrackingUiTests(unittest.TestCase):
             self.assertEqual(tab.index, 1)
             tab.calibrate_button.click()
             click(5, 20)
+            previous_calibration = (tab.tracking.length, tab.tracking.scale, tab.tracking.ruler)
             with patch.object(CalibrationDialog, "exec", return_value=QDialog.DialogCode.Rejected):
                 click(55, 20)
             self.assertEqual(tab.tracking.unit, "cm")
+            self.assertEqual((tab.tracking.length, tab.tracking.scale, tab.tracking.ruler), previous_calibration)
             old_values = [row[:3] for row in tab.model.rows]
             tab.open_video(self.path)
             self.wait_loaded(tab)

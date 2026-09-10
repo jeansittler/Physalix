@@ -1,1 +1,1 @@
-Recherche des mises à jour depuis GitHub Releases, téléchargement avec progression et vérification SHA-256. La version de Physalix et la recherche manuelle sont accessibles dans Aide → À propos de Physalix.
+Le champ de longueur de l'étalon du pointage vidéo accepte désormais le point ou la virgule comme séparateur décimal.

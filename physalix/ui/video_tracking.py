@@ -4,9 +4,26 @@ from math import hypot, isfinite
 import weakref
 
 from PySide6.QtCore import QLocale, Qt
+from PySide6.QtGui import QValidator
 from PySide6.QtWidgets import (
     QComboBox, QDialog, QDialogButtonBox, QDoubleSpinBox, QFormLayout,
 )
+
+
+class CalibrationLengthSpinBox(QDoubleSpinBox):
+    """Accept either decimal separator, keeping Qt's French display and bounds."""
+
+    def validate(self, text, pos):
+        # Do not interpret grouping or mixed separators as a different length.
+        if any(char not in "0123456789.,+" for char in text) or text.count(".") + text.count(",") > 1:
+            return QValidator.State.Invalid, text, pos
+        state, _, _ = super().validate(text.replace(".", ","), pos)
+        return state, text, pos
+
+    def valueFromText(self, text):
+        if self.validate(text, len(text))[0] != QValidator.State.Acceptable:
+            raise ValueError("Saisissez une longueur positive valide.")
+        return super().valueFromText(text.replace(".", ","))
 
 
 class CalibrationDialog(QDialog):
@@ -14,7 +31,7 @@ class CalibrationDialog(QDialog):
         super().__init__(parent)
         self.setWindowTitle("Définir l'étalon")
         layout = QFormLayout(self)
-        self.length = QDoubleSpinBox()
+        self.length = CalibrationLengthSpinBox()
         self.length.setLocale(QLocale(QLocale.Language.French))
         self.length.setDecimals(6)
         self.length.setRange(.000001, 1e9)
