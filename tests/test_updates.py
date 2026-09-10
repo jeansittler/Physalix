@@ -12,7 +12,7 @@ from physalix import updates as u
 
 
 def manifest_data(**changes):
-    data = dict(version="1.1.1", installer_url="https://github.com/jeansittler/Physalix/releases/download/v1.1.1/Physalix-Setup-1.1.1.exe",
+    data = dict(version="1.1.1", installer_url="https://github.com/jeansittler/Physalix-releases/releases/download/v1.1.1/Physalix-Setup-1.1.1.exe",
                 sha256=hashlib.sha256(b"installer").hexdigest(), notes="Corrections", mandatory=False)
     data.update(changes)
     return data
@@ -29,6 +29,10 @@ class Response(io.BytesIO):
 
 
 class UpdateTests(unittest.TestCase):
+    def test_public_distribution_endpoint(self):
+        self.assertEqual(u.MANIFEST_URL,
+                         "https://github.com/jeansittler/Physalix-releases/releases/latest/download/update.json")
+
     def test_versions(self):
         for local, remote, expected in [("1.1.0", "1.1.0", False), ("1.1.0", "1.1.1", True),
                 ("1.1.9", "1.2.0", True), ("1.9.9", "2.0.0", True), ("1.2.0", "1.1.9", False),
@@ -184,7 +188,7 @@ class ReleaseTests(unittest.TestCase):
                 fixed.FileVersionLS = patch_version << 16
                 result = json.loads(prepare(path, "Notes é").read_text(encoding="utf-8"))
                 self.assertEqual(result["sha256"], hashlib.sha256(content).hexdigest())
-                self.assertEqual(result["installer_url"], f"{u.REPOSITORY_URL}/releases/download/v{__version__}/Physalix-Setup-{__version__}.exe")
+                self.assertEqual(result["installer_url"], f"https://github.com/jeansittler/Physalix-releases/releases/download/v{__version__}/Physalix-Setup-{__version__}.exe")
                 fixed.FileVersionMS = 0
                 with self.assertRaises(ValueError):
                     prepare(path, "Notes")

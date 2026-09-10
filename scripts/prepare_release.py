@@ -7,7 +7,7 @@ import sys
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 from physalix import __version__
-from physalix.updates import Manifest, REPOSITORY_URL, sha256_file, version_tuple
+from physalix.updates import Manifest, DISTRIBUTION_REPOSITORY_URL, sha256_file, version_tuple
 
 
 def prepare(directory, notes):
@@ -23,7 +23,7 @@ def prepare(directory, notes):
         if (fixed.FileVersionMS, fixed.FileVersionLS) != ((major << 16) | minor, patch << 16):
             raise ValueError("Installer PE version does not match project version")
     data = dict(version=__version__,
-                installer_url=f"{REPOSITORY_URL}/releases/download/v{__version__}/{installer.name}",
+                installer_url=f"{DISTRIBUTION_REPOSITORY_URL}/releases/download/v{__version__}/{installer.name}",
                 sha256=sha256_file(installer), notes=notes, mandatory=False)
     raw = json.dumps(data, indent=2, ensure_ascii=False) + "\n"
     Manifest.parse(raw)

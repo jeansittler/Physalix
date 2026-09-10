@@ -19,8 +19,9 @@ from urllib.request import HTTPRedirectHandler, Request, build_opener
 
 from physalix import __version__
 
-REPOSITORY_URL = "https://github.com/jeansittler/Physalix"
-MANIFEST_URL = REPOSITORY_URL + "/releases/latest/download/update.json"
+# Public binary distribution only. The source repository remains private.
+DISTRIBUTION_REPOSITORY_URL = "https://github.com/jeansittler/Physalix-releases"
+MANIFEST_URL = DISTRIBUTION_REPOSITORY_URL + "/releases/latest/download/update.json"
 TIMEOUT = 10
 CHECK_INTERVAL = 24 * 60 * 60
 MAX_MANIFEST = 1024 * 1024

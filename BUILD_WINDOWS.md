@@ -155,8 +155,11 @@ git tag -a v1.0.0 -m "Physalix 1.0.0"
 Pour 1.0.1, ajouter aussi les fichiers applicatifs modifiés, committer puis créer
 `v1.0.1`. Ne jamais déplacer un tag publié. Reconstruire depuis le commit tagué,
 refaire la validation, puis lorsque la publication est souhaitée pousser la branche
-et le tag vers `jeansittler/Physalix`. Dans GitHub → Releases → Draft a new release,
-sélectionner le tag, ajouter les notes, l'installateur et son SHA-256, puis publier.
+et le tag vers le dépôt privé `jeansittler/Physalix`. Pour distribuer les versions
+avec updater, créer séparément la Release dans le dépôt public
+`jeansittler/Physalix-releases`, avec un tag de même nom propre à ce dépôt,
+les notes, l'installateur et `update.json` (SHA-256 séparé facultatif).
+Ne jamais y pousser le code source privé. Voir `RELEASE.md` pour les commandes.
 Le build ne réalise aucun commit, tag, push ou publication.
 GitHub Actions n'est pas ajouté pour cette première chaîne locale.
 

@@ -4,6 +4,9 @@
 
 Audit avant modification : branche `feature/auto-update`, origin
 `https://github.com/jeansittler/Physalix.git`, tag `v1.0.0` existant.
+Ce dépôt source est privé et son remote reste inchangé. Le dépôt public
+`https://github.com/jeansittler/Physalix-releases` sert uniquement à distribuer
+les installateurs et le manifeste, sans code source ni identifiants embarqués.
 Entrée : `main.py` → `physalix.app.main` → `MainWindow`, interface PySide6.
 PyInstaller utilise `Physalix.spec` en **onedir**, sans UPX, avec les ressources
 Qt, les bibliothèques scientifiques et la correction ICU existantes.
@@ -39,7 +42,7 @@ ne démarrent pas la recherche automatique.
 
 URL de production, centralisée dans `physalix/updates.py` :
 
-`https://github.com/jeansittler/Physalix/releases/latest/download/update.json`
+`https://github.com/jeansittler/Physalix-releases/releases/latest/download/update.json`
 
 Aucun appel à l'API REST GitHub, aucun token. HTTPS est requis, y compris sur
 les redirections. Les redirections GitHub vers son stockage d'assets sont permises.
@@ -114,7 +117,7 @@ Résultat pour la version de l'exemple :
 - `artifacts/Physalix-Setup-1.1.1.exe` ;
 - `artifacts/Physalix-Setup-1.1.1.exe.sha256` ;
 - `artifacts/update.json` avec l'URL exacte
-  `https://github.com/jeansittler/Physalix/releases/download/v1.1.1/Physalix-Setup-1.1.1.exe`.
+  `https://github.com/jeansittler/Physalix-releases/releases/download/v1.1.1/Physalix-Setup-1.1.1.exe`.
 
 Pour régénérer uniquement le manifeste après modification des notes ou signature
 externe **définitive** de l'installateur :
@@ -139,15 +142,20 @@ git status --short
 git add physalix scripts tests packaging README.md BUILD_WINDOWS.md RELEASE.md
 git commit -m "Prepare Physalix 1.1.1"
 git tag -a v1.1.1 -m "Physalix 1.1.1"
-# Seulement lorsque vous décidez de publier :
+# Sauvegarde du code et du tag dans le dépôt PRIVÉ, lorsque vous le décidez :
 git push origin HEAD
 git push origin v1.1.1
 ```
 
-Dans GitHub → Releases → Draft a new release : sélectionner `v1.1.1`, ajouter
+Dans le dépôt PUBLIC **jeansittler/Physalix-releases**, ouvrir GitHub → Releases →
+Draft a new release et créer/sélectionner le tag `v1.1.1` sur sa propre branche
+de distribution. Ce tag public est indépendant du tag du dépôt source privé :
+ne pas pousser l'historique source vers le dépôt public. Ajouter
 les notes, joindre **l'installateur et `update.json`** (ainsi que `.sha256` si souhaité),
 puis publier comme version stable/latest, sans cocher pre-release. L'URL `latest`
 doit alors servir ce manifeste. Aucun script ne committe, ne tague ou ne publie.
+Ne pas publier le manifeste des prochaines mises à jour dans le dépôt privé :
+les installations de Physalix accèdent aux assets publics sans authentification.
 Ne jamais déplacer `v1.0.0` ni remplacer les assets de sa Release finalisée.
 Pour la préparation actuelle, employer le numéro présent dans `_version.py` dans
 le message de commit, le tag et la Release plutôt que celui de cet exemple futur.
@@ -214,7 +222,10 @@ avec la prochaine Release stable officielle. Tester aussi hors ligne et derrièr
 le proxy de l'établissement. Vérifier les téléchargements interrompus et SmartScreen.
 La compilation et les mocks ne remplacent pas ces essais d'installation.
 
-## Validation de la préparation actuelle — 10 septembre 2026
+## Validation initiale — 10 septembre 2026, avant passage au dépôt public
+
+Cette section conserve les résultats du premier build. Les artefacts actuels
+après correction du dépôt de distribution sont décrits dans la section suivante.
 
 - **151 tests réussis**, dont 27 nouveaux tests updater/release/Qt ; réponses
   réseau simulées, versions, JSON, champs, délais, empreintes, annulation,
@@ -244,3 +255,18 @@ La compilation et les mocks ne remplacent pas ces essais d'installation.
   avec un compte standard et d'autres identifiants UAC avant diffusion.
 - L'installation réelle par-dessus 1.0.0 et l'UAC n'ont pas été exécutés dans cette
   préparation. Leur validation sur un autre PC reste à faire selon la liste ci-dessus.
+
+## Validation après passage au dépôt public — 10 septembre 2026
+
+- Version maintenue à **1.1.0**, remote source privé inchangé ; aucune publication.
+- **28 tests updater réussis**, puis **152 tests** réussis dans le build complet.
+- PyInstaller reconstruit, bundle et lancement Windows validés, compilation Inno
+  réussie. Le code updater extrait du véritable EXE utilise bien le dépôt public ;
+  l'override de développement fonctionne en source et reste ignoré en mode empaqueté.
+- `artifacts/Physalix-Setup-1.1.0.exe` : **84 104 400 octets**.
+- `artifacts/update.json` contient exclusivement l'URL d'installateur
+  `https://github.com/jeansittler/Physalix-releases/releases/download/v1.1.0/Physalix-Setup-1.1.0.exe`.
+- SHA-256 revérifié contre l'EXE et son fichier `.sha256` :
+  `48d3b9bad0690bb05eef40d2e5d28ba8f68ffeb16b308697a4a9d7187316a434`.
+- Aucune URL de Release du dépôt privé dans le manifeste, le code updater ou le
+  générateur. Aucun secret ajouté, `git diff --check` sans erreur.
