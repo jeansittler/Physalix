@@ -64,15 +64,24 @@ class UpdateTests(unittest.TestCase):
 
     def test_network_and_timeout_failures(self):
         for error in (URLError("offline"), TimeoutError("timeout")):
-            with self.subTest(error=error), patch.object(u, "open_url", side_effect=error), self.assertRaises(type(error)):
+            with self.subTest(error=error), patch.object(u, "updates_enabled", return_value=True), patch.object(u, "open_url", side_effect=error), self.assertRaises(type(error)):
                 u.fetch_manifest()
-        with patch.object(u, "open_url", return_value=Response(b"invalid")), self.assertRaises(u.UpdateError):
+        with patch.object(u, "updates_enabled", return_value=True), patch.object(u, "open_url", return_value=Response(b"invalid")), self.assertRaises(u.UpdateError):
             u.fetch_manifest()
 
     def test_fetch(self):
-        with patch.object(u, "open_url", return_value=Response(json.dumps(manifest_data()).encode())) as request:
+        with patch.object(u, "updates_enabled", return_value=True), patch.object(u, "open_url", return_value=Response(json.dumps(manifest_data()).encode())) as request:
             self.assertEqual(u.fetch_manifest().version, "1.1.1")
             self.assertEqual(request.call_args.args[0], u.MANIFEST_URL)
+
+    def test_development_build_disables_release_checks(self):
+        self.assertFalse(u.updates_enabled())
+        self.assertFalse(u.is_newer("1.1.3"))
+        self.assertFalse(u.is_newer("1.2.0"))
+        self.assertTrue(u.is_newer("1.2.1"))
+        with patch.object(u, "open_url") as request, self.assertRaises(u.UpdateError):
+            u.fetch_manifest()
+        request.assert_not_called()
 
     def test_transport_timeout_and_redirect_security(self):
         with patch.object(u, "build_opener") as opener:
@@ -230,22 +239,25 @@ class ReleaseTests(unittest.TestCase):
             self.assertIn(line, iss)
 
     def test_manifest_generation(self):
-        from scripts.prepare_release import prepare
-        from physalix import __version__
-        major, minor, patch_version = map(int, __version__.split("."))
-        with tempfile.TemporaryDirectory() as folder:
+        from scripts import prepare_release
+        from physalix import __base_version__
+        from physalix import __version_info__
+        major, minor, patch_version = __version_info__
+        with tempfile.TemporaryDirectory() as folder, patch.object(
+            prepare_release, "__version__", __base_version__
+        ):
             path = Path(folder)
             with self.assertRaises(ValueError):
-                prepare(path, "Notes")
+                prepare_release.prepare(path, "Notes")
             content = b"fake PE handled by mock"
-            (path / f"Physalix-Setup-{__version__}.exe").write_bytes(content)
+            (path / f"Physalix-Setup-{__base_version__}.exe").write_bytes(content)
             with patch("pefile.PE") as pe:
                 fixed = pe.return_value.__enter__.return_value.VS_FIXEDFILEINFO[0]
                 fixed.FileVersionMS = (major << 16) | minor
                 fixed.FileVersionLS = patch_version << 16
-                result = json.loads(prepare(path, "Notes é").read_text(encoding="utf-8"))
+                result = json.loads(prepare_release.prepare(path, "Notes é").read_text(encoding="utf-8"))
                 self.assertEqual(result["sha256"], hashlib.sha256(content).hexdigest())
-                self.assertEqual(result["installer_url"], f"https://github.com/jeansittler/Physalix-releases/releases/download/v{__version__}/Physalix-Setup-{__version__}.exe")
+                self.assertEqual(result["installer_url"], f"https://github.com/jeansittler/Physalix-releases/releases/download/v{__base_version__}/Physalix-Setup-{__base_version__}.exe")
                 fixed.FileVersionMS = 0
                 with self.assertRaises(ValueError):
-                    prepare(path, "Notes")
+                    prepare_release.prepare(path, "Notes")

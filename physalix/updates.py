@@ -16,7 +16,7 @@ import time
 from urllib.parse import urlsplit
 from urllib.request import HTTPRedirectHandler, Request, build_opener
 
-from physalix import __version__
+from physalix import __development__, __version__, __version_info__
 
 # Legacy public binary distribution endpoint used by Physalix 1.1.3.
 DISTRIBUTION_REPOSITORY_URL = "https://github.com/jeansittler/Physalix-releases"
@@ -51,7 +51,13 @@ def version_tuple(value):
 
 
 def is_newer(remote, local=__version__):
-    return version_tuple(remote) > version_tuple(local)
+    local_version = __version_info__ if local == __version__ else version_tuple(local)
+    return version_tuple(remote) > local_version
+
+
+def updates_enabled():
+    """Les canaux non stables ne doivent jamais proposer un retour vers une Release."""
+    return not __development__
 
 
 def development_override():
@@ -131,6 +137,8 @@ def read_chunks(response, maximum, cancel, deadline):
 
 
 def fetch_manifest(url=None, cancel=None):
+    if not updates_enabled():
+        raise UpdateError("Updates disabled for development builds")
     log.info("Checking for updates; local version %s", __version__)
     with open_url(url or manifest_url(), development_override()) as response:
         raw = b"".join(read_chunks(response, MAX_MANIFEST, cancel or threading.Event(), time.monotonic() + 30))

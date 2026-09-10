@@ -10,8 +10,9 @@ from PyInstaller.utils.win32.versioninfo import (
 )
 
 root = Path(SPECPATH)
-version = runpy.run_path(str(root / 'physalix/_version.py'))['__version__']
-version_tuple = tuple(map(int, version.split('.'))) + (0,)
+version_data = runpy.run_path(str(root / 'physalix/_version.py'))
+version = version_data['__version__']
+version_tuple = tuple(version_data['__version_info__']) + (0,)
 datas = [(str(root / 'physalix/ui/resources'), 'physalix/ui/resources')]
 datas += [(str(root / 'LICENSE'), '.')]
 datas += [(str(root / 'THIRD_PARTY_NOTICES.md'), '.')]

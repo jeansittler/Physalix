@@ -13,14 +13,16 @@ import sys
 import tempfile
 
 ROOT = Path(__file__).resolve().parents[1]
-VERSION = runpy.run_path(str(ROOT / "physalix/_version.py"))["__version__"]
+VERSION_DATA = runpy.run_path(str(ROOT / "physalix/_version.py"))
+VERSION = VERSION_DATA["__version__"]
+VERSION_INFO = VERSION_DATA["__version_info__"]
 
 
 def environment():
     assert sys.platform == "win32" and platform.machine().lower() in ("amd64", "x86_64")
     assert sys.version_info[:2] == (3, 12) and sys.maxsize > 2**32, "Use CPython 3.12 x64"
-    assert re.fullmatch(r"(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)", VERSION)
-    assert all(int(x) <= 65535 for x in VERSION.split("."))
+    assert re.fullmatch(r"(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-dev)?", VERSION)
+    assert len(VERSION_INFO) == 3 and all(type(x) is int and 0 <= x <= 65535 for x in VERSION_INFO)
     for line in (ROOT / "packaging/requirements-build.txt").read_text().splitlines():
         if line and not line.startswith("#"):
             name, expected = line.split("==")
@@ -39,7 +41,7 @@ def bundle(directory):
     assert pe.FILE_HEADER.Machine == 0x8664
     assert pe.OPTIONAL_HEADER.Subsystem == 2, "GUI executable expected"
     fixed = pe.VS_FIXEDFILEINFO[0]
-    major, minor, patch = map(int, VERSION.split("."))
+    major, minor, patch = VERSION_INFO
     assert (fixed.FileVersionMS, fixed.FileVersionLS) == ((major << 16) | minor, patch << 16)
     pe.close()
     modules = CArchiveReader(str(exe)).open_embedded_archive("PYZ.pyz").toc

@@ -15,6 +15,7 @@ from physalix.ui.statistics_tab import StatisticsTab
 from physalix.ui.graph_workspace import GraphWorkspace, ModelingWorkspace
 from physalix.ui.project_files import ProjectFiles
 from physalix.ui.updates import UpdateController
+from physalix import __development__, __version__
 
 
 class MainWindow(QMainWindow, ProjectFiles):
@@ -22,7 +23,7 @@ class MainWindow(QMainWindow, ProjectFiles):
 
     def __init__(self) -> None:
         super().__init__()
-        self.setWindowTitle("Physalix")
+        self.setWindowTitle(f"Physalix — {__version__}" if __development__ else "Physalix")
         self.setWindowIcon(application_icon())
         self.resize(1280, 760)
         self.setMinimumSize(640, 420)
@@ -56,7 +57,10 @@ class MainWindow(QMainWindow, ProjectFiles):
         self.update_navigation()
         self.setCentralWidget(self.tabs)
 
-        self.statusBar().showMessage("Prêt")
+        self.statusBar().showMessage(
+            f"Version de développement {__version__} · mises à jour désactivées"
+            if __development__ else "Prêt"
+        )
         self.setup_files()
         self.updater = UpdateController(self)
 

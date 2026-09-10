@@ -7,6 +7,7 @@ from PySide6.QtGui import QIcon, QPainter, QPixmap
 from PySide6.QtWidgets import QWidget
 
 from physalix.ui.resources import resource_path
+from physalix import __development__
 
 
 def application_icon() -> QIcon:
@@ -21,7 +22,8 @@ def set_windows_app_id() -> None:
         set_app_id = ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID
         set_app_id.argtypes = [ctypes.c_wchar_p]
         set_app_id.restype = ctypes.c_long
-        result = set_app_id("Physalix.Physalix")
+        app_id = "Physalix.Physalix.Development" if __development__ else "Physalix.Physalix"
+        result = set_app_id(app_id)
         if result < 0:
             raise OSError(f"Impossible de définir l'identité Windows : {result:#x}")
 

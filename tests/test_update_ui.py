@@ -10,7 +10,7 @@ from unittest.mock import Mock, patch
 from PySide6.QtCore import QTimer
 from PySide6.QtWidgets import QApplication, QMainWindow, QDialog
 
-from physalix import __version__, updates
+from physalix import __base_version__, __version__, updates
 from physalix.ui.updates import UpdateController, UpdateDialog
 
 
@@ -39,7 +39,7 @@ class UpdateUiTests(unittest.TestCase):
 
     def test_automatic_silent_manual_feedback(self):
         c = self.controller
-        current = updates.Manifest(__version__, "https://example.com/i.exe", "a" * 64, "Notes", False)
+        current = updates.Manifest(__base_version__, "https://example.com/i.exe", "a" * 64, "Notes", False)
         with patch("physalix.ui.updates.QMessageBox.information") as info:
             c.finish("check", current, None)
             c.finish("check", None, TimeoutError())
@@ -50,6 +50,18 @@ class UpdateUiTests(unittest.TestCase):
             c.finish("check", None, TimeoutError())
             self.assertEqual(info.call_count, 2)
 
+    def test_development_build_never_starts_or_checks(self):
+        with patch.object(self.controller.timer, "start") as start:
+            self.controller.start()
+        start.assert_not_called()
+        with patch.object(self.controller, "run_job") as job, patch(
+            "physalix.ui.updates.QMessageBox.information"
+        ) as info:
+            self.controller.check()
+            self.controller.manual_check()
+        job.assert_not_called()
+        self.assertIn("développement", info.call_args.args[2])
+
     def test_network_runs_off_gui_thread_and_manual_bypasses_cache(self):
         release = threading.Event()
         started = threading.Event()
@@ -58,8 +70,8 @@ class UpdateUiTests(unittest.TestCase):
             threads.append(threading.get_ident())
             started.set()
             release.wait(2)
-            return updates.Manifest(__version__, "https://example.com/i.exe", "a" * 64, "", False)
-        with tempfile.TemporaryDirectory() as folder, patch.object(updates, "data_directory", return_value=Path(folder)), patch.object(updates, "configure_logging"), patch.object(updates, "fetch_manifest", side_effect=fetch) as request, patch("physalix.ui.updates.QMessageBox.information"):
+            return updates.Manifest(__base_version__, "https://example.com/i.exe", "a" * 64, "", False)
+        with tempfile.TemporaryDirectory() as folder, patch.object(updates, "updates_enabled", return_value=True), patch.object(updates, "data_directory", return_value=Path(folder)), patch.object(updates, "configure_logging"), patch.object(updates, "fetch_manifest", side_effect=fetch) as request, patch("physalix.ui.updates.QMessageBox.information"):
             updates.claim_check(Path(folder))
             self.controller.check()
             self.wait_done()

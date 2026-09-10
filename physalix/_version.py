@@ -1,3 +1,7 @@
-"""Source unique de la version de distribution (indépendante du format projet)."""
+"""Source unique de la version applicative (indépendante du format projet)."""
 
-__version__ = "1.1.3"
+__version_info__ = (1, 2, 0)
+__channel__ = "dev"
+__base_version__ = ".".join(map(str, __version_info__))
+__version__ = f"{__base_version__}-{__channel__}" if __channel__ else __base_version__
+__development__ = __channel__ == "dev"

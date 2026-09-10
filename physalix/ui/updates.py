@@ -53,7 +53,8 @@ class UpdateController(QObject):
 
     def start(self):
         # Called only by the real entry point, never by staging/test MainWindows.
-        self.timer.start(2500)
+        if updates.updates_enabled():
+            self.timer.start(2500)
 
     def stop(self):
         self.stopped = True
@@ -69,6 +70,8 @@ class UpdateController(QObject):
         layout.addWidget(label)
         button = QPushButton("Rechercher les mises à jour")
         button.setEnabled(not self.busy)
+        if not updates.updates_enabled():
+            button.setText("Mises à jour désactivées (version de développement)")
         button.clicked.connect(dialog.accept)
         layout.addWidget(button)
         if dialog.exec() == QDialog.DialogCode.Accepted:
@@ -102,10 +105,21 @@ class UpdateController(QObject):
 
     @Slot()
     def manual_check(self):
+        if not updates.updates_enabled():
+            QMessageBox.information(
+                self.window,
+                "Mise à jour",
+                "La recherche de mises à jour est désactivée pour cette version de développement.",
+            )
+            return
         self.check(manual=True)
 
     def check(self, manual=False):
         if self.busy or self.stopped:
+            return
+        if not updates.updates_enabled():
+            if manual:
+                self.manual_check()
             return
         self.manual = manual
         if manual:
