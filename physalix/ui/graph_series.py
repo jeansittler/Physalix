@@ -22,7 +22,7 @@ class GraphSeries(QWidget):
         self.default_color = color
         self.color = QColor(color)
         self._styles = {}
-        role(self, "panel")
+        role(self, "seriesEditor")
         self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         row = QHBoxLayout(self)
         row.setContentsMargins(12, 8, 12, 8)

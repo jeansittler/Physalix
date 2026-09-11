@@ -18,6 +18,7 @@ from physalix.ui.graph_axis import EndAxis
 from physalix.ui.graph_legend import SmartLegend
 from physalix.ui.theme import LIGHT, SERIES_COLORS
 from physalix.ui.components import workspace_layout, role, panel as make_panel
+from physalix.ui.icons import icon
 
 
 @dataclass(eq=False)
@@ -80,15 +81,13 @@ class GraphTab(QWidget):
         self.workspace_layout = layout
         toolbar = QHBoxLayout()
         add = role(QPushButton("Ajouter une série"), "primary")
+        add.setIcon(icon("add"))
         add.clicked.connect(lambda: self.add_series())
         toolbar.addWidget(add)
         model_button = QPushButton("Modéliser…")
         model_button.clicked.connect(self.modeling_requested)
         toolbar.addWidget(model_button)
         toolbar.addStretch()
-        reset = QPushButton("Ajuster la vue")
-        reset.clicked.connect(self.fit_points)
-        toolbar.addWidget(reset)
         layout.addLayout(toolbar)
         self.interval_tools = QWidget()
         interval_layout = QVBoxLayout(self.interval_tools)
@@ -107,7 +106,7 @@ class GraphTab(QWidget):
         self.interval_tools.hide()
         layout.addWidget(self.interval_tools)
         series_row = QHBoxLayout()
-        series_label = QLabel("Série à régler")
+        series_label = role(QLabel("Série active"), "toolbarLabel")
         self.series_choice = QComboBox()
         self.series_choice.setAccessibleName("Série à régler")
         self.series_choice.setMinimumContentsLength(18)
@@ -122,11 +121,9 @@ class GraphTab(QWidget):
         series_row.addWidget(series_label)
         series_row.addWidget(self.series_choice, 1)
         series_row.addWidget(self.settings_button)
-        layout.addLayout(series_row)
         self.series_stack = QStackedWidget()
         self.series_stack.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         self.series_choice.currentIndexChanged.connect(self.select_series)
-        layout.addWidget(self.series_stack)
 
         self.plot = InteractivePlot(background=LIGHT.surface, axisItems={
             'bottom': EndAxis('bottom'), 'left': EndAxis('left'), 'right': EndAxis('right')})
@@ -164,9 +161,13 @@ class GraphTab(QWidget):
             line.hide()
         plot_panel, plot_layout = make_panel()
         self.plot_panel = plot_panel
-        plot_layout.setContentsMargins(4, 4, 4, 4)
+        self.fit_view_button = QPushButton("Ajuster la vue")
+        self.fit_view_button.clicked.connect(self.fit_points)
+        self.fit_view_button.setToolTip("Recadrer le tracé sur toutes les séries visibles")
         plot_layout.addWidget(self.plot)
         layout.addWidget(plot_panel, 1)
+        layout.addLayout(series_row)
+        layout.addWidget(self.series_stack)
         from physalix.ui.tangent_tool import TangentTool
         self.tangent_tool = TangentTool(self)
         layout.addWidget(self.tangent_tool)
@@ -181,6 +182,7 @@ class GraphTab(QWidget):
         self.coordinates.setWordWrap(False)
         self.coordinates.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
         messages = QHBoxLayout()
+        messages.addWidget(self.fit_view_button)
         messages.addWidget(self.coordinates, 1)
         self.status = QLabel()
         self.status.setWordWrap(False)

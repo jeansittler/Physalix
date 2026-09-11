@@ -114,6 +114,7 @@ def stylesheet(t=LIGHT):
     QFrame[role="card"][state="ready"] {{ border-color: {t.primary}; }}
     QFrame[role="toolbar"] {{ background: {t.toolbar_background}; border: 1px solid {t.border_strong};
         border-radius: {t.card_radius}px; }}
+    QWidget[role="seriesEditor"] {{ background: transparent; border: 0; }}
     QFrame[role="help"] {{ background: {t.secondary}; border: 1px solid {t.border}; border-radius: {t.card_radius}px; }}
     QFrame[role="optionArea"] {{ background: transparent; border: 0; border-left: 2px solid {t.border_strong};
         border-radius: 0; }}

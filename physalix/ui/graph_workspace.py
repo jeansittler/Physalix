@@ -2,7 +2,7 @@
 from PySide6.QtCore import Qt, Signal, QRect
 from PySide6.QtWidgets import (QComboBox, QHBoxLayout, QInputDialog, QLabel, QMdiArea,
                                QMdiSubWindow, QPushButton, QStackedWidget, QTabBar, QVBoxLayout, QWidget)
-from physalix.ui.components import role
+from physalix.ui.components import panel, role
 from physalix.ui.graph_tab import GraphTab
 from physalix.ui.modeling_tab import ModelingTab
 
@@ -41,8 +41,7 @@ class GraphWorkspace(QWidget):
         self.model, self.windows, self.number = model, [], 0
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
-        bar = QHBoxLayout()
-        bar.setContentsMargins(12, 6, 12, 0)
+        management, bar = panel(kind="toolbar")
         self.add_button = QPushButton('Nouveau graphique')
         self.add_button.clicked.connect(self.add_graph)
         bar.addWidget(self.add_button)
@@ -55,7 +54,7 @@ class GraphWorkspace(QWidget):
         rename.clicked.connect(self.rename_graph)
         bar.addWidget(rename)
         bar.addStretch()
-        layout.addLayout(bar)
+        layout.addWidget(management)
         self.area = QMdiArea()
         self.area.setTabsMovable(True)
         self.area.setTabsClosable(True)
