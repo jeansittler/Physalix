@@ -105,7 +105,7 @@ class ModelingTab(QWidget):
         range_layout = QVBoxLayout(self.range_fields)
         range_layout.setContentsMargins(LIGHT.group, LIGHT.related, LIGHT.group, LIGHT.group)
         range_layout.setSpacing(LIGHT.related)
-        range_layout.addWidget(role(QLabel("BORNES INCLUSES"), "toolbarLabel"))
+        range_layout.addWidget(role(QLabel("Bornes incluses"), "toolbarLabel"))
         range_row = QHBoxLayout()
         range_row.setSpacing(LIGHT.related)
         self.minimum, self.maximum = QLineEdit(), QLineEdit()

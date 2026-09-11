@@ -26,7 +26,7 @@ class Theme:
     table_metadata: str = "#ECF4FA"
     table_grid: str = "#B8C9D9"
     text: str = "#10243E"
-    muted: str = "#4E6073"
+    muted: str = "#43566A"
     text_disabled: str = "#7C8998"
     border: str = "#C8D5E2"
     border_strong: str = "#A9BBCD"
@@ -115,8 +115,9 @@ def stylesheet(t=LIGHT):
     QFrame[role="toolbar"] {{ background: {t.toolbar_background}; border: 1px solid {t.border_strong};
         border-radius: {t.card_radius}px; }}
     QFrame[role="help"] {{ background: {t.secondary}; border: 1px solid {t.border}; border-radius: {t.card_radius}px; }}
-    QFrame[role="optionArea"] {{ background: {t.secondary}; border: 1px solid {t.border}; border-radius: {t.radius}px; }}
-    QFrame[role="optionArea"][active="true"] {{ background: {t.primary_soft}; border-color: {t.primary}; }}
+    QFrame[role="optionArea"] {{ background: transparent; border: 0; border-left: 2px solid {t.border_strong};
+        border-radius: 0; }}
+    QFrame[role="optionArea"][active="true"] {{ background: {t.primary_soft}; border-left-color: {t.primary}; }}
     QLabel[role="expression"] {{ color: {t.navy}; background: {t.secondary}; border-left: 3px solid {t.primary};
         border-radius: {t.radius}px; padding: 9px 12px; font-size: {t.card_title_px}px; }}
     QGroupBox {{ background: {t.surface}; border: 1px solid {t.border};
