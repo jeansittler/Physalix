@@ -97,6 +97,8 @@ def stylesheet(t=LIGHT):
     QLabel[role="toolbarLabel"] {{ color: {t.navy}; font-size: 11px; font-weight: 700; }}
     QLabel[role="context"] {{ color: {t.navy}; background: {t.primary_soft}; border: 1px solid {t.border};
         border-radius: {t.radius}px; padding: 5px 10px; font-weight: 600; }}
+    QLabel[role="workflow"] {{ color: {t.navy}; background: {t.surface}; border-left: 3px solid {t.primary};
+        padding: 7px 10px; font-weight: 650; }}
     QLabel[role="muted"], QLabel[role="caption"] {{ color: {t.muted}; font-size: {t.caption_px}px; }}
     QLabel[role="caption"] {{ font-weight: 600; }}
     QLabel[role="cellAddress"] {{ background: {t.secondary}; border: 1px solid {t.border};
@@ -117,6 +119,12 @@ def stylesheet(t=LIGHT):
     QWidget[role="seriesEditor"] {{ background: transparent; border: 0; }}
     QFrame[role="keypad"] {{ background: {t.secondary}; border: 1px solid {t.border}; border-radius: {t.radius}px; }}
     QFrame[role="keypad"] QPushButton {{ padding-left: 8px; padding-right: 8px; }}
+    QFrame[role="videoStage"] {{ background: {t.video}; border: 1px solid {t.navy}; border-radius: {t.card_radius}px; }}
+    QFrame[role="videoTool"] {{ background: #202A38; border: 1px solid #3A4A5C; border-radius: {t.card_radius}px; }}
+    QFrame[role="videoTool"] QWidget[role="cardHeader"] {{ background: #263445; }}
+    QFrame[role="videoTool"] QLabel {{ color: {t.video_text}; }}
+    QFrame[role="playerBar"] {{ background: {t.surface}; border: 1px solid {t.border_strong};
+        border-radius: {t.card_radius}px; }}
     QFrame[role="help"] {{ background: {t.secondary}; border: 1px solid {t.border}; border-radius: {t.card_radius}px; }}
     QFrame[role="optionArea"] {{ background: transparent; border: 0; border-left: 2px solid {t.border_strong};
         border-radius: 0; }}

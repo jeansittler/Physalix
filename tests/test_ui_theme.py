@@ -113,6 +113,23 @@ class ThemeLayoutTests(unittest.TestCase):
             QTest.qWait(20)
             self.assertGreaterEqual(self.window.graph_tab.plot.height(), 220)
 
+    def test_all_tabs_fit_reference_resolutions(self):
+        for width, height in ((1280, 800), (1920, 1080)):
+            self.window.resize(width, height)
+            for index in range(self.window.tabs.count()):
+                with self.subTest(size=(width, height), tab=self.window.tabs.tabText(index)):
+                    page = self.window.tabs.widget(index)
+                    self.window.tabs.setCurrentIndex(index)
+                    QTest.qWait(20)
+                    for scroll in page.findChildren(QScrollArea):
+                        self.assertEqual(scroll.horizontalScrollBar().maximum(), 0)
+            self.assertEqual(self.window.calculations_tab.tools.cards.direction(),
+                             QBoxLayout.Direction.LeftToRight)
+            self.assertEqual(self.window.video_tab.workflow_cards.cards.direction(),
+                             QBoxLayout.Direction.LeftToRight)
+            self.assertGreaterEqual(self.window.graph_tab.plot.height(), 220)
+            self.assertGreaterEqual(self.window.video_tab.screen.height(), 260)
+
     def test_data_help_preserves_table_access(self):
         self.window.resize(900, 620)
         tab = self.window.data_tab

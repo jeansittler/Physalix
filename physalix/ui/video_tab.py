@@ -6,14 +6,14 @@ from math import hypot
 from PySide6.QtCore import QElapsedTimer, QThread, QTimer, Qt, Signal
 from PySide6.QtGui import QKeySequence, QPixmap, QShortcut
 from PySide6.QtWidgets import (
-    QComboBox, QDialog, QFileDialog, QHBoxLayout, QLabel, QPushButton, QSlider, QVBoxLayout, QWidget,
+    QComboBox, QDialog, QFileDialog, QFrame, QHBoxLayout, QLabel, QPushButton, QSlider, QVBoxLayout, QWidget,
 )
 
 from physalix.video import prepare_video
 from physalix.ui.data_tab import MeasurementsModel
 from physalix.ui.video_canvas import Magnifier, VideoCanvas
 from physalix.ui.video_tracking import CalibrationDialog, TrackingSession
-from physalix.ui.components import workspace_layout, panel, label, role
+from physalix.ui.components import page_header, workspace_layout, panel, label, role, ResponsiveCards
 
 
 class VideoLoader(QThread):
@@ -49,7 +49,13 @@ class VideoTab(QWidget):
         self.timer.setSingleShot(True)
         self.timer.timeout.connect(self._tick)
         layout = workspace_layout(self, 760, 560)
-        toolbar = QHBoxLayout()
+        layout.addWidget(page_header(
+            "Pointage vidéo",
+            "Étalonnez le repère puis relevez la trajectoire image par image.",
+        ))
+        workflow = label("1 · Ouvrir   2 · Étalonner   3 · Placer l’origine   4 · Pointer   5 · Corriger", "workflow")
+        layout.addWidget(workflow)
+        toolbar_panel, toolbar = panel(kind="toolbar")
         self.open_button = role(QPushButton("Ouvrir une vidéo…"), "primary")
         self.open_button.clicked.connect(self.choose_video)
         self.cancel_button = QPushButton("Annuler la préparation")
@@ -70,12 +76,12 @@ class VideoTab(QWidget):
         self.axes_choice.currentIndexChanged.connect(self.change_axes)
         toolbar.addWidget(axes_label)
         toolbar.addWidget(self.axes_choice)
-        layout.addLayout(toolbar)
+        layout.addWidget(toolbar_panel)
         self.status = QLabel("Ouvrez une vidéo pour commencer. Lecture sans son.")
         self.status.setTextFormat(Qt.TextFormat.PlainText)
         self.status.setWordWrap(True)
+        role(self.status, "context")
         layout.addWidget(self.status)
-        actions = QHBoxLayout()
         self.calibrate_button = QPushButton("Définir l'étalon")
         self.origin_button = QPushButton("Définir l'origine")
         self.track_button = role(QPushButton("Commencer le pointage"), "primary")
@@ -84,25 +90,28 @@ class VideoTab(QWidget):
         self.origin_button.clicked.connect(lambda: self.set_mode("origin"))
         self.track_button.clicked.connect(lambda: self.set_mode(None if self.mode == "track" else "track"))
         self.undo_button.clicked.connect(self.undo_point)
-        for title, buttons in (("Étalonnage", (self.calibrate_button, self.origin_button)),
-                               ("Pointage", (self.track_button, self.undo_button))):
-            group, group_layout = panel()
-            group_layout.addWidget(label(title, "caption"))
-            row = QHBoxLayout()
-            for button in buttons:
-                row.addWidget(button)
-            group_layout.addLayout(row)
-            actions.addWidget(group)
-        layout.addLayout(actions)
-        correction_row = QHBoxLayout()
+        calibration_group, calibration_layout = panel(kind="toolbar")
+        calibration_actions = QHBoxLayout()
+        calibration_actions.addWidget(label("Étalonnage", "caption"))
+        calibration_actions.addWidget(self.calibrate_button)
+        calibration_actions.addWidget(self.origin_button)
+        calibration_layout.addLayout(calibration_actions)
+        tracking_group, tracking_layout = panel(kind="toolbar")
+        tracking_actions = QHBoxLayout()
+        tracking_actions.addWidget(label("Pointage", "caption"))
+        tracking_actions.addWidget(self.track_button)
+        tracking_actions.addWidget(self.undo_button)
+        tracking_layout.addLayout(tracking_actions)
         self.correct_button = QPushButton("Corriger un point")
         self.correct_button.clicked.connect(self.toggle_correction)
         self.point_choice = QComboBox()
         self.point_choice.setMinimumContentsLength(25)
         self.point_choice.setAccessibleName("Point à corriger")
         self.point_choice.activated.connect(self.choose_point)
+        correction_row = QHBoxLayout()
         correction_row.addWidget(self.correct_button)
-        correction_row.addWidget(self.point_choice)
+        correction_row.addWidget(self.point_choice, 1)
+        tracking_layout.addLayout(correction_row)
         self.direction_label = QLabel("Direction de l'étalon")
         self.calibration_direction = QComboBox()
         self.calibration_direction.setAccessibleName("Direction de l'étalon")
@@ -110,33 +119,44 @@ class VideoTab(QWidget):
         for title, direction in (("Horizontal", "horizontal"), ("Vertical", "vertical"), ("Libre (diagonale)", "free")):
             self.calibration_direction.addItem(title, direction)
         self.calibration_direction.currentIndexChanged.connect(self.change_calibration_direction)
-        correction_row.addWidget(self.direction_label)
-        correction_row.addWidget(self.calibration_direction)
-        correction_row.addStretch()
-        layout.addLayout(correction_row)
+        direction_row = QHBoxLayout()
+        direction_row.addWidget(self.direction_label)
+        direction_row.addWidget(self.calibration_direction, 1)
+        calibration_layout.addLayout(direction_row)
+        self.workflow_cards = ResponsiveCards(calibration_group, tracking_group)
+        layout.addWidget(self.workflow_cards)
         self.tracking_info = QLabel()
         self.tracking_info.setWordWrap(True)
-        layout.addWidget(self.tracking_info)
         self.hint = QLabel("Définissez l'étalon puis l'origine sur l'image de votre choix.")
         self.hint.setWordWrap(True)
-        layout.addWidget(self.hint)
+        messages = QHBoxLayout()
+        messages.addWidget(self.tracking_info, 1)
+        messages.addWidget(self.hint, 1)
+        layout.addLayout(messages)
         self.screen = VideoCanvas()
         self.screen.clicked.connect(self.image_clicked)
         self.screen.point_selected.connect(self.select_point)
-        view = QHBoxLayout()
+        stage = role(QFrame(), "videoStage")
+        view = QHBoxLayout(stage)
+        view.setContentsMargins(12, 12, 12, 12)
+        view.setSpacing(12)
         view.addWidget(self.screen, 1)
         self.magnifier = Magnifier(self.screen)
         magnifier_panel, magnifier_layout = panel("Loupe ×6")
+        role(magnifier_panel, "videoTool")
         magnifier_layout.addWidget(self.magnifier)
         magnifier_layout.addWidget(label("Survolez la vidéo pour viser avec précision.", "muted"))
         magnifier_panel.setFixedWidth(174)
         view.addWidget(magnifier_panel, 0, Qt.AlignmentFlag.AlignTop)
-        layout.addLayout(view, 1)
+        layout.addWidget(stage, 1)
+        player = role(QFrame(), "playerBar")
+        player_layout = QVBoxLayout(player)
+        player_layout.setContentsMargins(12, 8, 12, 8)
+        player_layout.setSpacing(6)
         self.slider = QSlider(Qt.Orientation.Horizontal)
         self.slider.valueChanged.connect(self.seek)
-        layout.addWidget(self.slider)
+        player_layout.addWidget(self.slider)
         controls = QHBoxLayout()
-        controls.addWidget(label("Lecture", "caption"))
         self.restart_button = QPushButton("Retour au début")
         self.restart_button.setToolTip("Revenir à la première image et mettre la vidéo en pause, en conservant l'étalonnage et les points.")
         self.restart_button.clicked.connect(self.restart_video)
@@ -150,10 +170,11 @@ class VideoTab(QWidget):
         for button in (self.previous, self.play_button, self.next):
             controls.addWidget(button)
         self.position = QLabel("Image — · t = — s")
-        controls.addWidget(self.position)
         controls.addStretch()
-        layout.addLayout(controls)
-        for message in (self.status, self.hint, self.position):
+        controls.addWidget(self.position)
+        player_layout.addLayout(controls)
+        layout.addWidget(player)
+        for message in (self.hint, self.position):
             role(message, "muted")
         role(self.tracking_info, "caption")
         for key, action in (("Left", lambda: self.seek(self.index - 1)),
