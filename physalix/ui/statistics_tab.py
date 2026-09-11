@@ -30,6 +30,7 @@ class StatisticsTab(QWidget):
         row = QHBoxLayout()
         caption = QLabel("Grandeur")
         self.quantity = QComboBox()
+        self.quantity.setMaximumWidth(LIGHT.field_wide)
         self.quantity.setMinimumContentsLength(18)
         self.quantity.setSizeAdjustPolicy(QComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon)
         caption.setBuddy(self.quantity)
@@ -38,6 +39,7 @@ class StatisticsTab(QWidget):
         self.use_selection = QPushButton("Utiliser la sélection du tableur")
         self.use_selection.clicked.connect(self.from_selection)
         row.addWidget(self.use_selection)
+        row.addStretch()
         controls_layout.addLayout(row)
 
         interval = QHBoxLayout()
@@ -76,14 +78,14 @@ class StatisticsTab(QWidget):
         self.table.verticalHeader().setDefaultSectionSize(32)
         results_layout.addWidget(self.table, 1)
         layout.addWidget(results_panel, 1)
-        help_panel, help_layout = panel(kind="help")
+        help_panel, help_layout = panel(kind="help", horizontal=True)
         help_layout.addWidget(label(
             "Les cellules vides et les erreurs sont exclues, jamais remplacées par zéro. "
-            "Les résultats suivent automatiquement les modifications du tableur.", "muted"))
+            "Les résultats suivent automatiquement les modifications du tableur.", "muted"), 1)
         help_layout.addWidget(label(
             "Quartiles : rangs arrondis à l'entier supérieur, sans interpolation. "
             "L'incertitude-type A suppose des mesures répétées indépendantes d'une même grandeur ; "
-            "elle n'inclut pas les autres sources d'incertitude.", "muted"))
+            "elle n'inclut pas les autres sources d'incertitude.", "muted"), 1)
         layout.addWidget(help_panel)
 
         self.timer = QTimer(self)

@@ -7,6 +7,7 @@ from PySide6.QtWidgets import (
 )
 import pyqtgraph as pg
 from physalix.ui.components import role
+from physalix.ui.theme import LIGHT
 
 
 class GraphSeries(QWidget):
@@ -37,6 +38,7 @@ class GraphSeries(QWidget):
             caption.setBuddy(combo)
             row.addWidget(caption)
             row.addWidget(combo, 1)
+            combo.setMaximumWidth(LIGHT.field_medium)
             combo.setMinimumContentsLength(8)
             combo.setSizeAdjustPolicy(QComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon)
             combo.currentIndexChanged.connect(self.changed)

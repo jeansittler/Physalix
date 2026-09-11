@@ -110,6 +110,7 @@ class GraphTab(QWidget):
         self.series_choice = QComboBox()
         self.series_choice.setAccessibleName("Série à régler")
         self.series_choice.setMinimumContentsLength(18)
+        self.series_choice.setMaximumWidth(LIGHT.field_wide)
         self.series_choice.setSizeAdjustPolicy(QComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon)
         self.series_choice.setMaxVisibleItems(10)
         series_label.setBuddy(self.series_choice)

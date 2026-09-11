@@ -50,13 +50,18 @@ class Theme:
     wide_layout: int = 1120
     field_medium: int = 360
     field_wide: int = 620
+    field_compact: int = 280
     formula_wide: int = 880
     action_wide: int = 300
+    action_compact: int = 260
     small: int = 4
-    related: int = 8
-    group: int = 12
-    section: int = 16
-    page: int = 24
+    related: int = 6
+    group: int = 10
+    section: int = 12
+    page: int = 18
+    card_vertical: int = 8
+    toolbar_vertical: int = 5
+    header_vertical: int = 7
 
 
 LIGHT = Theme()
@@ -97,8 +102,6 @@ def stylesheet(t=LIGHT):
     QLabel[role="toolbarLabel"] {{ color: {t.navy}; font-size: 11px; font-weight: 700; }}
     QLabel[role="context"] {{ color: {t.navy}; background: {t.primary_soft}; border: 1px solid {t.border};
         border-radius: {t.radius}px; padding: 5px 10px; font-weight: 600; }}
-    QLabel[role="workflow"] {{ color: {t.navy}; background: {t.surface}; border-left: 3px solid {t.primary};
-        padding: 7px 10px; font-weight: 650; }}
     QLabel[role="muted"], QLabel[role="caption"] {{ color: {t.muted}; font-size: {t.caption_px}px; }}
     QLabel[role="caption"] {{ font-weight: 600; }}
     QLabel[role="cellAddress"] {{ background: {t.secondary}; border: 1px solid {t.border};

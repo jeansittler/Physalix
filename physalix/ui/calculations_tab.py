@@ -4,12 +4,13 @@ from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QAbstractItemView, QComboBox, QFormLayout, QHBoxLayout, QHeaderView,
     QLabel, QLineEdit, QPushButton, QScrollArea, QTableWidget, QTableWidgetItem,
-    QVBoxLayout, QWidget, QDialog, QDialogButtonBox, QMenu, QFrame,
+    QVBoxLayout, QWidget, QDialog, QDialogButtonBox, QMenu, QFrame, QSizePolicy,
 )
 
 from physalix.calculations import CalculationEngine, derivative_unit
 from physalix.ui.math_help import math_help_button
 from physalix.ui.components import page_header, page_layout, panel, role, ResponsiveCards, label as section_label
+from physalix.ui.theme import LIGHT
 
 
 class FormulaEditDialog(QDialog):
@@ -78,7 +79,7 @@ class CalculationsTab(QWidget):
         scroll.setWidget(content)
         layout = QVBoxLayout(content)
         layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(16)
+        layout.setSpacing(LIGHT.section)
         layout.addWidget(page_header(
             "Calculs",
             "Créez des dérivées et des grandeurs par formule, disponibles dans Données et Graphique.",
@@ -86,7 +87,7 @@ class CalculationsTab(QWidget):
 
         derivative, derivative_layout = panel("Dérivée centrée")
         form = QFormLayout()
-        form.setVerticalSpacing(12)
+        form.setVerticalSpacing(LIGHT.related)
         form.setRowWrapPolicy(QFormLayout.RowWrapPolicy.WrapLongRows)
         derivative_layout.addLayout(form)
         self.source = QComboBox()
@@ -94,6 +95,10 @@ class CalculationsTab(QWidget):
         self.derivative_name = QLineEdit()
         self.derivative_name.setPlaceholderText("Exemple : Vx, Vy ou ax")
         self.derivative_unit = QLineEdit()
+        for control in (self.source, self.axis):
+            control.setMaximumWidth(LIGHT.field_wide)
+        for control in (self.derivative_name, self.derivative_unit):
+            control.setMaximumWidth(LIGHT.field_medium)
         form.addRow("Grandeur à dériver :", self.source)
         form.addRow("Par rapport à :", self.axis)
         form.addRow("Nom du résultat :", self.derivative_name)
@@ -110,7 +115,7 @@ class CalculationsTab(QWidget):
 
         formula, formula_layout = panel("Nouvelle grandeur par formule")
         form = QFormLayout()
-        form.setVerticalSpacing(12)
+        form.setVerticalSpacing(LIGHT.related)
         form.setRowWrapPolicy(QFormLayout.RowWrapPolicy.WrapLongRows)
         formula_layout.addLayout(form)
         self.formula_name = QLineEdit()
@@ -118,6 +123,9 @@ class CalculationsTab(QWidget):
         self.formula_unit = QLineEdit()
         self.formula_unit.setPlaceholderText("Exemple : cm/s si Vx et Vy sont en cm/s")
         self.expression = QLineEdit()
+        self.formula_name.setMaximumWidth(LIGHT.field_medium)
+        self.formula_unit.setMaximumWidth(LIGHT.field_medium)
+        self.expression.setMaximumWidth(LIGHT.field_wide)
         self.expression.setPlaceholderText("SQRT(Vx^2 + Vy^2)")
         self.expression.returnPressed.connect(self.create_formula)
         form.addRow("Nom du résultat :", self.formula_name)
@@ -125,6 +133,7 @@ class CalculationsTab(QWidget):
         form.addRow("Formule :", self.expression)
         insert_row = QHBoxLayout()
         self.quantity = QComboBox()
+        self.quantity.setMaximumWidth(LIGHT.field_wide)
         insert_row.addWidget(self.quantity, 1)
         insert = QPushButton("Insérer la grandeur")
         insert.clicked.connect(self.insert_quantity)
@@ -132,7 +141,7 @@ class CalculationsTab(QWidget):
         form.addRow(insert_row)
         keypad = role(QFrame(), "keypad")
         keys = QHBoxLayout(keypad)
-        keys.setContentsMargins(8, 6, 8, 6)
+        keys.setContentsMargins(6, 4, 6, 4)
         keys.setSpacing(4)
         for label, value in (("SQRT(…)", "SQRT("), ("²", "²"), ("^", "^"),
                              ("(", "("), (")", ")"), ("+", "+"), ("−", "-"), ("×", "*"), ("/", "/")):
@@ -163,7 +172,8 @@ class CalculationsTab(QWidget):
         self.history.customContextMenuRequested.connect(self.formula_menu)
         self.history.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.ResizeToContents)
         self.history.horizontalHeader().setStretchLastSection(True)
-        self.history.setMinimumHeight(150)
+        self.history.setMinimumHeight(120)
+        self.history.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Ignored)
         self.history.verticalHeader().setDefaultSectionSize(32)
         history_layout.addWidget(self.history)
         self.edit_formula_button = QPushButton("Modifier la formule…")
@@ -171,8 +181,7 @@ class CalculationsTab(QWidget):
         self.history.itemSelectionChanged.connect(self.update_edit_button)
         self.edit_formula_button.setEnabled(False)
         history_layout.addWidget(self.edit_formula_button, 0, Qt.AlignmentFlag.AlignLeft)
-        layout.addWidget(history_panel)
-        layout.addStretch()
+        layout.addWidget(history_panel, 1)
         self.engine.changed.connect(self.refresh)
         self.source.currentIndexChanged.connect(self.suggest_derivative)
         self.axis.currentIndexChanged.connect(self.suggest_derivative)

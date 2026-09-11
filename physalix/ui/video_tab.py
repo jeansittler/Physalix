@@ -13,7 +13,8 @@ from physalix.video import prepare_video
 from physalix.ui.data_tab import MeasurementsModel
 from physalix.ui.video_canvas import Magnifier, VideoCanvas
 from physalix.ui.video_tracking import CalibrationDialog, TrackingSession
-from physalix.ui.components import page_header, workspace_layout, panel, label, role, ResponsiveCards
+from physalix.ui.components import compact_width, page_header, workspace_layout, panel, label, role, ResponsiveCards
+from physalix.ui.theme import LIGHT
 
 
 class VideoLoader(QThread):
@@ -51,19 +52,18 @@ class VideoTab(QWidget):
         layout = workspace_layout(self, 760, 560)
         layout.addWidget(page_header(
             "Pointage vidéo",
-            "Étalonnez le repère puis relevez la trajectoire image par image.",
+            "1 · Ouvrir   2 · Étalonner   3 · Placer l’origine   4 · Pointer   5 · Corriger",
         ))
-        workflow = label("1 · Ouvrir   2 · Étalonner   3 · Placer l’origine   4 · Pointer   5 · Corriger", "workflow")
-        layout.addWidget(workflow)
-        toolbar_panel, toolbar = panel(kind="toolbar")
-        self.open_button = role(QPushButton("Ouvrir une vidéo…"), "primary")
+        toolbar_panel, toolbar = panel(kind="toolbar", horizontal=True)
+        self.open_button = compact_width(role(QPushButton("Ouvrir une vidéo…"), "primary"),
+                                         LIGHT.action_compact)
         self.open_button.clicked.connect(self.choose_video)
         self.cancel_button = QPushButton("Annuler la préparation")
         self.cancel_button.clicked.connect(self.cancel_loading)
         self.cancel_button.hide()
         toolbar.addWidget(label("Fichier", "caption"))
-        toolbar.addWidget(self.open_button)
-        toolbar.addWidget(self.cancel_button)
+        toolbar.addWidget(self.open_button, 0, Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
+        toolbar.addWidget(self.cancel_button, 0, Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
         toolbar.addStretch()
         axes_label = QLabel("Sens des axes")
         self.axes_choice = QComboBox()
@@ -72,57 +72,53 @@ class VideoTab(QWidget):
         for title, directions in (("X droite · Y haut", (1, 1)), ("X droite · Y bas", (1, -1)),
                                    ("X gauche · Y haut", (-1, 1)), ("X gauche · Y bas", (-1, -1))):
             self.axes_choice.addItem(title, directions)
+        compact_width(self.axes_choice, LIGHT.field_compact)
         self.axes_choice.setToolTip("Les coordonnées des points déjà acquis sont recalculées dans le nouveau repère.")
         self.axes_choice.currentIndexChanged.connect(self.change_axes)
         toolbar.addWidget(axes_label)
-        toolbar.addWidget(self.axes_choice)
+        toolbar.addWidget(self.axes_choice, 0, Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
         layout.addWidget(toolbar_panel)
         self.status = QLabel("Ouvrez une vidéo pour commencer. Lecture sans son.")
         self.status.setTextFormat(Qt.TextFormat.PlainText)
         self.status.setWordWrap(True)
         role(self.status, "context")
         layout.addWidget(self.status)
-        self.calibrate_button = QPushButton("Définir l'étalon")
-        self.origin_button = QPushButton("Définir l'origine")
-        self.track_button = role(QPushButton("Commencer le pointage"), "primary")
-        self.undo_button = role(QPushButton("Annuler la dernière action"), "danger")
+        self.calibrate_button = QPushButton("Étalon")
+        self.origin_button = QPushButton("Origine")
+        self.track_button = role(QPushButton("Pointer"), "primary")
+        self.undo_button = role(QPushButton("Annuler"), "danger")
         self.calibrate_button.clicked.connect(lambda: self.set_mode("scale"))
         self.origin_button.clicked.connect(lambda: self.set_mode("origin"))
         self.track_button.clicked.connect(lambda: self.set_mode(None if self.mode == "track" else "track"))
         self.undo_button.clicked.connect(self.undo_point)
-        calibration_group, calibration_layout = panel(kind="toolbar")
-        calibration_actions = QHBoxLayout()
-        calibration_actions.addWidget(label("Étalonnage", "caption"))
-        calibration_actions.addWidget(self.calibrate_button)
-        calibration_actions.addWidget(self.origin_button)
-        calibration_layout.addLayout(calibration_actions)
-        tracking_group, tracking_layout = panel(kind="toolbar")
-        tracking_actions = QHBoxLayout()
-        tracking_actions.addWidget(label("Pointage", "caption"))
-        tracking_actions.addWidget(self.track_button)
-        tracking_actions.addWidget(self.undo_button)
-        tracking_layout.addLayout(tracking_actions)
-        self.correct_button = QPushButton("Corriger un point")
+        calibration_group, calibration_layout = panel(kind="toolbar", horizontal=True)
+        calibration_layout.addWidget(label("Étalonnage", "caption"))
+        calibration_layout.addWidget(self.calibrate_button)
+        calibration_layout.addWidget(self.origin_button)
+        tracking_group, tracking_layout = panel(kind="toolbar", horizontal=True)
+        tracking_layout.addWidget(label("Pointage", "caption"))
+        tracking_layout.addWidget(self.track_button)
+        tracking_layout.addWidget(self.undo_button)
+        self.correct_button = QPushButton("Corriger")
         self.correct_button.clicked.connect(self.toggle_correction)
         self.point_choice = QComboBox()
         self.point_choice.setMinimumContentsLength(25)
+        self.point_choice.setMaximumWidth(LIGHT.field_compact)
         self.point_choice.setAccessibleName("Point à corriger")
         self.point_choice.activated.connect(self.choose_point)
-        correction_row = QHBoxLayout()
-        correction_row.addWidget(self.correct_button)
-        correction_row.addWidget(self.point_choice, 1)
-        tracking_layout.addLayout(correction_row)
+        tracking_layout.addWidget(self.correct_button)
+        tracking_layout.addWidget(self.point_choice)
         self.direction_label = QLabel("Direction de l'étalon")
         self.calibration_direction = QComboBox()
+        self.calibration_direction.setMaximumWidth(180)
         self.calibration_direction.setAccessibleName("Direction de l'étalon")
         self.direction_label.setBuddy(self.calibration_direction)
         for title, direction in (("Horizontal", "horizontal"), ("Vertical", "vertical"), ("Libre (diagonale)", "free")):
             self.calibration_direction.addItem(title, direction)
         self.calibration_direction.currentIndexChanged.connect(self.change_calibration_direction)
-        direction_row = QHBoxLayout()
-        direction_row.addWidget(self.direction_label)
-        direction_row.addWidget(self.calibration_direction, 1)
-        calibration_layout.addLayout(direction_row)
+        calibration_layout.addWidget(self.direction_label)
+        calibration_layout.addWidget(self.calibration_direction)
+        calibration_layout.addStretch()
         self.workflow_cards = ResponsiveCards(calibration_group, tracking_group)
         layout.addWidget(self.workflow_cards)
         self.tracking_info = QLabel()
@@ -207,7 +203,7 @@ class VideoTab(QWidget):
         self.undo_button.setEnabled(ready and bool(self.tracking.history))
         correcting = self.mode in ("select", "edit")
         self.correct_button.setEnabled(ready and bool(self.tracking.points))
-        self.correct_button.setText("Revenir au pointage" if correcting else "Corriger un point")
+        self.correct_button.setText("Retour au pointage" if correcting else "Corriger")
         self.point_choice.setVisible(correcting)
         self.point_choice.setEnabled(ready and correcting)
         self.point_choice.blockSignals(True)
@@ -222,7 +218,7 @@ class VideoTab(QWidget):
         self.screen.selecting = self.mode == "select"
         self.screen.setCursor(Qt.CursorShape.PointingHandCursor if self.screen.selecting else
                               Qt.CursorShape.CrossCursor if self.screen.active else Qt.CursorShape.ArrowCursor)
-        self.track_button.setText("Arrêter le pointage" if self.mode == "track" else "Commencer le pointage")
+        self.track_button.setText("Arrêter" if self.mode == "track" else "Pointer")
         self.screen.origin = self.tracking.origin
         self.screen.x_direction = self.tracking.x_direction
         self.screen.y_direction = self.tracking.y_direction

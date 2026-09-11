@@ -17,6 +17,13 @@ def refresh_style(widget):
     widget.style().polish(widget)
 
 
+def compact_width(widget, maximum_width):
+    """Conserver la largeur utile d’un contrôle dans un layout horizontal."""
+    widget.setFixedWidth(min(maximum_width, max(widget.sizeHint().width(),
+                                               widget.minimumSizeHint().width())))
+    return widget
+
+
 def label(text, kind="sectionTitle"):
     widget = role(QLabel(text), kind)
     widget.setWordWrap(True)
@@ -32,10 +39,10 @@ def page_layout(layout):
 def page_header(title, description):
     widget = role(QWidget(), "pageHeader")
     row = QHBoxLayout(widget)
-    row.setContentsMargins(0, 0, 0, LIGHT.small)
+    row.setContentsMargins(0, 0, 0, 0)
     row.setSpacing(LIGHT.group)
     accent = role(QFrame(), "pageAccent")
-    accent.setFixedSize(5, 42)
+    accent.setFixedSize(5, 38)
     row.addWidget(accent)
     text = QVBoxLayout()
     text.setSpacing(1)
@@ -45,7 +52,7 @@ def page_header(title, description):
     return widget
 
 
-def panel(title=None, kind="card"):
+def panel(title=None, kind="card", horizontal=False):
     widget = role(QFrame(), kind)
     if kind in ("help", "toolbar"):
         widget.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Maximum)
@@ -55,7 +62,8 @@ def panel(title=None, kind="card"):
     if title:
         header = role(QWidget(), "cardHeader")
         heading = QHBoxLayout(header)
-        heading.setContentsMargins(LIGHT.section, 10, LIGHT.section, 10)
+        heading.setContentsMargins(LIGHT.section, LIGHT.header_vertical,
+                                   LIGHT.section, LIGHT.header_vertical)
         heading.setSpacing(LIGHT.related)
         accent = role(QFrame(), "cardAccent")
         accent.setFixedSize(4, 20)
@@ -66,8 +74,8 @@ def panel(title=None, kind="card"):
         divider.setFixedHeight(1)
         outer.addWidget(divider)
     content = QWidget()
-    layout = QVBoxLayout(content)
-    vertical = LIGHT.related if kind in ("help", "toolbar") else LIGHT.group
+    layout = QHBoxLayout(content) if horizontal else QVBoxLayout(content)
+    vertical = LIGHT.toolbar_vertical if kind in ("help", "toolbar") else LIGHT.card_vertical
     layout.setContentsMargins(LIGHT.section, vertical, LIGHT.section, vertical)
     layout.setSpacing(vertical)
     outer.addWidget(content, 1)

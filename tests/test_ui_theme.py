@@ -127,8 +127,38 @@ class ThemeLayoutTests(unittest.TestCase):
                              QBoxLayout.Direction.LeftToRight)
             self.assertEqual(self.window.video_tab.workflow_cards.cards.direction(),
                              QBoxLayout.Direction.LeftToRight)
-            self.assertGreaterEqual(self.window.graph_tab.plot.height(), 220)
-            self.assertGreaterEqual(self.window.video_tab.screen.height(), 260)
+            self.assertLessEqual(self.window.graph_tab.add_button.width(), LIGHT.action_compact)
+            self.assertLessEqual(self.window.graph_tab.arrangement.width(), LIGHT.field_compact)
+            self.assertLessEqual(self.window.graph_tab.rename_button.width(), LIGHT.action_compact)
+            self.assertLessEqual(self.window.video_tab.open_button.width(), LIGHT.action_compact)
+            self.assertLessEqual(self.window.video_tab.axes_choice.width(), LIGHT.field_compact)
+            if width == 1280:
+                self.assertGreaterEqual(self.window.graph_tab.plot.height(), 320)
+                self.assertGreaterEqual(self.window.video_tab.screen.height(), 320)
+                self.assertLessEqual(self.window.video_tab.screen.mapTo(
+                    self.window.video_tab, self.window.video_tab.screen.rect().topLeft()).y(), 270)
+                modeling = self.window.modeling_tab.currentWidget()
+                self.assertLessEqual(modeling.result_panel.y(), 370)
+                self.assertLessEqual(self.window.calculations_tab.history.mapTo(
+                    self.window.calculations_tab,
+                    self.window.calculations_tab.history.rect().topLeft()).y(), 580)
+                self.assertGreaterEqual(self.window.statistics_tab.table.height(), 320)
+            else:
+                self.assertGreaterEqual(self.window.graph_tab.plot.height(), 600)
+                self.assertGreaterEqual(self.window.video_tab.screen.height(), 600)
+                self.assertGreaterEqual(self.window.statistics_tab.table.height(), 600)
+
+        self.window.resize(900, 700)
+        for index in range(self.window.tabs.count()):
+            page = self.window.tabs.widget(index)
+            self.window.tabs.setCurrentIndex(index)
+            QTest.qWait(20)
+            for scroll in page.findChildren(QScrollArea):
+                self.assertEqual(scroll.horizontalScrollBar().maximum(), 0)
+        self.assertEqual(self.window.calculations_tab.tools.cards.direction(),
+                         QBoxLayout.Direction.TopToBottom)
+        self.assertEqual(self.window.video_tab.workflow_cards.cards.direction(),
+                         QBoxLayout.Direction.TopToBottom)
 
     def test_data_help_preserves_table_access(self):
         self.window.resize(900, 620)

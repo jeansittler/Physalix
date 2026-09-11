@@ -48,14 +48,14 @@ class ModelingTab(QWidget):
         content = QWidget()
         body = QVBoxLayout(content)
         body.setContentsMargins(0, 0, 0, 0)
-        body.setSpacing(16)
+        body.setSpacing(LIGHT.section)
         body.addWidget(page_header(
             "Modélisation",
             "Ajustez un modèle mathématique aux mesures et analysez la qualité du résultat.",
         ))
         model_panel, model_layout = panel("Modèle")
         form = QFormLayout()
-        form.setVerticalSpacing(12)
+        form.setVerticalSpacing(LIGHT.related)
         form.setRowWrapPolicy(QFormLayout.RowWrapPolicy.WrapLongRows)
         form.setLabelAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
         model_layout.addLayout(form)
@@ -89,6 +89,7 @@ class ModelingTab(QWidget):
         self.custom_box = QWidget()
         custom_layout = QFormLayout(self.custom_box)
         custom_layout.setContentsMargins(0, 0, 0, 0)
+        custom_layout.setVerticalSpacing(LIGHT.related)
         custom_layout.addRow("Formule (membre droit)", self.expression)
         custom_layout.addRow("Paramètres et valeurs initiales", self.initial)
         self.custom_help = QLabel()
@@ -126,7 +127,6 @@ class ModelingTab(QWidget):
         self.extend_check.setChecked(True)
         self.extend_check.setToolTip("Afficher la droite au-delà de l’intervalle utilisé pour le calcul, dans les limites des abscisses mesurées. Le prolongement en pointillés fins ne modifie pas les coefficients.")
         interval_layout.addWidget(self.extend_check)
-        interval_layout.addStretch()
         self.fit_button = role(QPushButton("Calculer la modélisation"), "primary")
         self.remove_button = role(QPushButton("Retirer cette modélisation"), "quiet")
         self.show_graph_button = QPushButton("Voir le graphique")

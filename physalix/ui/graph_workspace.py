@@ -2,9 +2,10 @@
 from PySide6.QtCore import Qt, Signal, QRect
 from PySide6.QtWidgets import (QComboBox, QHBoxLayout, QInputDialog, QLabel, QMdiArea,
                                QMdiSubWindow, QPushButton, QStackedWidget, QTabBar, QVBoxLayout, QWidget)
-from physalix.ui.components import panel, role
+from physalix.ui.components import compact_width, panel, role
 from physalix.ui.graph_tab import GraphTab
 from physalix.ui.modeling_tab import ModelingTab
+from physalix.ui.theme import LIGHT
 
 
 class GraphWindow(QMdiSubWindow):
@@ -41,18 +42,19 @@ class GraphWorkspace(QWidget):
         self.model, self.windows, self.number = model, [], 0
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
-        management, bar = panel(kind="toolbar")
-        self.add_button = QPushButton('Nouveau graphique')
+        management, bar = panel(kind="toolbar", horizontal=True)
+        self.add_button = compact_width(QPushButton('Nouveau graphique'), LIGHT.action_compact)
         self.add_button.clicked.connect(self.add_graph)
-        bar.addWidget(self.add_button)
+        bar.addWidget(self.add_button, 0, Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
         bar.addWidget(QLabel('Disposition'))
         self.arrangement = QComboBox()
         self.arrangement.addItems(['Onglets', 'Côte à côte', 'Superposés', 'Libre'])
+        compact_width(self.arrangement, LIGHT.field_compact)
         self.arrangement.currentIndexChanged.connect(self.arrange)
-        bar.addWidget(self.arrangement)
-        rename = QPushButton('Renommer')
-        rename.clicked.connect(self.rename_graph)
-        bar.addWidget(rename)
+        bar.addWidget(self.arrangement, 0, Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
+        self.rename_button = compact_width(QPushButton('Renommer'), LIGHT.action_compact)
+        self.rename_button.clicked.connect(self.rename_graph)
+        bar.addWidget(self.rename_button, 0, Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
         bar.addStretch()
         layout.addWidget(management)
         self.area = QMdiArea()
