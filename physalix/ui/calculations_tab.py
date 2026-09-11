@@ -2,14 +2,14 @@
 
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
-    QAbstractItemView, QComboBox, QFormLayout, QGroupBox, QHBoxLayout, QHeaderView,
+    QAbstractItemView, QComboBox, QFormLayout, QHBoxLayout, QHeaderView,
     QLabel, QLineEdit, QPushButton, QScrollArea, QTableWidget, QTableWidgetItem,
-    QVBoxLayout, QWidget, QDialog, QDialogButtonBox, QMenu,
+    QVBoxLayout, QWidget, QDialog, QDialogButtonBox, QMenu, QFrame,
 )
 
 from physalix.calculations import CalculationEngine, derivative_unit
 from physalix.ui.math_help import math_help_button
-from physalix.ui.components import page_layout, role, ResponsiveCards, label as section_label
+from physalix.ui.components import page_header, page_layout, panel, role, ResponsiveCards, label as section_label
 
 
 class FormulaEditDialog(QDialog):
@@ -79,16 +79,16 @@ class CalculationsTab(QWidget):
         layout = QVBoxLayout(content)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(16)
-        intro = QLabel("Créez une grandeur calculée, disponible dans Données et Graphique. "
-                       "Les résultats se mettent à jour avec les mesures ; les noms et unités restent modifiables dans Données.")
-        intro.setWordWrap(True)
-        role(intro, "muted")
-        layout.addWidget(intro)
+        layout.addWidget(page_header(
+            "Calculs",
+            "Créez des dérivées et des grandeurs par formule, disponibles dans Données et Graphique.",
+        ))
 
-        derivative = QGroupBox("Dérivée centrée")
-        form = QFormLayout(derivative)
+        derivative, derivative_layout = panel("Dérivée centrée")
+        form = QFormLayout()
         form.setVerticalSpacing(12)
         form.setRowWrapPolicy(QFormLayout.RowWrapPolicy.WrapLongRows)
+        derivative_layout.addLayout(form)
         self.source = QComboBox()
         self.axis = QComboBox()
         self.derivative_name = QLineEdit()
@@ -108,10 +108,11 @@ class CalculationsTab(QWidget):
         self.derive_button.clicked.connect(self.create_derivative)
         form.addRow(self.derive_button)
 
-        formula = QGroupBox("Nouvelle grandeur par formule")
-        form = QFormLayout(formula)
+        formula, formula_layout = panel("Nouvelle grandeur par formule")
+        form = QFormLayout()
         form.setVerticalSpacing(12)
         form.setRowWrapPolicy(QFormLayout.RowWrapPolicy.WrapLongRows)
+        formula_layout.addLayout(form)
         self.formula_name = QLineEdit()
         self.formula_name.setPlaceholderText("Exemple : v")
         self.formula_unit = QLineEdit()
@@ -129,25 +130,29 @@ class CalculationsTab(QWidget):
         insert.clicked.connect(self.insert_quantity)
         insert_row.addWidget(insert)
         form.addRow(insert_row)
-        keys = QHBoxLayout()
+        keypad = role(QFrame(), "keypad")
+        keys = QHBoxLayout(keypad)
+        keys.setContentsMargins(8, 6, 8, 6)
+        keys.setSpacing(4)
         for label, value in (("SQRT(…)", "SQRT("), ("²", "²"), ("^", "^"),
                              ("(", "("), (")", ")"), ("+", "+"), ("−", "-"), ("×", "*"), ("/", "/")):
             button = QPushButton(label)
             button.clicked.connect(lambda checked=False, text=value: self.insert_text(text))
             keys.addWidget(button)
-        form.addRow(keys)
+        form.addRow(keypad)
         form.addRow(math_help_button(self))
         self.formula_button = role(QPushButton("Créer la grandeur"), "primary")
         self.formula_button.clicked.connect(self.create_formula)
         form.addRow(self.formula_button)
-        layout.addWidget(ResponsiveCards(derivative, formula))
+        self.tools = ResponsiveCards(derivative, formula)
+        layout.addWidget(self.tools)
         self.feedback = QLabel("Les cellules calculées sont protégées ; renommez leur en-tête dans Données à tout moment.")
         self.feedback.setWordWrap(True)
         self.feedback.setTextFormat(Qt.TextFormat.PlainText)
         layout.addWidget(self.feedback)
-        role(self.feedback, "muted")
-        layout.addWidget(section_label("Grandeurs calculées"))
-        layout.addWidget(section_label("Double-cliquez sur une grandeur par formule pour modifier son calcul.", "muted"))
+        role(self.feedback, "context")
+        history_panel, history_layout = panel("Grandeurs calculées")
+        history_layout.addWidget(section_label("Double-cliquez sur une grandeur par formule pour modifier son calcul.", "muted"))
         self.history = QTableWidget(0, 4)
         self.history.setHorizontalHeaderLabels(["Grandeur", "Unité", "Calcul lié", "Bilan"])
         self.history.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
@@ -160,12 +165,13 @@ class CalculationsTab(QWidget):
         self.history.horizontalHeader().setStretchLastSection(True)
         self.history.setMinimumHeight(150)
         self.history.verticalHeader().setDefaultSectionSize(32)
-        layout.addWidget(self.history)
+        history_layout.addWidget(self.history)
         self.edit_formula_button = QPushButton("Modifier la formule…")
         self.edit_formula_button.clicked.connect(lambda: self.edit_formula(self.history.currentRow()))
         self.history.itemSelectionChanged.connect(self.update_edit_button)
         self.edit_formula_button.setEnabled(False)
-        layout.addWidget(self.edit_formula_button, 0, Qt.AlignmentFlag.AlignLeft)
+        history_layout.addWidget(self.edit_formula_button, 0, Qt.AlignmentFlag.AlignLeft)
+        layout.addWidget(history_panel)
         layout.addStretch()
         self.engine.changed.connect(self.refresh)
         self.source.currentIndexChanged.connect(self.suggest_derivative)

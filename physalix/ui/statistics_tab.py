@@ -4,6 +4,7 @@ import csv
 import io
 
 from PySide6.QtCore import QTimer, Qt
+from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (
     QAbstractItemView, QApplication, QCheckBox, QComboBox, QHeaderView, QHBoxLayout,
     QLabel, QPushButton, QSpinBox, QTableWidget, QTableWidgetItem, QWidget,
@@ -11,7 +12,8 @@ from PySide6.QtWidgets import (
 
 from physalix.statistics import METRICS, describe
 from physalix.spreadsheet import column_label
-from physalix.ui.components import label, role, workspace_layout
+from physalix.ui.components import label, page_header, panel, role, workspace_layout
+from physalix.ui.theme import LIGHT
 
 
 class StatisticsTab(QWidget):
@@ -20,7 +22,11 @@ class StatisticsTab(QWidget):
         self.data_tab, self.model = data_tab, data_tab.model
         self.results = None
         layout = workspace_layout(self, 760, 520)
-        layout.addWidget(label("Statistiques d'une grandeur"))
+        layout.addWidget(page_header(
+            "Statistiques",
+            "Décrivez une grandeur sur toutes les mesures ou sur un intervalle choisi.",
+        ))
+        controls, controls_layout = panel(kind="toolbar")
         row = QHBoxLayout()
         caption = QLabel("Grandeur")
         self.quantity = QComboBox()
@@ -32,7 +38,7 @@ class StatisticsTab(QWidget):
         self.use_selection = QPushButton("Utiliser la sélection du tableur")
         self.use_selection.clicked.connect(self.from_selection)
         row.addWidget(self.use_selection)
-        layout.addLayout(row)
+        controls_layout.addLayout(row)
 
         interval = QHBoxLayout()
         self.all_rows = QCheckBox("Toutes les lignes")
@@ -50,11 +56,13 @@ class StatisticsTab(QWidget):
         self.copy_button = QPushButton("Copier les résultats")
         self.copy_button.clicked.connect(self.copy_results)
         interval.addWidget(self.copy_button)
-        layout.addLayout(interval)
+        controls_layout.addLayout(interval)
+        layout.addWidget(controls)
 
-        self.summary = label("", "muted")
+        self.summary = label("", "context")
         self.summary.setTextFormat(Qt.TextFormat.PlainText)
         layout.addWidget(self.summary)
+        results_panel, results_layout = panel("Résultats")
         self.table = QTableWidget(0, 4)
         self.table.setHorizontalHeaderLabels(["Indicateur", "Valeur", "Unité", "Définition"])
         self.table.verticalHeader().hide()
@@ -66,14 +74,17 @@ class StatisticsTab(QWidget):
         for column, width in enumerate((245, 150, 80, 320)):
             self.table.setColumnWidth(column, width)
         self.table.verticalHeader().setDefaultSectionSize(32)
-        layout.addWidget(self.table, 1)
-        layout.addWidget(label(
+        results_layout.addWidget(self.table, 1)
+        layout.addWidget(results_panel, 1)
+        help_panel, help_layout = panel(kind="help")
+        help_layout.addWidget(label(
             "Les cellules vides et les erreurs sont exclues, jamais remplacées par zéro. "
             "Les résultats suivent automatiquement les modifications du tableur.", "muted"))
-        layout.addWidget(label(
+        help_layout.addWidget(label(
             "Quartiles : rangs arrondis à l'entier supérieur, sans interpolation. "
             "L'incertitude-type A suppose des mesures répétées indépendantes d'une même grandeur ; "
             "elle n'inclut pas les autres sources d'incertitude.", "muted"))
+        layout.addWidget(help_panel)
 
         self.timer = QTimer(self)
         self.timer.setSingleShot(True)
@@ -155,6 +166,12 @@ class StatisticsTab(QWidget):
                 item.setToolTip(reason if value is None else definition)
                 if column_index == 1:
                     item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+                    font = item.font()
+                    font.setBold(True)
+                    item.setFont(font)
+                    item.setForeground(QColor(LIGHT.primary_pressed))
+                elif column_index == 3:
+                    item.setForeground(QColor(LIGHT.muted))
                 self.table.setItem(row, column_index, item)
         self.copy_button.setEnabled(results['count'] > 0)
 
