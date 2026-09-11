@@ -126,7 +126,7 @@ class ProjectFiles:
             path = path.with_suffix(PROJECT_SUFFIX)
             save_as = True  # Let the user confirm the new destination; keep the legacy file.
         if save_as or not path:
-            path, _ = QFileDialog.getSaveFileName(self, 'Enregistrer le projet', str(path or 'Sans titre.physalix'), 'Projet Physalix (*.physalix)')
+            path, _ = QFileDialog.getSaveFileName(self, 'Enregistrer le projet', str(path or 'Sans titre'), 'Projet Physalix (*.physalix)')
             if not path:
                 return False
             selected = Path(path)
@@ -199,12 +199,18 @@ class ProjectFiles:
             f'Projet Physalix (*{PROJECT_SUFFIX} *{LEGACY_SUFFIX})')
         if not path:
             return
+        return self.open_project_path(path)
+
+    def open_project_path(self, path):
+        """Open a project selected by the user or supplied at application startup."""
         try:
             state = read_project(path)
             if self.replace_project(state, path):
                 self.statusBar().showMessage(f'Projet ouvert : {path}', 8000)
+                return True
         except (OSError, ValueError, KeyError, TypeError, IndexError, AttributeError, zipfile.BadZipFile) as error:
             QMessageBox.critical(self, 'Ouverture impossible', f'Le projet est invalide ou incomplet.\n{error}')
+        return False
 
     def import_csv(self):
         path, _ = QFileDialog.getOpenFileName(self, 'Importer un CSV', '', 'Données CSV (*.csv *.tsv *.txt);;Tous les fichiers (*)')

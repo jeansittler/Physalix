@@ -5,11 +5,12 @@ import tempfile
 import json
 from pathlib import Path
 import unittest
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 import zipfile
 
 from PySide6.QtCore import QPointF, QTimer
 from PySide6.QtWidgets import QApplication, QMessageBox, QFileDialog
+from physalix.app import main as app_main, project_path_from_arguments
 from physalix.fitting import fit_model
 from physalix.project import read_project, write_project, read_csv, write_csv, atomic_write
 from physalix.ui.main_window import MainWindow
@@ -114,6 +115,12 @@ class ProjectTests(unittest.TestCase):
             self.assertTrue(self.window.save_project())
             dialog.assert_not_called()
 
+    def test_save_dialog_proposes_name_without_extension(self):
+        with patch.object(QFileDialog, 'getSaveFileName', return_value=('', '')) as dialog:
+            self.assertFalse(self.window.save_project(save_as=True))
+        self.assertEqual(dialog.call_args.args[2], 'Sans titre')
+        self.assertEqual(dialog.call_args.args[3], 'Projet Physalix (*.physalix)')
+
     def test_cancel_legacy_migration_preserves_path_and_file(self):
         legacy = self.legacy_project()
         self.window.replace_project(read_project(legacy), legacy)
@@ -131,6 +138,55 @@ class ProjectTests(unittest.TestCase):
                 self.assertEqual(self.window.project_path, self.path)
                 self.assertEqual(read_project(self.path), snapshot(self.window))
                 self.path.unlink()
+
+    def test_startup_argument_detection_supports_spaces_accents_and_missing_files(self):
+        path = Path(r'C:\Users\Jean\Documents\TP Physique\Cinématique.physalix')
+        self.assertEqual(project_path_from_arguments(['Physalix.exe', str(path)]), path)
+        self.assertIsNone(project_path_from_arguments(['Physalix.exe']))
+        self.assertIsNone(project_path_from_arguments(['Physalix.exe', '--unknown']))
+
+    def test_application_opens_startup_project_with_shared_loader(self):
+        path = Path(r'C:\Users\Jean\Documents\TP Physique\Cinématique.physalix')
+        application = MagicMock()
+        application.arguments.return_value = ['Physalix.exe', str(path)]
+        application.exec.return_value = 0
+        window = MagicMock()
+        with patch('physalix.app.QApplication', return_value=application), \
+                patch('physalix.app.MainWindow', return_value=window), \
+                patch('physalix.app.set_windows_app_id'), \
+                patch('physalix.app.application_icon'), \
+                patch('physalix.app.apply_theme'):
+            self.assertEqual(app_main(), 0)
+        window.open_project_path.assert_called_once_with(path)
+        window.show.assert_called_once_with()
+
+    def test_manual_open_delegates_to_shared_path_loader(self):
+        with patch.object(QFileDialog, 'getOpenFileName', return_value=(str(self.path), '')), \
+                patch.object(self.window, 'open_project_path', return_value=True) as loader:
+            self.assertTrue(self.window.open_project())
+        loader.assert_called_once_with(str(self.path))
+
+    def test_path_loader_restores_project_title_path_and_clean_state(self):
+        state = snapshot(self.populated())
+        write_project(self.path, state)
+        window = MainWindow()
+        self.windows.append(window)
+        self.assertTrue(window.open_project_path(self.path))
+        self.app.processEvents()
+        self.assertEqual(window.project_path, self.path)
+        self.assertEqual(window.windowTitle(), f'{self.path.name} — Physalix')
+        self.assertEqual(window.document_signature(), window._saved_state)
+        self.assertEqual(window.data_tab.model.rows, self.window.data_tab.model.rows)
+
+    def test_path_loader_reports_invalid_project_without_replacing_current_work(self):
+        self.window.data_tab.model.setData(self.window.data_tab.model.index(2, 0), '42')
+        signature = self.window.document_signature()
+        self.path.write_text('not a Physalix project', encoding='utf-8')
+        with patch.object(QMessageBox, 'critical') as error:
+            self.assertFalse(self.window.open_project_path(self.path))
+        error.assert_called_once()
+        self.assertIsNone(self.window.project_path)
+        self.assertEqual(self.window.document_signature(), signature)
 
     def test_normalized_destination_does_not_overwrite_without_confirmation(self):
         self.path.write_bytes(b'keep me')
