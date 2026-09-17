@@ -1,5 +1,5 @@
 """Graphiques indépendants en onglets, comparaison ou fenêtres libres."""
-from PySide6.QtCore import Qt, Signal, QRect
+from PySide6.QtCore import Qt, Signal, QRect, QSize
 from PySide6.QtWidgets import (QComboBox, QHBoxLayout, QInputDialog, QLabel, QMdiArea,
                                QMdiSubWindow, QPushButton, QStackedWidget, QTabBar, QVBoxLayout, QWidget)
 from physalix.ui.components import compact_width, panel, role
@@ -42,7 +42,12 @@ class GraphWorkspace(QWidget):
         self.model, self.windows, self.number = model, [], 0
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(LIGHT.small)
         management, bar = panel(kind="toolbar", horizontal=True)
+        management.setObjectName("graphManagementBar")
+        management.setMaximumHeight(42)
+        bar.setContentsMargins(LIGHT.section, LIGHT.small, LIGHT.section, LIGHT.small)
+        bar.setSpacing(LIGHT.related)
         self.add_button = compact_width(QPushButton('Nouveau graphique'), LIGHT.action_compact)
         self.add_button.clicked.connect(self.add_graph)
         bar.addWidget(self.add_button, 0, Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
@@ -123,7 +128,11 @@ class GraphWorkspace(QWidget):
         self.area.setTabsClosable(len(self.windows) > 1)
         tab_bar = self.area.findChild(QTabBar)
         if tab_bar is not None:
+            tab_bar.setObjectName("graphTabs")
             tab_bar.setExpanding(False)
+            tab_bar.setUsesScrollButtons(True)
+            tab_bar.setIconSize(QSize(18, 18))
+            tab_bar.setFixedHeight(42)
         for window in self.windows:
             window.graph.set_compact(mode != 0)
             if mode != 0:

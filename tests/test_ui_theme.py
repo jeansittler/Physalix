@@ -5,7 +5,9 @@ import unittest
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 from PySide6.QtCore import Qt
 from PySide6.QtTest import QTest
-from PySide6.QtWidgets import QApplication, QBoxLayout, QFrame, QPushButton, QScrollArea
+from PySide6.QtWidgets import (
+    QApplication, QBoxLayout, QFrame, QPushButton, QScrollArea, QSizePolicy, QTabBar,
+)
 from physalix.ui.components import ResponsiveCards
 from physalix.ui.main_window import MainWindow
 from physalix.ui.theme import LIGHT, apply_theme, stylesheet
@@ -112,6 +114,39 @@ class ThemeLayoutTests(unittest.TestCase):
             self.window.tabs.setCurrentWidget(self.window.graph_tab)
             QTest.qWait(20)
             self.assertGreaterEqual(self.window.graph_tab.plot.height(), 220)
+
+    def test_graph_workspace_prioritizes_plot_height(self):
+        workspace = self.window.graph_tab
+        self.window.tabs.setCurrentWidget(workspace)
+        management = workspace.layout().itemAt(0).widget()
+        for width, height, minimum_plot_height in (
+                (1366, 768, 350), (1600, 900, 480), (1920, 1080, 650)):
+            with self.subTest(size=(width, height)):
+                self.window.resize(width, height)
+                QTest.qWait(20)
+                graph_tabs = workspace.area.findChild(QTabBar, "graphTabs")
+                self.assertIsNotNone(graph_tabs)
+                self.assertLessEqual(management.height(), 42)
+                self.assertLessEqual(graph_tabs.height(), 44)
+                self.assertGreaterEqual(workspace.plot.height(), minimum_plot_height)
+                self.assertEqual(workspace.plot.sizePolicy().verticalPolicy(),
+                                 QSizePolicy.Policy.Expanding)
+                scroll = workspace.active_graph.findChild(QScrollArea)
+                self.assertEqual(scroll.verticalScrollBar().maximum(), 0)
+
+    def test_hidden_graph_settings_leave_only_compact_restore_control(self):
+        graph = self.window.graph_tab.active_graph
+        self.window.tabs.setCurrentWidget(self.window.graph_tab)
+        self.window.resize(1366, 768)
+        QTest.qWait(20)
+        visible_height = graph.plot.height()
+        graph.settings_button.setChecked(False)
+        QTest.qWait(20)
+        self.assertFalse(graph.series_label.isVisible())
+        self.assertFalse(graph.series_choice.isVisible())
+        self.assertFalse(graph.series_stack.isVisible())
+        self.assertTrue(graph.settings_button.isVisible())
+        self.assertGreater(graph.plot.height(), visible_height)
 
     def test_all_tabs_fit_reference_resolutions(self):
         for width, height in ((1280, 800), (1920, 1080)):

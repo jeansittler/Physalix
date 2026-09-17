@@ -92,6 +92,14 @@ def stylesheet(t=LIGHT):
     QTabWidget#mainNavigation QTabBar::tab:hover {{ background: {t.navy_hover}; color: white; }}
     QTabWidget#mainNavigation QTabBar::tab:selected {{ background: {t.primary}; color: white; }}
     QTabWidget#mainNavigation QTabBar::tab:focus {{ border: 2px solid white; padding: 9px 15px; }}
+    QTabBar#graphTabs {{ background: {t.navy}; }}
+    QTabBar#graphTabs::tab {{ background: transparent; color: {t.nav_text}; border: 0;
+        border-bottom: 3px solid transparent; padding: 6px 12px; margin: 3px 2px; font-weight: 600; }}
+    QTabBar#graphTabs::tab:hover {{ background: {t.navy_hover}; color: white; }}
+    QTabBar#graphTabs::tab:selected {{ background: {t.navy_hover}; color: white;
+        border-bottom-color: {t.primary}; }}
+    QTabBar#graphTabs::tab:focus {{ border: 1px solid white; border-bottom: 3px solid {t.primary};
+        padding: 5px 11px; }}
     QWidget[role="brand"] {{ background: {t.surface}; border-right: 3px solid {t.primary}; }}
     QLabel[role="brandTitle"] {{ font-size: {t.title_px}px; font-weight: 700; }}
     QLabel[role="pageTitle"] {{ color: {t.navy}; font-size: {t.title_px}px; font-weight: 700; }}

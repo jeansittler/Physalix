@@ -6,7 +6,7 @@ from html import escape
 import numpy as np
 from math import isfinite
 
-from PySide6.QtCore import QEvent, QTimer, Qt, Signal
+from PySide6.QtCore import QEvent, QSize, QTimer, Qt, Signal
 from PySide6.QtGui import QAction, QActionGroup
 from PySide6.QtWidgets import (
     QComboBox, QHBoxLayout, QLabel, QMenu, QPushButton, QStackedWidget, QVBoxLayout, QWidget, QSizePolicy,
@@ -63,6 +63,10 @@ class InteractivePlot(pg.PlotWidget):
         self.menu_requested.emit(event.globalPos())
         event.accept()
 
+    def sizeHint(self):
+        """Ne pas laisser le canevas imposer 480 px à la page qui le contient."""
+        return QSize(640, 320)
+
 
 class GraphTab(QWidget):
     """Superposer des séries indépendantes dans un repère commun."""
@@ -78,8 +82,12 @@ class GraphTab(QWidget):
         self._next_number = 1
         layout = workspace_layout(self, 760, 520)
         self.content = layout.parentWidget()
+        self.content.setMinimumSize(760, 430)
         self.workspace_layout = layout
+        layout.setContentsMargins(LIGHT.section, LIGHT.related, LIGHT.section, LIGHT.related)
+        layout.setSpacing(LIGHT.related)
         toolbar = QHBoxLayout()
+        toolbar.setSpacing(LIGHT.related)
         add = role(QPushButton("Ajouter une série"), "primary")
         add.setIcon(icon("add"))
         add.clicked.connect(lambda: self.add_series())
@@ -106,21 +114,23 @@ class GraphTab(QWidget):
         self.interval_tools.hide()
         layout.addWidget(self.interval_tools)
         series_row = QHBoxLayout()
-        series_label = role(QLabel("Série active"), "toolbarLabel")
+        series_row.setSpacing(LIGHT.related)
+        self.series_label = role(QLabel("Série active"), "toolbarLabel")
         self.series_choice = QComboBox()
         self.series_choice.setAccessibleName("Série à régler")
         self.series_choice.setMinimumContentsLength(18)
         self.series_choice.setMaximumWidth(LIGHT.field_wide)
         self.series_choice.setSizeAdjustPolicy(QComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon)
         self.series_choice.setMaxVisibleItems(10)
-        series_label.setBuddy(self.series_choice)
+        self.series_label.setBuddy(self.series_choice)
         self.series_choice.setToolTip("Choisir les réglages d'une série sans masquer les autres courbes")
         self.settings_button = QPushButton("Masquer les réglages")
         self.settings_button.setCheckable(True)
         self.settings_button.setChecked(True)
         self.settings_button.toggled.connect(self.toggle_series_settings)
-        series_row.addWidget(series_label)
+        series_row.addWidget(self.series_label)
         series_row.addWidget(self.series_choice, 1)
+        series_row.addStretch()
         series_row.addWidget(self.settings_button)
         self.series_stack = QStackedWidget()
         self.series_stack.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
@@ -137,8 +147,8 @@ class GraphTab(QWidget):
         self.plot.getViewBox().sigResized.connect(self.resize_right_view)
         self.plot.hideAxis('right')
         self.plot.setMinimumSize(200, 220)
-        self.plot.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Ignored)
-        self.plot.getPlotItem().layout.setContentsMargins(8, 40, 20, 8)
+        self.plot.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+        self.plot.getPlotItem().layout.setContentsMargins(8, 8, 20, 6)
         self.plot.setMenuEnabled(False)
         self.plot.hideButtons()
         self.plot.showGrid(x=True, y=True, alpha=0.10)
@@ -162,6 +172,9 @@ class GraphTab(QWidget):
             line.hide()
         plot_panel, plot_layout = make_panel()
         self.plot_panel = plot_panel
+        self.plot_panel.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+        plot_layout.setContentsMargins(LIGHT.related, LIGHT.small, LIGHT.related, LIGHT.small)
+        plot_layout.setSpacing(0)
         self.fit_view_button = QPushButton("Ajuster la vue")
         self.fit_view_button.clicked.connect(self.fit_points)
         self.fit_view_button.setToolTip("Recadrer le tracé sur toutes les séries visibles")
@@ -183,7 +196,6 @@ class GraphTab(QWidget):
         self.coordinates.setWordWrap(False)
         self.coordinates.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
         messages = QHBoxLayout()
-        messages.addWidget(self.fit_view_button)
         messages.addWidget(self.coordinates, 1)
         self.status = QLabel()
         self.status.setWordWrap(False)
@@ -196,6 +208,7 @@ class GraphTab(QWidget):
         tools = QPushButton("Outils du graphique")
         tools.setMenu(self.context_menu)
         toolbar.insertWidget(2, tools)
+        toolbar.insertWidget(3, self.fit_view_button)
         for message in (self.coordinates, self.status, hint):
             role(message, "muted")
         self.plot.menu_requested.connect(self.show_context_menu)
@@ -220,7 +233,10 @@ class GraphTab(QWidget):
         self.resize_right_view()
 
     def resize_right_view(self):
-        self.right_view.setGeometry(self.plot.getViewBox().sceneBoundingRect())
+        bounds = self.plot.getViewBox().sceneBoundingRect()
+        # ViewBox ajoute un demi-pixel à son contour : le retirer garde les
+        # géométries gauche/droite identiques et donc les abscisses alignées.
+        self.right_view.setGeometry(bounds.adjusted(0, 0, -0.5, -0.5))
         self.right_view.linkedViewChanged(self.plot.getViewBox(), self.right_view.XAxis)
 
     def view_for_series(self, series):
@@ -270,7 +286,7 @@ class GraphTab(QWidget):
                 widget.show()
             self._compact_hidden.clear()
             self.compact_button.hide()
-            self.content.setMinimumSize(760, 520)
+            self.content.setMinimumSize(760, 430)
             self.plot.setMinimumSize(200, 220)
 
     def columns_removed(self, parent, first, last):
@@ -313,6 +329,8 @@ class GraphTab(QWidget):
         return f"{name} ({unit})" if unit and unit != "Sans unité" else name
 
     def toggle_series_settings(self, visible):
+        self.series_label.setVisible(visible)
+        self.series_choice.setVisible(visible)
         self.series_stack.setVisible(visible)
         self.settings_button.setText("Masquer les réglages" if visible else "Afficher les réglages")
 
