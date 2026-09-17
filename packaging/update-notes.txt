@@ -1,1 +1,5 @@
-Nouvelle interface graphique et ouverture directe des projets .physalix depuis Windows.
+Physalix 1.2.2
+
+- amélioration de l’utilisation verticale de l’onglet Graphique ;
+- barres de gestion, d’onglets et d’actions plus compactes ;
+- surface de tracé agrandie, notamment sur les écrans de PC portables.
