@@ -36,6 +36,7 @@ WizardStyle=modern
 CloseApplications=yes
 RestartApplications=no
 SetupLogging=yes
+ChangesAssociations=yes
 
 [Languages]
 Name: "french"; MessagesFile: "compiler:Languages\French.isl"
@@ -49,6 +50,12 @@ Source: "{#SourceDir}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs 
 [Icons]
 Name: "{autoprograms}\Physalix"; Filename: "{app}\Physalix.exe"; WorkingDir: "{userdocs}"; AppUserModelID: "Physalix.Physalix"
 Name: "{autodesktop}\Physalix"; Filename: "{app}\Physalix.exe"; WorkingDir: "{userdocs}"; Tasks: desktopicon; AppUserModelID: "Physalix.Physalix"
+
+[Registry]
+Root: HKCR; Subkey: ".physalix"; ValueType: string; ValueName: ""; ValueData: "Physalix.Project"; Flags: uninsdeletevalue
+Root: HKCR; Subkey: "Physalix.Project"; ValueType: string; ValueName: ""; ValueData: "Projet Physalix"; Flags: uninsdeletekey
+Root: HKCR; Subkey: "Physalix.Project\DefaultIcon"; ValueType: string; ValueName: ""; ValueData: "{app}\Physalix.exe,0"
+Root: HKCR; Subkey: "Physalix.Project\shell\open\command"; ValueType: string; ValueName: ""; ValueData: """{app}\Physalix.exe"" ""%1"""
 
 [Run]
 Filename: "{app}\Physalix.exe"; Description: "Lancer Physalix"; WorkingDir: "{userdocs}"; Flags: nowait postinstall skipifsilent

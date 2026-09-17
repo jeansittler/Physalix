@@ -2,7 +2,7 @@ param([Parameter(Mandatory=$true)][string]$Executable)
 $ErrorActionPreference = 'Stop'
 $Executable = (Resolve-Path -LiteralPath $Executable).Path
 $productVersion = (Get-Item -LiteralPath $Executable).VersionInfo.ProductVersion
-$expectedTitle = if ($productVersion -like '*-dev') { "Physalix — $productVersion" } else { 'Physalix' }
+$expectedTitle = if ($productVersion -like '*-dev') { "Physalix $([char]0x2014) $productVersion" } else { 'Physalix' }
 $root = Split-Path -Parent $PSScriptRoot
 $savedEnvironment = @{}
 Get-ChildItem Env: | Where-Object { $_.Name -match '^(PATH$|PYTHON|QT_|PYSIDE|VIRTUAL_ENV|CONDA)' } |

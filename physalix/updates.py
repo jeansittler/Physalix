@@ -18,8 +18,8 @@ from urllib.request import HTTPRedirectHandler, Request, build_opener
 
 from physalix import __development__, __version__, __version_info__
 
-# Legacy public binary distribution endpoint used by Physalix 1.1.3.
-DISTRIBUTION_REPOSITORY_URL = "https://github.com/jeansittler/Physalix-releases"
+# Source and binary distribution endpoint used by Physalix 1.2.0 and later.
+DISTRIBUTION_REPOSITORY_URL = "https://github.com/jeansittler/Physalix"
 MANIFEST_URL = DISTRIBUTION_REPOSITORY_URL + "/releases/latest/download/update.json"
 TIMEOUT = 10
 CHECK_INTERVAL = 24 * 60 * 60

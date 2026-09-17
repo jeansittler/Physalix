@@ -1,4 +1,4 @@
-# Composants tiers de Physalix 1.1.3
+# Composants tiers de Physalix 1.2.0
 
 Physalix est distribué sous **GPL-3.0-only**. Les composants tiers restent
 soumis à leurs propres licences. L'inventaire machine lisible, les versions,

@@ -5,7 +5,7 @@ l’analyse et la visualisation de données expérimentales en physique-chimie,
 notamment dans l’enseignement secondaire. Le projet privilégie une interface
 simple, des fichiers de travail échangeables et des calculs reproductibles.
 
-La version actuelle est **Physalix 1.1.3**. Son code source est publié sous
+La version actuelle est **Physalix 1.2.0**. Son code source est publié sous
 licence **GNU GPL-3.0-only**. Les exécutables publiés actuellement ne sont pas
 encore signés numériquement ; la signature numérique des futures versions est
 en cours de préparation.
@@ -395,10 +395,10 @@ opérateurs à la position du curseur.
 
 ### Installer la version Windows
 
-Les installateurs publics existants sont disponibles dans
-[Physalix-releases](https://github.com/jeansittler/Physalix-releases/releases).
-Ce dépôt de distribution historique reste utilisé par la version 1.1.3 pour les
-mises à jour. Les téléchargements ne sont pas encore signés numériquement.
+Les installateurs publics sont disponibles dans les
+[Releases du dépôt principal](https://github.com/jeansittler/Physalix/releases).
+Depuis la version 1.2.0, ce dépôt fournit également le manifeste de mise à jour.
+Les téléchargements ne sont pas encore signés numériquement.
 
 ### Lancer depuis les sources
 

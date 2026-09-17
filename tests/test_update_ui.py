@@ -50,17 +50,10 @@ class UpdateUiTests(unittest.TestCase):
             c.finish("check", None, TimeoutError())
             self.assertEqual(info.call_count, 2)
 
-    def test_development_build_never_starts_or_checks(self):
+    def test_stable_build_schedules_automatic_check(self):
         with patch.object(self.controller.timer, "start") as start:
             self.controller.start()
-        start.assert_not_called()
-        with patch.object(self.controller, "run_job") as job, patch(
-            "physalix.ui.updates.QMessageBox.information"
-        ) as info:
-            self.controller.check()
-            self.controller.manual_check()
-        job.assert_not_called()
-        self.assertIn("développement", info.call_args.args[2])
+        start.assert_called_once_with(2500)
 
     def test_network_runs_off_gui_thread_and_manual_bypasses_cache(self):
         release = threading.Event()

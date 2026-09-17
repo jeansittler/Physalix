@@ -12,7 +12,7 @@ from physalix import updates as u
 
 
 def manifest_data(**changes):
-    data = dict(version="1.1.1", installer_url="https://github.com/jeansittler/Physalix-releases/releases/download/v1.1.1/Physalix-Setup-1.1.1.exe",
+    data = dict(version="1.2.1", installer_url="https://github.com/jeansittler/Physalix/releases/download/v1.2.1/Physalix-Setup-1.2.1.exe",
                 sha256=hashlib.sha256(b"installer").hexdigest(), notes="Corrections", mandatory=False)
     data.update(changes)
     return data
@@ -29,9 +29,9 @@ class Response(io.BytesIO):
 
 
 class UpdateTests(unittest.TestCase):
-    def test_public_distribution_endpoint(self):
+    def test_main_repository_distribution_endpoint(self):
         self.assertEqual(u.MANIFEST_URL,
-                         "https://github.com/jeansittler/Physalix-releases/releases/latest/download/update.json")
+                         "https://github.com/jeansittler/Physalix/releases/latest/download/update.json")
 
     def test_versions(self):
         for local, remote, expected in [("1.1.0", "1.1.0", False), ("1.1.0", "1.1.1", True),
@@ -71,17 +71,14 @@ class UpdateTests(unittest.TestCase):
 
     def test_fetch(self):
         with patch.object(u, "updates_enabled", return_value=True), patch.object(u, "open_url", return_value=Response(json.dumps(manifest_data()).encode())) as request:
-            self.assertEqual(u.fetch_manifest().version, "1.1.1")
+            self.assertEqual(u.fetch_manifest().version, "1.2.1")
             self.assertEqual(request.call_args.args[0], u.MANIFEST_URL)
 
-    def test_development_build_disables_release_checks(self):
-        self.assertFalse(u.updates_enabled())
+    def test_stable_build_enables_release_checks(self):
+        self.assertTrue(u.updates_enabled())
         self.assertFalse(u.is_newer("1.1.3"))
         self.assertFalse(u.is_newer("1.2.0"))
         self.assertTrue(u.is_newer("1.2.1"))
-        with patch.object(u, "open_url") as request, self.assertRaises(u.UpdateError):
-            u.fetch_manifest()
-        request.assert_not_called()
 
     def test_transport_timeout_and_redirect_security(self):
         with patch.object(u, "build_opener") as opener:
@@ -127,7 +124,7 @@ class UpdateTests(unittest.TestCase):
             with patch.object(u.tempfile, "mkdtemp", return_value=str(target)), patch.object(u, "open_url", return_value=Response(content, {"Content-Length": str(len(content))})):
                 progress = Mock()
                 result = u.download_installer(manifest(sha256=hashlib.sha256(content).hexdigest()), progress)
-                self.assertEqual(result.name, "Physalix-Setup-1.1.1.exe")
+                self.assertEqual(result.name, "Physalix-Setup-1.2.1.exe")
                 self.assertEqual(u.sha256_file(result), hashlib.sha256(content).hexdigest())
                 self.assertGreater(progress.call_count, 1)
                 progress.assert_called_with(len(content), len(content))
@@ -238,6 +235,15 @@ class ReleaseTests(unittest.TestCase):
                      "DefaultDirName={autopf}\\Physalix", "AppVersion={#AppVersion}"):
             self.assertIn(line, iss)
 
+    def test_physalix_file_association(self):
+        root = Path(__file__).resolve().parents[1]
+        iss = (root / "packaging/installer/Physalix.iss").read_text(encoding="utf-8")
+        self.assertIn('ChangesAssociations=yes', iss)
+        self.assertIn('Subkey: ".physalix"', iss)
+        self.assertIn('ValueData: "Physalix.Project"', iss)
+        self.assertIn('Subkey: "Physalix.Project\\shell\\open\\command"', iss)
+        self.assertIn('ValueData: """{app}\\Physalix.exe"" ""%1"""', iss)
+
     def test_manifest_generation(self):
         from scripts import prepare_release
         from physalix import __base_version__
@@ -257,7 +263,7 @@ class ReleaseTests(unittest.TestCase):
                 fixed.FileVersionLS = patch_version << 16
                 result = json.loads(prepare_release.prepare(path, "Notes é").read_text(encoding="utf-8"))
                 self.assertEqual(result["sha256"], hashlib.sha256(content).hexdigest())
-                self.assertEqual(result["installer_url"], f"https://github.com/jeansittler/Physalix-releases/releases/download/v{__base_version__}/Physalix-Setup-{__base_version__}.exe")
+                self.assertEqual(result["installer_url"], f"https://github.com/jeansittler/Physalix/releases/download/v{__base_version__}/Physalix-Setup-{__base_version__}.exe")
                 fixed.FileVersionMS = 0
                 with self.assertRaises(ValueError):
                     prepare_release.prepare(path, "Notes")

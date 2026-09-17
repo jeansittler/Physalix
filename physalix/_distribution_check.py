@@ -37,7 +37,7 @@ def run(report_path):
         app.setWindowIcon(application_icon())
         apply_theme(app)
         assert manifest_url() == MANIFEST_URL  # Frozen builds ignore development overrides.
-        assert not updates_enabled()
+        assert updates_enabled()
         assert is_newer("1.10.0", "1.9.9")
         Manifest.parse(json.dumps(dict(version="1.2.0", installer_url="https://github.com/installer.exe",
                                        sha256="a" * 64, notes="Diagnostic", mandatory=False)))

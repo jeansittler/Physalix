@@ -1,6 +1,6 @@
 # Confidentialité
 
-Physalix est une application de bureau. L’audit du code de la version 1.1.3 n’a
+Physalix est une application de bureau. L’audit du code de la version 1.2.0 n’a
 identifié ni télémétrie, ni publicité, ni compte utilisateur, ni envoi volontaire
 des projets, tableaux, vidéos ou résultats de calcul.
 

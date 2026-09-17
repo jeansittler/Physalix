@@ -1,36 +1,18 @@
 # Préparer et publier une version de Physalix
 
-> **Situation de transition.** La version 1.1.3 interroge encore
-> `jeansittler/Physalix-releases`. Les URL et le générateur de manifeste ne doivent
-> pas être modifiés avant la préparation coordonnée de la 1.1.4 décrite ci-dessous.
-> Les commandes de publication historiques de ce document ne sont pas à exécuter
-> pendant l’audit open source.
+> **Depuis Physalix 1.2.0**, le code source, les installateurs et le manifeste
+> `update.json` sont publiés dans `jeansittler/Physalix`. L’application consulte
+> `https://github.com/jeansittler/Physalix/releases/latest/download/update.json`.
+> Le dépôt historique `Physalix-releases` ne fait plus partie de la chaîne de
+> publication des versions 1.2.x.
 
-## Transition prévue après la publication du code source
+## Préparation 1.2.0
 
-Cette transition n’est **pas implémentée** dans la version 1.1.3.
-
-1. Préparer Physalix 1.1.4 avec le même `AppId` Inno et publier dans
-   `Physalix-releases` un `update.json` dont l’URL d’installateur pointe vers
-   l’asset 1.1.4 de ce dépôt historique. Ainsi, les installations 1.1.3 trouvent
-   toujours leur mise à jour.
-2. Dans le code embarqué par la 1.1.4, remplacer l’URL de consultation du manifeste
-   par `https://github.com/jeansittler/Physalix/releases/latest/download/update.json`.
-   Le générateur devra distinguer l’emplacement interrogé par l’application de
-   l’emplacement de l’installateur de transition ; aujourd’hui les deux découlent
-   de la même constante.
-3. Laisser la release 1.1.4 comme dernière release stable de
-   `Physalix-releases`. Ne pas supprimer ni remplacer ses assets : les versions
-   1.1.3 continueront ainsi à pouvoir migrer.
-4. À partir de 1.1.5, publier l’installateur et `update.json` dans les Releases du
-   dépôt principal. Une installation 1.1.4 consultera alors ce nouveau manifeste.
-5. Tester réellement 1.1.3 → 1.1.4 puis 1.1.4 → 1.1.5, y compris avec un compte
-   Windows standard, un chemin personnalisé, un projet non enregistré, hors ligne
-   et avec un téléchargement interrompu.
-
-Les changements futurs concerneront au minimum `physalix/updates.py`,
-`scripts/prepare_release.py`, `tests/test_updates.py`, ce document et les notes de
-release. Ils ne doivent pas modifier `packaging/installer/Physalix.iss::AppId`.
+- Version stable exacte : `1.2.0`, sans canal de développement.
+- Build non signé accepté ; aucune tentative de contournement SmartScreen.
+- AppId Inno conservé et association `.physalix` installée au niveau machine.
+- `Physalix-Setup-1.2.0.exe`, son SHA-256 et `update.json` doivent être joints à
+  la Release `v1.2.0` du dépôt principal.
 
 ## Préparation 1.1.3
 
@@ -76,7 +58,8 @@ La source de vérité reste **`physalix/_version.py`**. Elle alimente Qt, À pro
 le protocole de mise à jour, les métadonnées PE et, via le build, Inno Setup.
 La version du format des projets est indépendante et reste inchangée.
 
-`packaging/installer/Physalix.iss` est conservé intégralement depuis `v1.0.0` :
+`packaging/installer/Physalix.iss` conserve les paramètres d’installation de
+`v1.0.0` et ajoute l’association `.physalix` :
 
 - AppId : `{807A4F23-674E-4CD3-9B57-D66B7B819B72}` ; ne jamais le remplacer.
 - `DefaultDirName={autopf}\Physalix`, `PrivilegesRequired=admin`.
@@ -101,9 +84,9 @@ thread Python effectue le réseau et les écritures locales ; seuls les signaux 
 mettent à jour l'interface. Les fenêtres de préparation d'un projet et les tests
 ne démarrent pas la recherche automatique.
 
-URL de production, centralisée dans `physalix/updates.py` :
+URL de production depuis la version 1.2.0, centralisée dans `physalix/updates.py` :
 
-`https://github.com/jeansittler/Physalix-releases/releases/latest/download/update.json`
+`https://github.com/jeansittler/Physalix/releases/latest/download/update.json`
 
 Aucun appel à l'API REST GitHub, aucun token. HTTPS est requis, y compris sur
 les redirections. Les redirections GitHub vers son stockage d'assets sont permises.
@@ -188,13 +171,12 @@ Références : [chargeur et UAC Inno](https://jrsoftware.org/is6help/topic_secur
   jour. Aucune publication et aucun push dans cette préparation.
 
 Prérequis et environnement verrouillé : [BUILD_WINDOWS.md](BUILD_WINDOWS.md).
-Depuis la racine, modifier uniquement la version dans `physalix/_version.py`
-et mettre à jour les notes courtes dans `packaging/update-notes.txt`.
-Exemple pour la prochaine version :
+Depuis la racine, modifier uniquement la version et le canal dans
+`physalix/_version.py`, puis mettre à jour les notes courtes dans
+`packaging/update-notes.txt`. Exemple de build :
 
 ```powershell
 Set-Location C:\Physalix
-Set-Content -LiteralPath physalix\_version.py -Value '__version__ = "1.1.1"' -Encoding ascii
 .\.venv\Scripts\python.exe -m unittest discover -s tests -v
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\build_release.ps1
 ```
@@ -206,12 +188,12 @@ La génération vérifie aussi la version PE de l'installateur pour refuser un a
 EXE simplement renommé. Elle utilise `pefile`, déjà dans l'environnement de build.
 Aucune nouvelle dépendance d'application ou de build.
 
-Résultat pour la version de l'exemple :
+Résultat pour la version 1.2.0 :
 
-- `artifacts/Physalix-Setup-1.1.1.exe` ;
-- `artifacts/Physalix-Setup-1.1.1.exe.sha256` ;
+- `artifacts/Physalix-Setup-1.2.0.exe` ;
+- `artifacts/Physalix-Setup-1.2.0.exe.sha256` ;
 - `artifacts/update.json` avec l'URL exacte
-  `https://github.com/jeansittler/Physalix-releases/releases/download/v1.1.1/Physalix-Setup-1.1.1.exe`.
+  `https://github.com/jeansittler/Physalix/releases/download/v1.2.0/Physalix-Setup-1.2.0.exe`.
 
 Pour régénérer uniquement le manifeste après modification des notes ou signature
 externe **définitive** de l'installateur :
@@ -234,25 +216,18 @@ git diff
 git status --short
 # Sélectionner explicitement les fichiers modifiés du logiciel et de ses tests :
 git add physalix scripts tests packaging README.md BUILD_WINDOWS.md RELEASE.md
-git commit -m "Prepare Physalix 1.1.1"
-git tag -a v1.1.1 -m "Physalix 1.1.1"
-# Sauvegarde du code et du tag dans le dépôt PRIVÉ, lorsque vous le décidez :
+git commit -m "Prepare Physalix 1.2.0"
+git tag -a v1.2.0 -m "Physalix 1.2.0"
+# Sauvegarde du code et du tag dans le dépôt principal, lorsque vous le décidez :
 git push origin HEAD
-git push origin v1.1.1
+git push origin v1.2.0
 ```
 
-Dans le dépôt PUBLIC **jeansittler/Physalix-releases**, ouvrir GitHub → Releases →
-Draft a new release et créer/sélectionner le tag `v1.1.1` sur sa propre branche
-de distribution. Ce tag public est indépendant du tag du dépôt source privé :
-ne pas pousser l'historique source vers le dépôt public. Ajouter
-les notes, joindre **l'installateur et `update.json`** (ainsi que `.sha256` si souhaité),
-puis publier comme version stable/latest, sans cocher pre-release. L'URL `latest`
-doit alors servir ce manifeste. Aucun script ne committe, ne tague ou ne publie.
-Ne pas publier le manifeste des prochaines mises à jour dans le dépôt privé :
-les installations de Physalix accèdent aux assets publics sans authentification.
-Ne jamais déplacer `v1.0.0` ni remplacer les assets de sa Release finalisée.
-Pour la préparation actuelle, employer le numéro présent dans `_version.py` dans
-le message de commit, le tag et la Release plutôt que celui de cet exemple futur.
+Dans **jeansittler/Physalix**, ouvrir GitHub → Releases → Draft a new release et
+sélectionner le tag `v1.2.0`. Ajouter les notes, joindre **l'installateur et
+`update.json`** (ainsi que `.sha256` si souhaité), puis publier comme version
+stable/latest, sans cocher pre-release. L'URL `latest` doit alors servir ce
+manifeste. Aucun script ne committe, ne tague ou ne publie.
 
 **Les installations 1.0.0 n'ont pas d'updater** : leur première migration vers
 la version actuelle nécessite le téléchargement et le lancement manuels de
