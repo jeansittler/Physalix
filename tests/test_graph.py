@@ -5,13 +5,14 @@ import unittest
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from PySide6.QtCore import QEvent, QPointF
+from PySide6.QtCore import QEvent, QPointF, Qt
 from PySide6.QtGui import QColor, QContextMenuEvent
 from PySide6.QtTest import QTest
-from PySide6.QtWidgets import QApplication
+from PySide6.QtWidgets import QApplication, QLabel
 
 from physalix.ui.main_window import MainWindow
 from physalix.ui.graph_tab import paired_values
+from physalix.ui.theme import LIGHT
 
 
 class GraphTests(unittest.TestCase):
@@ -117,6 +118,38 @@ class GraphTests(unittest.TestCase):
         self.graph.series[0].y_choice.setCurrentIndex(4)
         xs, ys = self.graph.series[0].points.getData()
         self.assertEqual((list(xs), list(ys)), ([7.2], [10.0]))
+
+    def test_axis_choices_stay_grouped_and_have_readable_popups(self):
+        series = self.graph.series[0]
+        for width, height in ((1280, 800), (1920, 1080)):
+            self.window.resize(width, height)
+            self.app.processEvents()
+            for name, combo, text in (
+                    ("x", series.x_choice, "Grandeur en abscisse (X)"),
+                    ("y", series.y_choice, "Grandeur en ordonnée (Y)")):
+                label = series.findChild(QLabel, f"{name}ChoiceLabel")
+                self.assertEqual(label.text(), text)
+                self.assertIs(label.buddy(), combo)
+                self.assertIs(label.parentWidget(), combo.parentWidget())
+                self.assertLessEqual(combo.x() - (label.x() + label.width()), LIGHT.related)
+                self.assertEqual(combo.maxVisibleItems(), 8)
+                self.assertGreaterEqual(combo.view().minimumWidth(), LIGHT.field_medium)
+                self.assertEqual(combo.view().verticalScrollBarPolicy(),
+                                 Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+                self.assertEqual(combo.view().verticalScrollMode(),
+                                 combo.view().ScrollMode.ScrollPerPixel)
+        for _ in range(10):
+            self.model.add_quantity()
+        self.app.processEvents()
+        series.x_choice.showPopup()
+        self.app.processEvents()
+        try:
+            view = series.x_choice.view()
+            self.assertGreaterEqual(view.height(), 4 * view.sizeHintForRow(0))
+            self.assertLessEqual(view.height(), 8 * view.sizeHintForRow(0) + 2 * view.frameWidth())
+            self.assertTrue(view.verticalScrollBar().isVisible())
+        finally:
+            series.x_choice.hidePopup()
 
     def test_connection_order_color_and_style_per_pair(self):
         self.model.rows = [["2", "4"], ["0", "1"], ["1", "3"]]

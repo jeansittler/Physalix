@@ -78,7 +78,8 @@ class UpdateTests(unittest.TestCase):
         self.assertTrue(u.updates_enabled())
         self.assertFalse(u.is_newer("1.1.3"))
         self.assertFalse(u.is_newer("1.2.0"))
-        self.assertTrue(u.is_newer("1.2.1"))
+        self.assertFalse(u.is_newer("1.2.1"))
+        self.assertTrue(u.is_newer("1.2.2"))
 
     def test_transport_timeout_and_redirect_security(self):
         with patch.object(u, "build_opener") as opener:

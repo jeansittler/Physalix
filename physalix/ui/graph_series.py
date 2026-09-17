@@ -3,7 +3,8 @@
 from PySide6.QtCore import Signal, Qt
 from PySide6.QtGui import QColor, QIcon, QPainterPath, QPixmap
 from PySide6.QtWidgets import (
-    QCheckBox, QColorDialog, QComboBox, QHBoxLayout, QLabel, QPushButton, QWidget,
+    QAbstractItemView, QCheckBox, QColorDialog, QComboBox, QHBoxLayout, QLabel,
+    QListView, QPushButton, QSizePolicy, QWidget,
 )
 import pyqtgraph as pg
 from physalix.ui.components import role
@@ -33,14 +34,33 @@ class GraphSeries(QWidget):
         self.visible.setToolTip("Afficher ou masquer cette série")
         row.addWidget(self.visible)
         self.x_choice, self.y_choice = QComboBox(), QComboBox()
-        for label, combo in (("X", self.x_choice), ("Y", self.y_choice)):
+        for name, label, combo in (("x", "Grandeur en abscisse (X)", self.x_choice),
+                                   ("y", "Grandeur en ordonnée (Y)", self.y_choice)):
+            group = QWidget()
+            group.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Fixed)
+            fields = QHBoxLayout(group)
+            fields.setContentsMargins(0, 0, 0, 0)
+            fields.setSpacing(LIGHT.related)
             caption = QLabel(label)
+            caption.setObjectName(f"{name}ChoiceLabel")
+            caption.setSizePolicy(QSizePolicy.Policy.Maximum, QSizePolicy.Policy.Fixed)
+            caption.setMaximumWidth(caption.sizeHint().width())
             caption.setBuddy(combo)
-            row.addWidget(caption)
-            row.addWidget(combo, 1)
+            fields.addWidget(caption)
+            fields.addWidget(combo, 1)
+            row.addWidget(group, 1)
+            combo.setMinimumWidth(180)
             combo.setMaximumWidth(LIGHT.field_medium)
             combo.setMinimumContentsLength(8)
             combo.setSizeAdjustPolicy(QComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon)
+            combo.setMaxVisibleItems(8)
+            view = QListView(combo)
+            combo.setView(view)
+            view.setMinimumWidth(LIGHT.field_medium)
+            view.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+            view.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+            view.setVerticalScrollMode(QAbstractItemView.ScrollMode.ScrollPerPixel)
+            view.setUniformItemSizes(True)
             combo.currentIndexChanged.connect(self.changed)
         self.connect_points = QCheckBox("Relier")
         self.connect_points.setToolTip("Relier les points dans l’ordre du tableau")
@@ -77,6 +97,10 @@ class GraphSeries(QWidget):
             combo.clear()
             for column in range(model.columnCount()):
                 combo.addItem(f"{column + 1} — {axis_label(column)}", column)
+            row_height = combo.view().sizeHintForRow(0)
+            if row_height > 0:
+                visible_rows = min(combo.count(), combo.maxVisibleItems())
+                combo.view().setMaximumHeight(visible_rows * row_height + 2 * combo.view().frameWidth())
             combo.setCurrentIndex(min(default if selected is None else selected, combo.count() - 1))
             combo.blockSignals(False)
 
