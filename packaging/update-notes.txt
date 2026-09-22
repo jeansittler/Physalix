@@ -1,5 +1,7 @@
-Physalix 1.2.2
+Physalix 1.2.3
 
-- amélioration de l’utilisation verticale de l’onglet Graphique ;
-- barres de gestion, d’onglets et d’actions plus compactes ;
-- surface de tracé agrandie, notamment sur les écrans de PC portables.
+- amélioration importante de l'ergonomie du Graphique et du Pointage vidéo ;
+- réticule enrichi, origine et axes plus lisibles et navigation du graphique améliorée ;
+- modélisations plus claires, avec prolongement des courbes et résultats mieux présentés ;
+- saisie dans le tableur et barres de défilement améliorées ;
+- ajout des informations sur l'auteur dans À propos.
