@@ -155,7 +155,7 @@ class ModelingTab(QWidget):
         self.extend_check.toggled.connect(self.extension_changed)
         self.fit_button.clicked.connect(self.calculate)
         self.remove_button.clicked.connect(self.remove_fit)
-        self.show_graph_button.clicked.connect(self.graph_requested)
+        self.show_graph_button.clicked.connect(self.show_graph)
         self.select_button.clicked.connect(self.select_interval)
         graph.calculate_interval_button.clicked.connect(self.calculate)
         graph.hide_interval_button.clicked.connect(lambda: graph.set_interval_editing(False))
@@ -362,8 +362,14 @@ class ModelingTab(QWidget):
         x, y = item.key()
         self.result_text.setHtml(report_html(
             result,
-            f"Modélisation {fit.number} · S{item.number} — {self.graph.axis_label(y)} en fonction de {self.graph.axis_label(x)}",
-            self.graph.axis_label(x), self.graph.model.names[y], self.graph.model.units[y]))
+            f"Modélisation {fit.number} · {MODELS.get(fit.kind, ('Modèle',))[0]} · "
+            f"S{item.number} — {self.graph.axis_label(y)} en fonction de {self.graph.axis_label(x)}",
+            self.graph.model.names[x], self.graph.axis_label(x),
+            self.graph.model.names[y], self.graph.model.units[y]))
+
+    def show_graph(self):
+        self.graph.fit_points()
+        self.graph_requested.emit()
 
     def toggle_details(self, visible):
         self.details_text.setVisible(visible)

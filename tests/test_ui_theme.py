@@ -62,6 +62,8 @@ class ThemeLayoutTests(unittest.TestCase):
             self.assertIn(state, qss)
         for role in ('role="primary"', 'role="danger"', 'role="card"'):
             self.assertIn(role, qss)
+        self.assertIn(f"QScrollBar:vertical {{ background: {LIGHT.border}; width: 14px", qss)
+        self.assertIn(f"QScrollBar::handle {{ background: {LIGHT.muted}", qss)
 
     def test_reference_views_use_cards_and_clear_action_hierarchy(self):
         data = self.window.data_tab
@@ -133,6 +135,24 @@ class ThemeLayoutTests(unittest.TestCase):
                                  QSizePolicy.Policy.Expanding)
                 scroll = workspace.active_graph.findChild(QScrollArea)
                 self.assertEqual(scroll.verticalScrollBar().maximum(), 0)
+
+    def test_video_workspace_prioritizes_canvas_height(self):
+        video = self.window.video_tab
+        self.window.tabs.setCurrentWidget(video)
+        heights = []
+        for width, height, minimum_canvas_height in (
+                (1280, 720, 325), (1366, 768, 370),
+                (1600, 900, 500), (1920, 1080, 680)):
+            with self.subTest(size=(width, height)):
+                self.window.resize(width, height)
+                QTest.qWait(20)
+                scroll = video.findChild(QScrollArea)
+                heights.append(video.screen.height())
+                self.assertEqual(scroll.verticalScrollBar().maximum(), 0)
+                self.assertGreaterEqual(video.screen.height(), minimum_canvas_height)
+                self.assertEqual(video.screen.sizePolicy().verticalPolicy(),
+                                 QSizePolicy.Policy.Expanding)
+        self.assertGreater(heights[-1], heights[0] + 350)
 
     def test_hidden_graph_settings_leave_only_compact_restore_control(self):
         graph = self.window.graph_tab.active_graph

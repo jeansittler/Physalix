@@ -8,7 +8,7 @@ import unittest
 from unittest.mock import Mock, patch
 
 from PySide6.QtCore import QTimer
-from PySide6.QtWidgets import QApplication, QMainWindow, QDialog
+from PySide6.QtWidgets import QApplication, QMainWindow, QDialog, QLabel
 
 from physalix import __base_version__, __version__, updates
 from physalix.ui.updates import UpdateController, UpdateDialog
@@ -36,6 +36,18 @@ class UpdateUiTests(unittest.TestCase):
             self.app.processEvents()
             time.sleep(.005)
         self.assertFalse(self.controller.busy)
+
+    def test_about_identifies_author_and_keeps_dynamic_version(self):
+        with patch.object(QDialog, "exec", return_value=QDialog.DialogCode.Rejected):
+            self.controller.about()
+        dialog = self.window.findChild(QDialog)
+        text = "\n".join(label.text() for label in dialog.findChildren(QLabel))
+        self.assertIn(f"Physalix\nVersion {__version__}", text)
+        self.assertIn("Logiciel pédagogique de physique-chimie", text)
+        self.assertIn("Développé par Jean Sittler", text)
+        self.assertIn("© 2026 Jean Sittler", text)
+        self.assertIn("Licence GNU GPL v3.0", text)
+        self.assertNotIn("Tous droits réservés", text)
 
     def test_automatic_silent_manual_feedback(self):
         c = self.controller

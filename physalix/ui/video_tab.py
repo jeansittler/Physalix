@@ -6,7 +6,8 @@ from math import hypot
 from PySide6.QtCore import QElapsedTimer, QThread, QTimer, Qt, Signal
 from PySide6.QtGui import QKeySequence, QPixmap, QShortcut
 from PySide6.QtWidgets import (
-    QComboBox, QDialog, QFileDialog, QFrame, QHBoxLayout, QLabel, QPushButton, QSlider, QVBoxLayout, QWidget,
+    QComboBox, QDialog, QFileDialog, QFrame, QHBoxLayout, QLabel, QPushButton,
+    QSizePolicy, QSlider, QVBoxLayout, QWidget,
 )
 
 from physalix.video import prepare_video
@@ -50,6 +51,9 @@ class VideoTab(QWidget):
         self.timer.setSingleShot(True)
         self.timer.timeout.connect(self._tick)
         layout = workspace_layout(self, 760, 560)
+        layout.setContentsMargins(LIGHT.section, LIGHT.related,
+                                  LIGHT.section, LIGHT.related)
+        layout.setSpacing(LIGHT.related)
         layout.addWidget(page_header(
             "Pointage vidéo",
             "1 · Ouvrir   2 · Étalonner   3 · Placer l’origine   4 · Pointer   5 · Corriger",
@@ -82,7 +86,6 @@ class VideoTab(QWidget):
         self.status.setTextFormat(Qt.TextFormat.PlainText)
         self.status.setWordWrap(True)
         role(self.status, "context")
-        layout.addWidget(self.status)
         self.calibrate_button = QPushButton("Étalon")
         self.origin_button = QPushButton("Origine")
         self.track_button = role(QPushButton("Pointer"), "primary")
@@ -120,12 +123,16 @@ class VideoTab(QWidget):
         calibration_layout.addWidget(self.calibration_direction)
         calibration_layout.addStretch()
         self.workflow_cards = ResponsiveCards(calibration_group, tracking_group)
+        self.workflow_cards.setSizePolicy(QSizePolicy.Policy.Expanding,
+                                          QSizePolicy.Policy.Maximum)
         layout.addWidget(self.workflow_cards)
         self.tracking_info = QLabel()
         self.tracking_info.setWordWrap(True)
         self.hint = QLabel("Définissez l'étalon puis l'origine sur l'image de votre choix.")
         self.hint.setWordWrap(True)
         messages = QHBoxLayout()
+        messages.setSpacing(LIGHT.related)
+        messages.addWidget(self.status, 1)
         messages.addWidget(self.tracking_info, 1)
         messages.addWidget(self.hint, 1)
         layout.addLayout(messages)
@@ -133,22 +140,26 @@ class VideoTab(QWidget):
         self.screen.clicked.connect(self.image_clicked)
         self.screen.point_selected.connect(self.select_point)
         stage = role(QFrame(), "videoStage")
+        stage.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         view = QHBoxLayout(stage)
-        view.setContentsMargins(12, 12, 12, 12)
-        view.setSpacing(12)
+        view.setContentsMargins(LIGHT.related, LIGHT.related,
+                                LIGHT.related, LIGHT.related)
+        view.setSpacing(LIGHT.related)
         view.addWidget(self.screen, 1)
         self.magnifier = Magnifier(self.screen)
         magnifier_panel, magnifier_layout = panel("Loupe ×6")
         role(magnifier_panel, "videoTool")
         magnifier_layout.addWidget(self.magnifier)
-        magnifier_layout.addWidget(label("Survolez la vidéo pour viser avec précision.", "muted"))
-        magnifier_panel.setFixedWidth(174)
+        magnifier_layout.addWidget(label("Survolez la vidéo pour viser.", "muted"))
+        magnifier_panel.setFixedWidth(154)
         view.addWidget(magnifier_panel, 0, Qt.AlignmentFlag.AlignTop)
         layout.addWidget(stage, 1)
         player = role(QFrame(), "playerBar")
+        player.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Maximum)
         player_layout = QVBoxLayout(player)
-        player_layout.setContentsMargins(12, 8, 12, 8)
-        player_layout.setSpacing(6)
+        player_layout.setContentsMargins(LIGHT.related, LIGHT.small,
+                                         LIGHT.related, LIGHT.small)
+        player_layout.setSpacing(LIGHT.small)
         self.slider = QSlider(Qt.Orientation.Horizontal)
         self.slider.valueChanged.connect(self.seek)
         player_layout.addWidget(self.slider)
@@ -170,6 +181,15 @@ class VideoTab(QWidget):
         controls.addWidget(self.position)
         player_layout.addLayout(controls)
         layout.addWidget(player)
+        compact_controls = (
+            self.open_button, self.cancel_button, self.axes_choice,
+            self.calibrate_button, self.origin_button, self.track_button,
+            self.undo_button, self.correct_button, self.point_choice,
+            self.calibration_direction, self.restart_button, self.previous,
+            self.play_button, self.next,
+        )
+        for control in compact_controls:
+            control.setMaximumHeight(LIGHT.button_height - LIGHT.small)
         for message in (self.hint, self.position):
             role(message, "muted")
         role(self.tracking_info, "caption")

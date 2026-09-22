@@ -65,7 +65,14 @@ class UpdateController(QObject):
         dialog = QDialog(self.window)
         dialog.setWindowTitle("À propos de Physalix")
         layout = QVBoxLayout(dialog)
-        label = QLabel(f"Physalix\nVersion {__version__}")
+        label = QLabel(
+            f"Physalix\n"
+            f"Version {__version__}\n"
+            "Logiciel pédagogique de physique-chimie\n"
+            "Développé par Jean Sittler\n"
+            "© 2026 Jean Sittler\n"
+            "Licence GNU GPL v3.0"
+        )
         label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         layout.addWidget(label)
         button = QPushButton("Rechercher les mises à jour")

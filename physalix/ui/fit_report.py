@@ -16,16 +16,17 @@ def math_text(expression):
     return text.replace('*', ' · ').replace('-', '−')
 
 
-def report_html(result, series_title, x_label, y_name, unit):
+def report_html(result, series_title, x_name, x_label, y_name, unit):
     """Échapper tous les noms et formules issus du tableau utilisateur."""
     unit = '' if unit == 'Sans unité' else unit
     suffix = (' ' + escape(unit)) if unit else ''
     formula = result.formula
+    x_symbol = x_name or 'x'
     # Les modèles polynomiaux gagnent à être montrés sous leur forme numérique usuelle.
-    polynomials = {'c': [('c', '')], 'a*x': [('a', 'x')],
-                   'a*x + b': [('a', 'x'), ('b', '')],
-                   'a*x^2': [('a', 'x²')],
-                   'a*x^2 + b*x + c': [('a', 'x²'), ('b', 'x'), ('c', '')]}
+    polynomials = {'c': [('c', '')], 'a*x': [('a', x_symbol)],
+                   'a*x + b': [('a', x_symbol), ('b', '')],
+                   'a*x^2': [('a', x_symbol + '²')],
+                   'a*x^2 + b*x + c': [('a', x_symbol + '²'), ('b', x_symbol), ('c', '')]}
     if formula in polynomials:
         terms = []
         for key, factor in polynomials[formula]:
@@ -36,6 +37,8 @@ def report_html(result, series_title, x_label, y_name, unit):
     else:
         fitted = re.sub(r'\b[^\W\d]\w*\b', lambda m:
                         '(' + number(result.parameters[m[0]]) + ')' if m[0] in result.parameters else m[0], formula)
+        fitted = re.sub(r'\bx\b', x_symbol, fitted)
+    display_formula = re.sub(r'\bx\b', x_symbol, formula)
     rows = ''.join(
         f'<tr><td width="100"><b>{math_text(name)}</b></td><td>{number(value)}</td></tr>'
         for name, value in result.parameters.items())
@@ -56,26 +59,31 @@ def report_html(result, series_title, x_label, y_name, unit):
          'Taille typique de l’écart vertical entre un point mesuré et la courbe. Plus cette valeur est petite, plus les points sont proches de la courbe.'),
         ('Écart type résiduel', std, std_help),
     ]
-    metric_rows = ''.join(f'<tr><td width="34%"><b>{title}</b><br>'
-                          f'<span class="metric">{value}</span></td>'
-                          f'<td>{explanation}</td></tr>' for title, value, explanation in metrics)
+    metric_cells = ''.join(f'<td width="33%" class="metric-card"><b>{title}</b><br>'
+                           f'<span class="metric">{value}</span></td>'
+                           for title, value, explanation in metrics)
+    metric_notes = ' '.join(
+        explanation for title, value, explanation in metrics
+        if value == 'Non défini' or (title == 'Accord avec les mesures'
+                                     and result.r_squared is not None and result.r_squared < 0)
+    )
     origin = (f'<p>Origine fixée : x<sub>0</sub> = {number(result.x0)} '
               '(première abscisse utilisée, non ajustée).</p>' if result.x0 is not None else '')
     warning = f'<p>{escape(result.warning)}</p>' if result.warning else ''
     return f'''<html><body>
-        <h2>Résultat de la modélisation</h2>
-        <p>{escape(series_title)}<br>{result.count} points utilisés ·
-        intervalle de {number(result.x[0])} à {number(result.x[-1])}</p>
-        <h3>Équation obtenue</h3>
-        <p class="equation"><b>{escape(y_name or 'Y')} = {math_text(fitted)}</b></p>
-        <p>x représente {escape(x_label)}.<br>Forme du modèle : {math_text(formula)}</p>
+        <div class="summary"><b>{escape(series_title)}</b><br>{result.count} points utilisés ·
+        intervalle de {number(result.x[0])} à {number(result.x[-1])}</div>
+        <div class="equation-card"><span class="eyebrow">ÉQUATION OBTENUE</span><br>
+        <span class="equation"><b>{escape(y_name or 'Y')} = {math_text(fitted)}</b></span><br>
+        <span>Forme du modèle : {math_text(display_formula)} · Abscisse : {escape(x_label)}</span></div>
         <h3>Coefficients</h3>
-        <table cellpadding="5" cellspacing="0">{rows}</table>
-        <p>Valeurs arrondies à 6 chiffres significatifs pour la lecture ; le calcul conserve toute sa précision.
-        Les unités des coefficients dépendent de leur rôle dans l’équation et des unités des axes.</p>
+        <table class="coefficients" width="100%" cellpadding="5" cellspacing="0">{rows}</table>
+        <p>Valeurs arrondies à 6 chiffres significatifs ; le calcul conserve toute sa précision.
+        Les unités des coefficients dépendent des unités des axes.</p>
         {origin}
         <h3>Qualité de la modélisation</h3>
-        <table width="100%" cellpadding="10" cellspacing="0" border="1">{metric_rows}</table>
+        <table width="100%" cellpadding="0" cellspacing="6"><tr>{metric_cells}</tr></table>
+        <p>{metric_notes}</p>
         <p>Ces indicateurs décrivent les écarts aux mesures. Le choix du modèle doit aussi être cohérent avec le phénomène étudié.</p>
         {warning}
         <p>La courbe obtenue est visible en pointillés dans l’onglet Graphique.</p>

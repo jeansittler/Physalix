@@ -36,7 +36,7 @@ class VideoCanvas(QWidget):
         self.selecting = False
         self.active = False
         self.setMinimumSize(240, 160)
-        self.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Ignored)
+        self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         self.setMouseTracking(True)
 
     def image_rect(self):
@@ -157,7 +157,7 @@ class Magnifier(QWidget):
         super().__init__()
         self.canvas = canvas
         self.point = None
-        self.setFixedSize(140, 140)
+        self.setFixedSize(120, 120)
         canvas.hovered.connect(self.set_point)
 
     def set_point(self, point):

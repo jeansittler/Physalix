@@ -74,6 +74,12 @@ def report_stylesheet(t=LIGHT):
             f"h3 {{ color: {t.navy}; font-size: 16px; margin-top: 16px; margin-bottom: 8px; }}"
             "p { margin-top: 6px; margin-bottom: 10px; }"
             "td { vertical-align: middle; }"
+            f".summary {{ color: {t.muted}; margin-bottom: 8px; }}"
+            f".equation-card {{ background-color: {t.primary_soft}; border: 1px solid {t.primary}; "
+            "padding: 10px 14px; margin: 8px 0 12px 0; }}"
+            f".eyebrow {{ color: {t.primary_pressed}; font-size: 11px; font-weight: 700; }}"
+            f".coefficients td {{ background-color: {t.secondary}; border-bottom: 1px solid {t.border}; }}"
+            f".metric-card {{ background-color: {t.secondary}; border: 1px solid {t.border}; padding: 9px; }}"
             f".metric {{ color: {t.primary_pressed}; font-size: 19px; font-weight: 600; }}"
             f".equation {{ color: {t.navy}; font-size: 22px; }}")
 
@@ -198,12 +204,15 @@ def stylesheet(t=LIGHT):
         border: 0; border-right: 1px solid {t.table_grid}; border-bottom: 1px solid {t.table_grid}; font-weight: 600; }}
     QTableCornerButton::section {{ background: {t.table_header}; border: 0; border-right: 1px solid {t.table_grid};
         border-bottom: 2px solid {t.primary}; }}
-    QTableView QLineEdit, QTableView QComboBox {{ min-height: 0; padding: 0 4px; border-radius: 0; }}
+    QTableView QLineEdit, QTableView QComboBox {{ min-height: 0; padding: 1px 4px; border-radius: 0; }}
+    QTableView QLineEdit:focus, QTableView QComboBox:focus {{ border: 2px solid {t.primary}; padding: 0 3px; }}
+    QTableView QComboBox QLineEdit, QTableView QComboBox QLineEdit:focus {{
+        min-height: 0; border: 0; padding: 0 2px; background: transparent; }}
     QScrollArea {{ border: 0; background: transparent; }}
-    QScrollBar:vertical {{ background: {t.secondary}; width: 12px; margin: 0; }}
-    QScrollBar:horizontal {{ background: {t.secondary}; height: 12px; margin: 0; }}
-    QScrollBar::handle {{ background: {t.border_strong}; border: 3px solid {t.secondary}; border-radius: 5px; min-width: 24px; min-height: 24px; }}
-    QScrollBar::handle:hover {{ background: {t.muted}; }}
+    QScrollBar:vertical {{ background: {t.border}; width: 14px; margin: 0; }}
+    QScrollBar:horizontal {{ background: {t.border}; height: 14px; margin: 0; }}
+    QScrollBar::handle {{ background: {t.muted}; border: 2px solid {t.border}; border-radius: 6px; min-width: 28px; min-height: 28px; }}
+    QScrollBar::handle:hover {{ background: {t.primary}; }}
     QScrollBar::add-line, QScrollBar::sub-line {{ width: 0; height: 0; }}
     QScrollBar::add-page, QScrollBar::sub-page {{ background: transparent; }}
     QSlider::groove:horizontal {{ height: 4px; background: {t.border}; border-radius: 2px; }}

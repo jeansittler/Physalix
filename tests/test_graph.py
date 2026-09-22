@@ -5,10 +5,12 @@ import unittest
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from PySide6.QtCore import QEvent, QPointF, Qt
-from PySide6.QtGui import QColor, QContextMenuEvent
+from PySide6.QtCore import QEvent, QPoint, QPointF, Qt
+from PySide6.QtGui import QColor, QContextMenuEvent, QImage, QPainter
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication, QLabel
+import pyqtgraph as pg
+from unittest.mock import patch
 
 from physalix.ui.main_window import MainWindow
 from physalix.ui.graph_tab import paired_values
@@ -85,12 +87,14 @@ class GraphTests(unittest.TestCase):
             for axis in (bottom, left):
                 self.assertEqual(axis.label.rotation(), 0)
                 self.assertTrue(axis.arrow.isVisible())
+                label_bounds = axis.label.mapRectToScene(axis.label.boundingRect())
+                self.assertTrue(graph.plot.sceneBoundingRect().contains(label_bounds))
                 tip = axis.arrow.path().elementAt(1)
                 self.assertAlmostEqual(tip.x, axis.size().width()-1)
                 self.assertEqual(tip.y, 0)
-            self.assertAlmostEqual(bottom.label.pos().x()+bottom.label.boundingRect().width(),
-                                   bottom.size().width())
-            self.assertLess(left.label.pos().y()+left.label.boundingRect().height(), 0)
+            self.assertLessEqual(bottom.label.pos().x()+bottom.label.boundingRect().width(),
+                                 bottom.size().width()-12)
+            self.assertGreaterEqual(left.label.pos().y(), 0)
             self.assertGreater(bottom.arrow.path().elementAt(1).x, bottom.arrow.path().elementAt(0).x)
             self.assertLess(left.arrow.path().elementAt(1).y, left.arrow.path().elementAt(0).y)
 
@@ -101,7 +105,8 @@ class GraphTests(unittest.TestCase):
         self.assertEqual(self.graph.series[0].x_choice.count(), 6)
         self.graph.series[0].x_choice.setCurrentIndex(4)
         self.graph.series[0].y_choice.setCurrentIndex(5)
-        for column, name, unit in ((4, "Volume", "mL"), (5, "pH", "Sans unité")):
+        for column, name, unit in ((4, "C", "mmol/L"),
+                                   (5, "conductivité", "mS/cm")):
             self.model.setData(self.model.index(0, column), name)
             self.model.setData(self.model.index(1, column), unit)
         self.model.setData(self.model.index(2, 4), "10")
@@ -109,8 +114,12 @@ class GraphTests(unittest.TestCase):
         self.app.processEvents()
         self.assertEqual(self.graph.series[0].x_choice.currentData(), 4)
         self.assertEqual(self.graph.series[0].y_choice.currentData(), 5)
-        self.assertEqual(self.graph.plot.getAxis("bottom").labelText, "Volume (mL)")
-        self.assertEqual(self.graph.plot.getAxis("left").labelText, "pH")
+        self.assertEqual(self.graph.plot.getAxis("bottom").labelText, "C (mmol/L)")
+        self.assertEqual(self.graph.plot.getAxis("left").labelText, "conductivité (mS/cm)")
+        for name in ("bottom", "left"):
+            axis = self.graph.plot.getAxis(name)
+            bounds = axis.label.mapRectToScene(axis.label.boundingRect())
+            self.assertTrue(self.graph.plot.sceneBoundingRect().contains(bounds))
         xs, ys = self.graph.series[0].points.getData()
         self.assertEqual(list(xs), [10.0])
         self.assertEqual(list(ys), [7.2])
@@ -272,8 +281,19 @@ class GraphTests(unittest.TestCase):
         event = QContextMenuEvent(QContextMenuEvent.Reason.Mouse, point,
                                   viewport.mapToGlobal(point))
         QApplication.sendEvent(viewport, event)
+        self.assertTrue(event.isAccepted())
         self.assertTrue(graph.context_menu.isVisible())
         self.assertIn('Zoom par rectangle', [a.text() for a in graph.context_menu.actions()])
+        options = next(a.menu() for a in graph.context_menu.actions()
+                       if a.text() == 'Options du graphique')
+        self.assertEqual([a.text() for a in options.actions() if not a.isSeparator()],
+                         ['Axe X', 'Axe Y', 'Exporter…'])
+        self.assertFalse(view.menuEnabled())
+        self.assertFalse(graph.right_view.menuEnabled())
+        self.assertFalse(graph.plot.getPlotItem().menuEnabled())
+        with patch.object(graph.plot.scene(), 'showExportDialog') as export:
+            graph.export_action.trigger()
+            export.assert_called_once_with()
         graph.context_menu.hide()
         before = graph.plot.viewRange()[0]
         next(a for a in graph.context_menu.actions() if a.text() == 'Zoom avant').trigger()
@@ -286,6 +306,24 @@ class GraphTests(unittest.TestCase):
         expected = view.mapSceneToView(graph.plot.mapToScene(point))
         self.assertAlmostEqual(graph.cross_x.value(), expected.x())
         self.assertAlmostEqual(graph.cross_y.value(), expected.y())
+        self.assertTrue(graph.cross_x_label.isVisible())
+        self.assertTrue(graph.cross_y_label.isVisible())
+        self.assertEqual(graph.cross_x_label.toPlainText(), format(expected.x(), ".7g").replace(".", ","))
+        self.assertEqual(graph.cross_y_label.toPlainText(), format(expected.y(), ".7g").replace(".", ","))
+        self.assertGreater(graph.cross_x_label.zValue(), graph.cross_x.zValue())
+        x_range, y_range = view.viewRange()
+        x_low, x_high = (x_range[0]+.001*(x_range[1]-x_range[0]),
+                         x_range[1]-.001*(x_range[1]-x_range[0]))
+        y_low, y_high = (y_range[0]+.001*(y_range[1]-y_range[0]),
+                         y_range[1]-.001*(y_range[1]-y_range[0]))
+        for edge in (QPointF(x_low, y_low), QPointF(x_high, y_low),
+                     QPointF(x_low, y_high), QPointF(x_high, y_high)):
+            graph.track_cursor(view.mapViewToScene(edge))
+            x_range, y_range = view.viewRange()
+            self.assertGreaterEqual(graph.cross_x_label.pos().x(), x_range[0])
+            self.assertLessEqual(graph.cross_x_label.pos().x(), x_range[1])
+            self.assertGreaterEqual(graph.cross_y_label.pos().y(), y_range[0])
+            self.assertLessEqual(graph.cross_y_label.pos().y(), y_range[1])
         self.assertIn('X —', graph.coordinates.text())
         # Les réticules ne doivent pas changer le cadrage automatique.
         graph.track_cursor(view.mapViewToScene(QPointF(0.6, 0.7)))
@@ -293,6 +331,8 @@ class GraphTests(unittest.TestCase):
         self.assertEqual(graph.plot.viewRange(), [[0, 1], [0, 1]])
         QApplication.sendEvent(viewport, QEvent(QEvent.Type.Leave))
         self.assertFalse(graph.cross_x.isVisible())
+        self.assertFalse(graph.cross_x_label.isVisible())
+        self.assertFalse(graph.cross_y_label.isVisible())
         graph.reticle_action.setChecked(False)
         self.assertIn('désactivé', graph.coordinates.text())
 
@@ -310,6 +350,94 @@ class GraphTests(unittest.TestCase):
         self.graph.refresh_plot()
         self.assertEqual(len(self.graph.series[0].points.data), 0)
         self.assertIn("Aucun point", self.graph.status.text())
+
+    def test_zero_lines_follow_visible_ranges_without_affecting_bounds(self):
+        graph = self.graph
+        graph.plot.setRange(xRange=(-2, 3), yRange=(-4, 5), padding=0)
+        self.app.processEvents()
+        self.assertTrue(graph.zero_x.isVisible())
+        self.assertTrue(graph.zero_y.isVisible())
+        for line in (graph.zero_x, graph.zero_y):
+            pen = line.pen
+            self.assertEqual(pen.style(), Qt.PenStyle.SolidLine)
+            self.assertAlmostEqual(pen.widthF(), 1.4)
+            self.assertLess(line.zValue(), graph.series[0].line.zValue())
+        graph.plot.setRange(xRange=(1, 3), yRange=(-4, -1), padding=0)
+        self.app.processEvents()
+        self.assertFalse(graph.zero_x.isVisible())
+        self.assertFalse(graph.zero_y.isVisible())
+        self.assertEqual(graph.plot.viewRange(), [[1, 3], [-4, -1]])
+        graph.plot.setRange(xRange=(-3, -1), yRange=(-1, 2), padding=0)
+        self.app.processEvents()
+        self.assertFalse(graph.zero_x.isVisible())
+        self.assertTrue(graph.zero_y.isVisible())
+
+    def test_canvas_pan_moves_both_main_ranges(self):
+        graph = self.graph
+        view = graph.plot.getViewBox()
+        self.assertIs(view, graph.view_box)
+        self.assertEqual(view.state['mouseEnabled'], [True, True])
+        view.setMouseEnabled(x=True, y=False)
+        pan_action = next(action for action in graph.context_menu.actions()
+                          if action.text() == "Déplacer la vue")
+        pan_action.trigger()
+        self.assertEqual(view.state['mouseEnabled'], [True, True])
+        self.assertEqual(view.state['mouseMode'], pg.ViewBox.PanMode)
+        graph.refresh_plot()
+        self.app.processEvents()
+        self.assertEqual(view.state['mouseEnabled'], [True, True])
+
+        graph.plot.setRange(xRange=(0, 10), yRange=(0, 10), padding=0)
+        graph.right_view.setYRange(0, 10, padding=0)
+        self.app.processEvents()
+        before_x, before_y = [list(values) for values in view.viewRange()]
+        right_y = list(graph.right_view.viewRange()[1])
+        viewport = graph.plot.viewport()
+        start = graph.plot.mapFromScene(view.sceneBoundingRect().center())
+        end = start + QPoint(60, 40)
+        QTest.mousePress(viewport, Qt.MouseButton.LeftButton,
+                         Qt.KeyboardModifier.NoModifier, start)
+        QTest.mouseMove(viewport, end, delay=30)
+        QTest.mouseRelease(viewport, Qt.MouseButton.LeftButton,
+                           Qt.KeyboardModifier.NoModifier, end)
+        self.app.processEvents()
+        after_x, after_y = view.viewRange()
+        self.assertNotEqual(after_x, before_x)
+        self.assertNotEqual(after_y, before_y)
+        self.assertEqual(graph.right_view.viewRange()[1], right_y)
+
+    def test_zero_lines_are_hidden_at_view_edges(self):
+        graph = self.graph
+        graph.plot.setRange(xRange=(0, 2), yRange=(-1, 1), padding=0)
+        self.app.processEvents()
+        self.assertFalse(graph.zero_x.isVisible())
+        self.assertTrue(graph.zero_y.isVisible())
+        graph.plot.setRange(xRange=(-1, 1), yRange=(-2, 0), padding=0)
+        self.app.processEvents()
+        self.assertTrue(graph.zero_x.isVisible())
+        self.assertFalse(graph.zero_y.isVisible())
+
+    def test_zero_is_kept_as_a_native_axis_tick(self):
+        graph = self.graph
+        cases = (("bottom", (-.05, .95)), ("left", (-.2, 1.0)))
+        image = QImage(1200, 800, QImage.Format.Format_ARGB32)
+        painter = QPainter(image)
+        try:
+            for name, values in cases:
+                axis = graph.plot.getAxis(name)
+                axis.setRange(*values)
+                levels = axis.tickValues(*values, 700)
+                self.assertTrue(any(value == 0 for _, ticks in levels for value in ticks))
+                specs = axis.generateDrawSpecs(painter)
+                self.assertIn("0", [text for _, _, text in specs[2]])
+            for values in ((.1, 1.0), (-1.0, -.1)):
+                levels = graph.plot.getAxis("bottom").tickValues(*values, 700)
+                self.assertFalse(any(value == 0 for _, ticks in levels for value in ticks))
+            bottom = graph.plot.getAxis("bottom")
+            bottom.setRange(0, 1)
+            self.assertIn("0", [text for _, _, text in bottom.generateDrawSpecs(painter)[2]])
+        finally:
+            painter.end()
 
 
 if __name__ == "__main__":

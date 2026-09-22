@@ -6,13 +6,14 @@ from html import escape
 import numpy as np
 from math import isfinite
 
-from PySide6.QtCore import QEvent, QSize, QTimer, Qt, Signal
-from PySide6.QtGui import QAction, QActionGroup
+from PySide6.QtCore import QEvent, QPointF, QSize, QTimer, Qt, Signal
+from PySide6.QtGui import QAction, QActionGroup, QColor
 from PySide6.QtWidgets import (
     QComboBox, QHBoxLayout, QLabel, QMenu, QPushButton, QStackedWidget, QVBoxLayout, QWidget, QSizePolicy,
 )
 import pyqtgraph as pg
 
+from physalix.fitting import evaluate_fit
 from physalix.ui.graph_series import GraphSeries
 from physalix.ui.graph_axis import EndAxis
 from physalix.ui.graph_legend import SmartLegend
@@ -68,8 +69,49 @@ class InteractivePlot(pg.PlotWidget):
         return QSize(640, 320)
 
 
+class GraphViewBox(pg.ViewBox):
+    """Acheminer tous les clics droits du canevas vers le menu Physalix."""
+
+    menu_requested = Signal(object)
+
+    def mouseClickEvent(self, event):
+        if event.button() == Qt.MouseButton.RightButton:
+            event.accept()
+            self.menu_requested.emit(event.screenPos().toPoint())
+            return
+        super().mouseClickEvent(event)
+
+
+class SecondaryViewBox(pg.ViewBox):
+    """Laisser le canevas au repère principal, tout en gardant l'axe Y droit autonome."""
+
+    def __init__(self, primary):
+        super().__init__()
+        self.primary = primary
+
+    def mouseDragEvent(self, event, axis=None):
+        if axis is None:
+            return self.primary.mouseDragEvent(event)
+        return super().mouseDragEvent(event, axis=axis)
+
+    def wheelEvent(self, event, axis=None):
+        if axis is None:
+            return self.primary.wheelEvent(event)
+        return super().wheelEvent(event, axis=axis)
+
+
+class AntialiasedInfiniteLine(pg.InfiniteLine):
+    """Ligne de repère fine et antialiasée, sans interaction."""
+
+    def paint(self, painter, *args):
+        painter.setRenderHint(painter.RenderHint.Antialiasing, True)
+        super().paint(painter, *args)
+
+
 class GraphTab(QWidget):
     """Superposer des séries indépendantes dans un repère commun."""
+
+    ZERO_EDGE_MARGIN = 4
 
     changed = Signal()
     modeling_requested = Signal()
@@ -136,9 +178,11 @@ class GraphTab(QWidget):
         self.series_stack.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         self.series_choice.currentIndexChanged.connect(self.select_series)
 
-        self.plot = InteractivePlot(background=LIGHT.surface, axisItems={
+        self.view_box = GraphViewBox()
+        self.plot = InteractivePlot(background=LIGHT.surface, viewBox=self.view_box, axisItems={
             'bottom': EndAxis('bottom'), 'left': EndAxis('left'), 'right': EndAxis('right')})
-        self.right_view = pg.ViewBox()
+        self.right_view = SecondaryViewBox(self.view_box)
+        self.right_view.setMenuEnabled(False)
         self.plot.scene().addItem(self.right_view)
         self.right_view.setZValue(-1)
         self.plot.getAxis('right').linkToView(self.right_view)
@@ -149,9 +193,22 @@ class GraphTab(QWidget):
         self.plot.setMinimumSize(200, 220)
         self.plot.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         self.plot.getPlotItem().layout.setContentsMargins(8, 8, 20, 6)
-        self.plot.setMenuEnabled(False)
+        self.plot.getPlotItem().setMenuEnabled(False, enableViewBoxMenu=False)
+        self.view_box.setMenuEnabled(False)
         self.plot.hideButtons()
         self.plot.showGrid(x=True, y=True, alpha=0.10)
+        zero_color = QColor(LIGHT.muted)
+        zero_color.setAlpha(155)
+        zero_pen = pg.mkPen(zero_color, width=1.4, style=Qt.PenStyle.SolidLine)
+        zero_pen.setCosmetic(True)
+        self.zero_x = AntialiasedInfiniteLine(pos=0, angle=90, movable=False,
+                                              pen=zero_pen)
+        self.zero_y = AntialiasedInfiniteLine(pos=0, angle=0, movable=False,
+                                              pen=zero_pen)
+        for zero_line in (self.zero_x, self.zero_y):
+            self.plot.addItem(zero_line, ignoreBounds=True)
+            zero_line.setZValue(-1)
+            zero_line.setAcceptedMouseButtons(Qt.MouseButton.NoButton)
         for axis_name in ("bottom", "left", "right"):
             axis = self.plot.getAxis(axis_name)
             axis.setPen(pg.mkPen(LIGHT.muted))
@@ -170,6 +227,16 @@ class GraphTab(QWidget):
             self.plot.addItem(line, ignoreBounds=True)
             line.setZValue(10)
             line.hide()
+        self.cross_x_label = pg.TextItem(anchor=(0.5, 1), color=LIGHT.text,
+                                         fill=pg.mkBrush(LIGHT.surface),
+                                         border=pg.mkPen(LIGHT.border_strong))
+        self.cross_y_label = pg.TextItem(anchor=(0, 0.5), color=LIGHT.text,
+                                         fill=pg.mkBrush(LIGHT.surface),
+                                         border=pg.mkPen(LIGHT.border_strong))
+        for value_label in (self.cross_x_label, self.cross_y_label):
+            self.plot.addItem(value_label, ignoreBounds=True)
+            value_label.setZValue(1_000_000)
+            value_label.hide()
         plot_panel, plot_layout = make_panel()
         self.plot_panel = plot_panel
         self.plot_panel.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
@@ -212,10 +279,13 @@ class GraphTab(QWidget):
         for message in (self.coordinates, self.status, hint):
             role(message, "muted")
         self.plot.menu_requested.connect(self.show_context_menu)
+        self.view_box.menu_requested.connect(self.show_context_menu)
         self.plot.scene().sigMouseMoved.connect(self.track_cursor)
         self.plot.viewport().setMouseTracking(True)
         self.plot.viewport().installEventFilter(self)
         self.plot.getViewBox().sigRangeChanged.connect(self.hide_crosshair)
+        self.plot.getViewBox().sigRangeChanged.connect(self.update_zero_lines)
+        self.plot.getViewBox().sigResized.connect(self.update_zero_lines)
 
         # Regrouper les modifications successives, notamment lors d'une recopie.
         self._refresh_timer = QTimer(self)
@@ -231,6 +301,22 @@ class GraphTab(QWidget):
         layout.insertWidget(0, self.compact_button)
         self._compact_hidden = []
         self.resize_right_view()
+        self.update_zero_lines()
+
+    def update_zero_lines(self, *args):
+        view = self.plot.getViewBox()
+        x_range, y_range = self.plot.viewRange()
+        bounds = view.sceneBoundingRect()
+        zero = view.mapViewToScene(QPointF(0, 0))
+        margin = self.ZERO_EDGE_MARGIN
+        self.zero_x.setVisible(
+            x_range[0] <= 0 <= x_range[1]
+            and bounds.left() + margin < zero.x() < bounds.right() - margin
+        )
+        self.zero_y.setVisible(
+            y_range[0] <= 0 <= y_range[1]
+            and bounds.top() + margin < zero.y() < bounds.bottom() - margin
+        )
 
     def resize_right_view(self):
         bounds = self.plot.getViewBox().sceneBoundingRect()
@@ -417,7 +503,7 @@ class GraphTab(QWidget):
                 self.legend.addItem(item.points, escape(label))
             for fit in item.fits:
                 fit.curve.setVisible(item.visible.isChecked())
-                fit.extension.setVisible(item.visible.isChecked() and fit.settings.get('extend', False))
+                fit.extension.hide()
                 if item.visible.isChecked():
                     self.legend.addItem(fit.curve, f"S{item.number} · Modélisation {fit.number}")
         self.legend.schedule()
@@ -446,14 +532,58 @@ class GraphTab(QWidget):
     def draw_model(self, item, fit):
         self.place_items((fit.curve, fit.extension), item)
         result = fit.result
-        fit.curve.setData(result.x, result.y)
         fit.extension.clear()
-        if fit.kind == 'affine' and fit.settings.get('extend', False):
-            xs, _, _ = paired_values(self.model.rows, *item.key())
-            if xs:
-                # Deux segments séparés : la zone ajustée garde son propre trait.
-                x = np.array([min(xs), result.x[0], np.nan, result.x[-1], max(xs)])
-                fit.extension.setData(x, result.parameters['a']*x+result.parameters['b'], connect='finite')
+        display_x, display_y = result.x, result.y
+        xs, ys, _ = paired_values(self.model.rows, *item.key())
+        if xs and (fit.kind != 'affine' or fit.settings.get('extend', False)):
+            span = max(xs) - min(xs)
+            margin = span * .12
+            low, high = min(xs) - margin, max(xs) + margin
+            if fit.kind == 'linear':
+                low, high = min(low, 0), max(high, 0)
+            y_values = [*ys, *result.y]
+            y_low, y_high = min(y_values), max(y_values)
+            y_scale = max(y_high-y_low, max(abs(y_low), abs(y_high))*.25, 1e-12)
+            y_limits = ((-np.inf, np.inf) if fit.kind in ('constant', 'linear', 'affine')
+                        else (y_low-2*y_scale, y_high+2*y_scale))
+            axis = item.key()[0]
+            axis_name = self.model.names[axis] if axis is not None else "x"
+
+            def segment(start, end, keep_near_end):
+                if start >= end:
+                    return np.array([]), np.array([])
+                x = np.linspace(start, end, 120)
+                try:
+                    y = evaluate_fit(result, x, axis_name)
+                except ValueError:
+                    values = []
+                    for value in x:
+                        try:
+                            values.append(float(evaluate_fit(result, [value], axis_name)[0]))
+                        except ValueError:
+                            values.append(np.nan)
+                    y = np.asarray(values)
+                valid = np.isfinite(y) & (y >= y_limits[0]) & (y <= y_limits[1])
+                invalid = np.flatnonzero(~valid)
+                if len(invalid):
+                    if keep_near_end:
+                        valid[:invalid[-1]+1] = False
+                    else:
+                        valid[invalid[0]:] = False
+                return x[valid], y[valid]
+
+            left_x, left_y = segment(low, float(result.x[0]), True)
+            right_x, right_y = segment(float(result.x[-1]), high, False)
+            parts_x, parts_y = [result.x], [result.y]
+            if len(left_x) > 1:
+                parts_x.insert(0, left_x[:-1])
+                parts_y.insert(0, left_y[:-1])
+            if len(right_x) > 1:
+                parts_x.append(right_x[1:])
+                parts_y.append(right_y[1:])
+            display_x, display_y = np.concatenate(parts_x), np.concatenate(parts_y)
+        fit.curve.setData(display_x, display_y, connect='finite')
+        fit.extension.hide()
         self.update_legend()
         if hasattr(self, 'curve_guides_tool'):
             self.curve_guides_tool.sync()
@@ -462,8 +592,13 @@ class GraphTab(QWidget):
         if fit is None:
             palette = ('#d84315', '#2e7d32', '#7b1fa2', '#00838f', '#ad1457', '#1565c0')
             color = palette[(item.next_fit_number-1) % len(palette)]
+            model_pen = pg.mkPen(color, width=1.8)
+            model_pen.setStyle(Qt.PenStyle.CustomDashLine)
+            model_pen.setDashPattern([7, 3.5])
+            model_pen.setCapStyle(Qt.PenCapStyle.RoundCap)
+            model_pen.setCosmetic(True)
             fit = GraphFit(item.next_fit_number, result, kind, settings or {},
-                           pg.PlotCurveItem(pen=pg.mkPen(color, width=2, style=Qt.PenStyle.DashLine)),
+                           pg.PlotCurveItem(pen=model_pen, antialias=True),
                            pg.PlotCurveItem(pen=pg.mkPen(color, width=1.5, style=Qt.PenStyle.DotLine)), color)
             item.next_fit_number += 1
             item.fits.append(fit)
@@ -528,6 +663,8 @@ class GraphTab(QWidget):
                         for curve in (fit.curve, fit.extension):
                             if curve.isVisible():
                                 cx, cy = curve.getData()
+                                if cx is not None:
+                                    xs_all.extend(float(x) for x in cx if np.isfinite(x))
                                 if cy is not None:
                                     values.extend(float(y) for y in cy if np.isfinite(y))
                 view.setYRange(min(values), max(values), padding=.08) if values else view.setYRange(0, 1, padding=0)
@@ -535,6 +672,22 @@ class GraphTab(QWidget):
             return
         if any(item.visible.isChecked() and len(item.points.data) for item in self.series):
             self.plot.autoRange(padding=0.08)
+            x_range, y_range = self.plot.viewRange()
+            extra_x, extra_y = [], []
+            for item in self.series:
+                if not item.visible.isChecked():
+                    continue
+                for fit in item.fits:
+                    if fit.extension.isVisible():
+                        x, y = fit.extension.getData()
+                        extra_x.extend(float(value) for value in x if np.isfinite(value))
+                        extra_y.extend(float(value) for value in y if np.isfinite(value))
+            if extra_x or extra_y:
+                self.plot.setRange(
+                    xRange=(min(*x_range, *extra_x), max(*x_range, *extra_x)),
+                    yRange=(min(*y_range, *extra_y), max(*y_range, *extra_y)),
+                    padding=.06,
+                )
             # Une intersection peut se trouver sous les mesures, entre deux intervalles.
             # L’inclure dans la vue sans cadrer les extrémités éloignées des prolongements.
             low, high = self.plot.viewRange()[1]
@@ -580,13 +733,40 @@ class GraphTab(QWidget):
             action.setCheckable(True)
             action.setChecked(mode == pg.ViewBox.PanMode)
             group.addAction(action)
-            action.triggered.connect(lambda checked, chosen=mode: self.plot.getViewBox().setMouseMode(chosen))
+            action.triggered.connect(
+                lambda checked, chosen=mode: self.set_navigation_mode(chosen)
+            )
         self.context_menu.addSeparator()
         self.reticle_action = QAction("Réticule", self, checkable=True)
         self.reticle_action.toggled.connect(self.hide_crosshair)
         self.context_menu.addAction(self.reticle_action)
+        self.context_menu.addSeparator()
+        options = self.context_menu.addMenu("Options du graphique")
+        from pyqtgraph.graphicsItems.ViewBox.ViewBoxMenu import ViewBoxMenu
+        self.native_view_menu = ViewBoxMenu(self.plot.getViewBox())
+        native_actions = self.native_view_menu.actions()
+        for title, action in (("Axe X", native_actions[1]),
+                              ("Axe Y", native_actions[2])):
+            submenu = action.menu()
+            submenu.setTitle(title)
+            options.addMenu(submenu)
+        options.addSeparator()
+        self.export_action = options.addAction("Exporter…", self.export_graph)
+
+    def set_navigation_mode(self, mode):
+        view = self.plot.getViewBox()
+        view.setMouseMode(mode)
+        if mode == pg.ViewBox.PanMode:
+            view.setMouseEnabled(x=True, y=True)
+
+    def export_graph(self):
+        scene = self.plot.scene()
+        scene.contextMenuItem = self.plot.getPlotItem()
+        scene.showExportDialog()
 
     def show_context_menu(self, position):
+        if self.context_menu.isVisible():
+            return
         self.hide_crosshair()
         self.context_menu.popup(position)
 
@@ -606,6 +786,21 @@ class GraphTab(QWidget):
         self.cross_y.show()
         x = format(position.x(), ".7g").replace(".", ",")
         y = format(position.y(), ".7g").replace(".", ",")
+        x_range, y_range = view.viewRange()
+        self.cross_x_label.setText(x)
+        self.cross_y_label.setText(y)
+        x_span, y_span = x_range[1]-x_range[0], y_range[1]-y_range[0]
+        x_pixels, y_pixels = max(view.width(), 1), max(view.height(), 1)
+        x_padding = self.cross_x_label.boundingRect().width() * x_span / (2*x_pixels)
+        y_padding = self.cross_y_label.boundingRect().height() * y_span / (2*y_pixels)
+        edge_x = x_range[0] + 3*x_span/x_pixels
+        edge_y = y_range[0] + 3*y_span/y_pixels
+        label_x = min(max(position.x(), x_range[0]+x_padding), x_range[1]-x_padding)
+        label_y = min(max(position.y(), y_range[0]+y_padding), y_range[1]-y_padding)
+        self.cross_x_label.setPos(label_x, edge_y)
+        self.cross_y_label.setPos(edge_x, label_y)
+        self.cross_x_label.show()
+        self.cross_y_label.show()
         self.coordinates.setText(
             f"X — {self.axis_caption(0)} : {x}    |    "
             f"Y — {self.axis_caption(1)} : {y}")
@@ -617,6 +812,8 @@ class GraphTab(QWidget):
     def hide_crosshair(self, *args):
         self.cross_x.hide()
         self.cross_y.hide()
+        self.cross_x_label.hide()
+        self.cross_y_label.hide()
         self.coordinates.setText(
             "Réticule activé — survolez le graphique pour lire les coordonnées."
             if self.reticle_action.isChecked() else
@@ -624,6 +821,11 @@ class GraphTab(QWidget):
         self.coordinates.setToolTip(self.coordinates.text())
 
     def eventFilter(self, watched, event):
-        if watched is self.plot.viewport() and event.type() == QEvent.Type.Leave:
-            self.hide_crosshair()
+        if watched is self.plot.viewport():
+            if event.type() == QEvent.Type.ContextMenu:
+                self.show_context_menu(event.globalPos())
+                event.accept()
+                return True
+            if event.type() == QEvent.Type.Leave:
+                self.hide_crosshair()
         return super().eventFilter(watched, event)

@@ -317,8 +317,15 @@ class MeasurementDelegate(QStyledItemDelegate):
             editor.completer().setCompletionMode(QCompleter.CompletionMode.PopupCompletion)
             editor.completer().setFilterMode(Qt.MatchFlag.MatchContains)
             editor.completer().setCaseSensitivity(Qt.CaseSensitivity.CaseSensitive)
+            editor.lineEdit().setTextMargins(2, 0, 2, 0)
+            editor.lineEdit().setAlignment(Qt.AlignmentFlag.AlignLeft |
+                                            Qt.AlignmentFlag.AlignVCenter)
             return editor
         editor = QLineEdit(parent)
+        editor.setTextMargins(2, 0, 2, 0)
+        editor.setAlignment((Qt.AlignmentFlag.AlignLeft if index.row() < index.model().first_data_row
+                             else Qt.AlignmentFlag.AlignRight) |
+                            Qt.AlignmentFlag.AlignVCenter)
         if index.row() >= index.model().first_data_row:
             expression = QRegularExpression(
                 r"(?:=[^\n]*|(?:[+-]?(?:\d+(?:[.,]\d*)?|[.,]\d+)(?:[eE][+-]?\d+)?)?)"

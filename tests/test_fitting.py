@@ -5,6 +5,7 @@ import unittest
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 import numpy as np
+from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QApplication
 
 from physalix.fitting import Expression, fit_model, parse_parameters
@@ -91,7 +92,8 @@ class ModelingInterfaceTests(unittest.TestCase):
             tab.calculate()
             self.assertTrue(first.fits)
             curve = first.fits[0].curve
-            self.assertEqual(len(curve.getData()[0]), 600)
+            self.assertEqual(len(first.fits[0].result.x), 600)
+            self.assertGreater(len(curve.getData()[0]), 600)
             self.assertIn("R² = 1", tab.result_text.toPlainText())
             first.connect_points.setChecked(True)
             self.assertTrue(first.fits)
@@ -166,6 +168,62 @@ class ModelingInterfaceTests(unittest.TestCase):
             window._discard_on_close = True
             window.close()
 
+    def test_linear_drawing_includes_origin_and_report_uses_axis_names(self):
+        window = MainWindow()
+        graph, tab, model = window.graph_tab, window.modeling_tab, window.data_tab.model
+        try:
+            model.names[:2] = ["c", "conductivité"]
+            model.units[:2] = ["mmol/L", "mS/cm"]
+            model.rows = [[str(x), str(3*x)] for x in range(2, 9)]
+            graph.refresh_plot()
+            tab.model_choice.setCurrentIndex(tab.model_choice.findData("linear"))
+            tab.calculate()
+            fit = graph.series[0].fits[0]
+            self.assertEqual(fit.result.x[0], 2)
+            curve_x, curve_y = fit.curve.getData()
+            finite_x = curve_x[np.isfinite(curve_x)]
+            finite_y = curve_y[np.isfinite(curve_y)]
+            self.assertEqual(min(finite_x), 0)
+            self.assertIn(0, finite_y)
+            self.assertFalse(fit.extension.isVisible())
+            pen = fit.curve.opts['pen']
+            self.assertTrue(fit.curve.opts['antialias'])
+            self.assertEqual(pen.style(), Qt.PenStyle.CustomDashLine)
+            self.assertEqual(pen.dashPattern(), [7.0, 3.5])
+            self.assertEqual(pen.capStyle(), Qt.PenCapStyle.RoundCap)
+            self.assertAlmostEqual(pen.widthF(), 1.8)
+            self.assertLessEqual(graph.plot.viewRange()[0][0], 0)
+            report = tab.result_text.toPlainText()
+            self.assertIn("conductivité = 3 · c", report)
+            self.assertIn("Abscisse : c (mmol/L)", report)
+            graph.plot.setRange(xRange=(4, 6), yRange=(10, 20), padding=0)
+            tab.show_graph_button.click()
+            self.assertLessEqual(graph.plot.viewRange()[0][0], 0)
+        finally:
+            window._discard_on_close = True
+            window.close()
+
+    def test_visual_extension_stays_inside_custom_model_domain(self):
+        window = MainWindow()
+        graph, tab, model = window.graph_tab, window.modeling_tab, window.data_tab.model
+        try:
+            xs = [1, 4, 7, 10]
+            model.rows = [[str(x), str(2*np.log(x)+1)] for x in xs]
+            graph.refresh_plot()
+            tab.model_choice.setCurrentIndex(tab.model_choice.findData("custom"))
+            tab.expression.setText("a*log(x)+b")
+            tab.initial.setText("a=1 ; b=0")
+            tab.calculate()
+            fit = graph.series[0].fits[0]
+            curve_x, _ = fit.curve.getData()
+            finite_x = curve_x[np.isfinite(curve_x)]
+            self.assertGreater(min(finite_x), 0)
+            self.assertLessEqual(max(finite_x), 10 + .12*(10-1) + 1e-12)
+            self.assertEqual((fit.result.x[0], fit.result.x[-1]), (1, 10))
+        finally:
+            window._discard_on_close = True
+            window.close()
+
     def test_two_affine_intervals_and_independent_updates(self):
         window = MainWindow()
         graph, tab, model = window.graph_tab, window.modeling_tab, window.data_tab.model
@@ -189,9 +247,13 @@ class ModelingInterfaceTests(unittest.TestCase):
             self.assertNotEqual(first.color, second.color)
             self.assertEqual(len(graph.legend.items), 3)
             for fit in series.fits:
-                self.assertTrue(fit.extension.isVisible())
-                self.assertEqual(fit.extension.getData()[0][0], 0)
-                self.assertEqual(fit.extension.getData()[0][-1], 20)
+                self.assertFalse(fit.extension.isVisible())
+                curve_x, _ = fit.curve.getData()
+                finite_x = curve_x[np.isfinite(curve_x)]
+                self.assertGreater(min(finite_x), -2.5)
+                self.assertLess(min(finite_x), 0)
+                self.assertGreater(max(finite_x), 20)
+                self.assertLess(max(finite_x), 22.5)
                 self.assertAlmostEqual(fit.result.parameters['a']*10+fit.result.parameters['b'], 2)
             self.assertLess(graph.plot.viewRange()[1][0], 2)
             tab.fit_choice.setCurrentIndex(tab.fit_choice.findData(first.number))
@@ -203,7 +265,10 @@ class ModelingInterfaceTests(unittest.TestCase):
             self.assertEqual(second.result.count, 4)
             tab.extend_check.setChecked(False)
             self.assertFalse(first.extension.isVisible())
-            self.assertTrue(second.extension.isVisible())
+            self.assertFalse(second.extension.isVisible())
+            self.assertEqual((first.curve.getData()[0][0], first.curve.getData()[0][-1]),
+                             (first.result.x[0], first.result.x[-1]))
+            self.assertGreater(second.curve.getData()[0][-1], second.result.x[-1])
             series.visible.setChecked(False)
             self.assertFalse(second.curve.isVisible())
             self.assertFalse(second.extension.isVisible())

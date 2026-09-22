@@ -123,6 +123,16 @@ class FitResult:
     x0: float | None = None
 
 
+def evaluate_fit(result, x, axis_name="x"):
+    """Évaluer un résultat ajusté sans relancer ni modifier l'ajustement."""
+    parameters = dict(result.parameters)
+    if result.x0 is not None:
+        parameters["x0"] = result.x0
+    expression_axis = "x" if axis_name in parameters else axis_name
+    expression = Expression(result.formula, parameters, expression_axis)
+    return expression(np.asarray(x, dtype=float), *parameters.values())
+
+
 def fit_model(xs, ys, kind, *, expression="", initial="", axis_name="x", interval=None):
     x, y = np.asarray(xs, dtype=float), np.asarray(ys, dtype=float)
     if x.shape != y.shape or x.ndim != 1 or not np.all(np.isfinite(x)) or not np.all(np.isfinite(y)):

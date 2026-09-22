@@ -8,7 +8,10 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from PySide6.QtCore import QItemSelection, QItemSelectionModel, Qt
 from PySide6.QtTest import QTest
-from PySide6.QtWidgets import QApplication
+from PySide6.QtWidgets import (
+    QApplication, QComboBox, QLineEdit, QStyle, QStyleOptionFrame,
+    QStyleOptionViewItem,
+)
 
 from physalix.ui.data_tab import DataTab
 
@@ -83,6 +86,32 @@ class ClipboardTests(unittest.TestCase):
         self.table.paste_clipboard()
         self.assertEqual(self.model.rows[0][0], "7")
         self.assertEqual(self.model.rows[3][1], "")
+
+    def test_cell_editors_preserve_descenders_without_enlarging_rows(self):
+        delegate = self.table.itemDelegate()
+        for row, editor_type in ((0, QLineEdit), (1, QComboBox), (2, QLineEdit)):
+            with self.subTest(row=row):
+                option = QStyleOptionViewItem()
+                option.rect = self.table.visualRect(self.model.index(row, 0))
+                editor = delegate.createEditor(self.table.viewport(), option,
+                                               self.model.index(row, 0))
+                editor.setGeometry(option.rect)
+                editor.show()
+                editor.setFocus()
+                self.app.processEvents()
+                line_edit = editor.lineEdit() if isinstance(editor, QComboBox) else editor
+                self.assertIsInstance(editor, editor_type)
+                self.assertTrue(line_edit.alignment() & Qt.AlignmentFlag.AlignVCenter)
+                frame = QStyleOptionFrame()
+                line_edit.initStyleOption(frame)
+                content = line_edit.style().subElementRect(
+                    QStyle.SubElement.SE_LineEditContents, frame, line_edit)
+                margins = line_edit.textMargins()
+                available = content.height()-margins.top()-margins.bottom()
+                required = line_edit.fontMetrics().height()+2
+                self.assertGreaterEqual(available, required)
+                editor.deleteLater()
+        self.assertEqual(self.table.verticalHeader().defaultSectionSize(), 32)
 
 
 if __name__ == "__main__":
