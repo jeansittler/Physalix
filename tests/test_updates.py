@@ -139,8 +139,9 @@ class UpdateTests(unittest.TestCase):
         self.assertFalse(u.is_newer("1.2.1"))
         self.assertFalse(u.is_newer("1.2.2"))
         self.assertFalse(u.is_newer("1.2.3"))
+        self.assertFalse(u.is_newer("1.2.4"))
         self.assertTrue(u.is_newer("1.2.2", "1.2.1"))
-        self.assertTrue(u.is_newer("1.2.4"))
+        self.assertTrue(u.is_newer("1.2.5"))
 
     def test_transport_timeout_and_redirect_security(self):
         with patch.object(u, "build_opener") as opener:
@@ -310,22 +311,87 @@ class ReleaseTests(unittest.TestCase):
         from scripts import prepare_release
         from physalix import __base_version__
         from physalix import __version_info__
+        root = Path(__file__).resolve().parents[1]
+        notes = (root / "packaging/update-notes.txt").read_text(encoding="utf-8")
+        history_path = root / "packaging/update-history.json"
+        history_raw = history_path.read_bytes()
+        self.assertFalse(history_raw.startswith(b"\xef\xbb\xbf"))
+        history = json.loads(history_raw.decode("utf-8"))
         major, minor, patch_version = __version_info__
         with tempfile.TemporaryDirectory() as folder, patch.object(
             prepare_release, "__version__", __base_version__
         ):
             path = Path(folder)
             with self.assertRaises(ValueError):
-                prepare_release.prepare(path, "Notes")
+                prepare_release.prepare(path, notes, history)
             content = b"fake PE handled by mock"
             (path / f"Physalix-Setup-{__base_version__}.exe").write_bytes(content)
             with patch("pefile.PE") as pe:
                 fixed = pe.return_value.__enter__.return_value.VS_FIXEDFILEINFO[0]
                 fixed.FileVersionMS = (major << 16) | minor
                 fixed.FileVersionLS = patch_version << 16
-                result = json.loads(prepare_release.prepare(path, "Notes é").read_text(encoding="utf-8"))
+                target = prepare_release.prepare(path, notes, history)
+                raw = target.read_bytes()
+                self.assertFalse(raw.startswith(b"\xef\xbb\xbf"))
+                result = json.loads(raw.decode("utf-8"))
                 self.assertEqual(result["sha256"], hashlib.sha256(content).hexdigest())
                 self.assertEqual(result["installer_url"], f"https://github.com/jeansittler/Physalix/releases/download/v{__base_version__}/Physalix-Setup-{__base_version__}.exe")
+                self.assertEqual([entry["version"] for entry in result["changelog"]],
+                                 ["1.2.2", "1.2.3", "1.2.4"])
+                self.assertEqual(result["changelog"][-1]["notes"], [
+                    "ajout d'un réticule lié à une courbe, avec suivi continu des séries expérimentales et des modélisations ;",
+                    "sélection simple du réticule libre ou lié, y compris avec plusieurs courbes et les axes Y gauche / Y droite ;",
+                    "amélioration des listes de sélection du Graphique, aussi bien avec peu qu'avec beaucoup de grandeurs ;",
+                    "ajout de notes de mise à jour cumulatives : les nouveautés des versions manquées sont désormais regroupées automatiquement.",
+                ])
+                self.assertIn("Version 1.2.2\n\n• amélioration de l’utilisation", result["notes"])
+                self.assertIn("Version 1.2.3\n\n• amélioration importante", result["notes"])
+                self.assertIn("Version 1.2.4\n\n• ajout d'un réticule", result["notes"])
+                self.assertIn("À propos", result["notes"])
                 fixed.FileVersionMS = 0
                 with self.assertRaises(ValueError):
-                    prepare_release.prepare(path, "Notes")
+                    prepare_release.prepare(path, notes, history)
+
+    def test_manifest_generation_rejects_incoherent_release_notes(self):
+        from scripts import prepare_release
+        with patch.object(prepare_release, "__version__", "1.2.4"):
+            valid_notes = "Physalix 1.2.4\n\n- Notes courantes."
+            valid_history = [
+                {"version": "1.2.2", "notes": ["Deux"]},
+                {"version": "1.2.3", "notes": ["Trois"]},
+            ]
+            invalid_histories = (
+                {},
+                [None],
+                [{"version": "incorrecte", "notes": ["Version invalide"]}],
+                [{"version": "1.2.2", "notes": []}],
+                [
+                    {"version": "1.2.2", "notes": ["Deux"]},
+                    {"version": "1.2.2", "notes": ["Doublon"]},
+                ],
+                [
+                    {"version": "1.2.3", "notes": ["Trois"]},
+                    {"version": "1.2.2", "notes": ["Deux"]},
+                ],
+                [{"version": "1.2.4", "notes": ["Version courante"]}],
+                [{"version": "1.2.5", "notes": ["Version future"]}],
+            )
+            for history in invalid_histories:
+                with self.subTest(history=history), self.assertRaises(ValueError):
+                    prepare_release.prepare(Path(), valid_notes, history)
+            with self.assertRaises(ValueError):
+                prepare_release.prepare(
+                    Path(), "Physalix 1.2.3\n\n- Anciennes notes.", valid_history
+                )
+            with self.assertRaises(ValueError):
+                prepare_release.prepare(Path(), "Physalix 1.2.4\n\nAucune puce", valid_history)
+
+    def test_manifest_generation_rejects_invalid_history_file(self):
+        from scripts import prepare_release
+        with tempfile.TemporaryDirectory() as folder, patch.object(
+            prepare_release, "__version__", "1.2.4"
+        ):
+            history_path = Path(folder) / "update-history.json"
+            history_path.write_text("{", encoding="utf-8")
+            with patch.object(prepare_release, "HISTORY_FILE", history_path), self.assertRaises(ValueError):
+                prepare_release.prepare(Path(), "Physalix 1.2.4\n\n- Notes.")

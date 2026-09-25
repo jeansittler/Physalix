@@ -199,7 +199,8 @@ class UpdateUiTests(unittest.TestCase):
             "1.2.4", "https://example.com/i.exe", "a" * 64,
             "Notes historiques", False, changelog,
         )
-        dialog = UpdateDialog(manifest)
+        with patch("physalix.ui.updates.__version__", "1.2.3"):
+            dialog = UpdateDialog(manifest)
         self.assertEqual(
             dialog.notes.toPlainText(),
             "Version 1.2.4\n\n• Nouveauté 1.2.4",
