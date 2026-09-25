@@ -81,14 +81,14 @@ class UpdateTests(unittest.TestCase):
         )
         self.assertEqual(
             u.release_notes("1.2.2", "1.2.4", changelog, "Historique"),
-            "Version 1.2.3\n\n• Troisième A\n• Troisième B\n\n"
-            "Version 1.2.4\n\n• Quatrième",
+            "Version 1.2.4\n\n• Quatrième\n\n"
+            "Version 1.2.3\n\n• Troisième A\n• Troisième B",
         )
         self.assertEqual(
             u.release_notes("1.2.1", "1.2.4", changelog, "Historique"),
-            "Version 1.2.2\n\n• Deuxième\n\n"
+            "Version 1.2.4\n\n• Quatrième\n\n"
             "Version 1.2.3\n\n• Troisième A\n• Troisième B\n\n"
-            "Version 1.2.4\n\n• Quatrième",
+            "Version 1.2.2\n\n• Deuxième",
         )
 
     def test_release_notes_ignore_invalid_entries_and_compare_numerically(self):
@@ -103,7 +103,7 @@ class UpdateTests(unittest.TestCase):
         ]
         self.assertEqual(
             u.release_notes("1.2.8", "1.2.10", changelog, "Historique"),
-            "Version 1.2.9\n\n• Neuf\n\nVersion 1.2.10\n\n• Dix",
+            "Version 1.2.10\n\n• Dix\n\nVersion 1.2.9\n\n• Neuf",
         )
 
     def test_release_notes_fall_back_when_changelog_is_absent_or_unusable(self):
@@ -348,6 +348,10 @@ class ReleaseTests(unittest.TestCase):
                 self.assertIn("Version 1.2.3\n\n• amélioration importante", result["notes"])
                 self.assertIn("Version 1.2.4\n\n• ajout d'un réticule", result["notes"])
                 self.assertIn("À propos", result["notes"])
+                self.assertLess(result["notes"].index("Version 1.2.4"),
+                                result["notes"].index("Version 1.2.3"))
+                self.assertLess(result["notes"].index("Version 1.2.3"),
+                                result["notes"].index("Version 1.2.2"))
                 fixed.FileVersionMS = 0
                 with self.assertRaises(ValueError):
                     prepare_release.prepare(path, notes, history)

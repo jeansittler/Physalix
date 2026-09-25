@@ -66,7 +66,7 @@ def cumulative_notes(changelog):
     return "\n\n".join(
         f"Version {entry['version']}\n\n"
         + "\n".join(f"• {note}" for note in entry["notes"])
-        for entry in changelog
+        for entry in reversed(changelog)
     )
 
 

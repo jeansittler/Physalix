@@ -99,7 +99,7 @@ def release_notes(installed, available, changelog, fallback=""):
         return fallback
     return "\n\n".join(
         f"Version {version}\n\n" + "\n".join(f"• {note}" for note in notes)
-        for version, notes in (sections[key] for key in sorted(sections))
+        for version, notes in (sections[key] for key in sorted(sections, reverse=True))
     )
 
 
