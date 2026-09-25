@@ -30,7 +30,7 @@ def prepare_video(path, cancelled=lambda: False, progress=lambda count: None,
     try:
         used = 0
         origin = None
-        with av.open(str(path)) as container:
+        with av.open(str(path), metadata_errors="surrogateescape") as container:
             if not container.streams.video:
                 raise ValueError("Ce fichier ne contient aucune piste vidéo.")
             stream = container.streams.video[0]

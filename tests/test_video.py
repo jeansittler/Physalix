@@ -69,6 +69,39 @@ class VideoTests(unittest.TestCase):
                     cache.close()
                 self.assertFalse(Path(directory).exists())
 
+    def test_legacy_non_utf8_avi_metadata(self):
+        path = Path(self.temp.name) / "legacy_metadata.avi"
+
+        with av.open(str(path), "w") as output:
+            stream = output.add_stream("mpeg4", rate=20)
+            stream.width, stream.height = 64, 48
+            stream.pix_fmt = "yuv420p"
+            stream.metadata["title"] = "roue2.avi Video #1"
+
+            for i in range(3):
+                pixels = np.full((48, 64, 3), 50 + i * 50, dtype=np.uint8)
+                frame = av.VideoFrame.from_ndarray(pixels, format="rgb24")
+                for packet in stream.encode(frame):
+                    output.mux(packet)
+
+            for packet in stream.encode():
+                output.mux(packet)
+
+        data = path.read_bytes()
+        ascii_title = b"roue2.avi Video #1"
+        legacy_title = b"roue2.avi Vid\xe9o #1"
+
+        self.assertEqual(data.count(ascii_title), 1)
+        self.assertEqual(len(ascii_title), len(legacy_title))
+        path.write_bytes(data.replace(ascii_title, legacy_title))
+
+        cache = prepare_video(path)
+        try:
+            self.assertEqual(len(cache.times), 3)
+            self.assertEqual((cache.width, cache.height), (64, 48))
+        finally:
+            cache.close()
+
     def test_cancel_invalid_and_cache_limit(self):
         self.assertIsNone(prepare_video(self.path, cancelled=lambda: True))
         with self.assertRaises(ValueError):
