@@ -13,7 +13,7 @@ from PySide6.QtWidgets import (
 )
 import pyqtgraph as pg
 
-from physalix.fitting import evaluate_fit
+from physalix.fitting import MODELS, evaluate_fit
 from physalix.ui.graph_series import GraphSeries
 from physalix.ui.graph_axis import EndAxis
 from physalix.ui.graph_legend import SmartLegend
@@ -53,6 +53,39 @@ def paired_values(rows, x_column, y_column):
         xs.append(x)
         ys.append(y)
     return xs, ys, skipped
+
+
+def interpolated_value(xs, ys, x):
+    """Interpolate a finite experimental series without extrapolating it."""
+    points = sorted(
+        ((float(x_value), float(y_value)) for x_value, y_value in zip(xs, ys)
+         if np.isfinite(x_value) and np.isfinite(y_value)),
+        key=lambda point: point[0],
+    )
+    if not points or not np.isfinite(x):
+        return None
+
+    # Several measurements at the same abscissa do not define a unique
+    # function. Their mean gives a deterministic display value without
+    # changing the stored measurements.
+    unique_x, unique_y = [], []
+    index = 0
+    while index < len(points):
+        same_x = [points[index][1]]
+        next_index = index + 1
+        while next_index < len(points) and points[next_index][0] == points[index][0]:
+            same_x.append(points[next_index][1])
+            next_index += 1
+        unique_x.append(points[index][0])
+        unique_y.append(float(np.mean(same_x)))
+        index = next_index
+
+    if len(unique_x) == 1:
+        tolerance = max(abs(unique_x[0]), 1.0) * 1e-12
+        return unique_y[0] if abs(float(x) - unique_x[0]) <= tolerance else None
+    if x < unique_x[0] or x > unique_x[-1]:
+        return None
+    return float(np.interp(float(x), unique_x, unique_y))
 
 
 class InteractivePlot(pg.PlotWidget):
@@ -507,6 +540,8 @@ class GraphTab(QWidget):
                 if item.visible.isChecked():
                     self.legend.addItem(fit.curve, f"S{item.number} · Modélisation {fit.number}")
         self.legend.schedule()
+        if hasattr(self, 'reticle_sources_menu'):
+            self.refresh_reticle_menu()
 
     def data_signature(self, item):
         x, y = item.key()
@@ -737,9 +772,27 @@ class GraphTab(QWidget):
                 lambda checked, chosen=mode: self.set_navigation_mode(chosen)
             )
         self.context_menu.addSeparator()
-        self.reticle_action = QAction("Réticule", self, checkable=True)
-        self.reticle_action.toggled.connect(self.hide_crosshair)
-        self.context_menu.addAction(self.reticle_action)
+        self.reticle_menu = self.context_menu.addMenu("Réticule")
+        self.reticle_group = QActionGroup(self)
+        self.reticle_group.setExclusive(True)
+        self.reticle_free_action = QAction("Libre", self, checkable=True)
+        self.reticle_free_action.toggled.connect(self._free_reticle_toggled)
+        self.reticle_group.addAction(self.reticle_free_action)
+        self.reticle_menu.addAction(self.reticle_free_action)
+        self.reticle_sources_menu = self.reticle_menu.addMenu("Sur une courbe")
+        self.reticle_sources_menu.menuAction().triggered.connect(self.select_only_reticle_target)
+        self.reticle_source_actions = []
+        self.reticle_hide_action = QAction("Masquer le réticule", self, checkable=True)
+        self.reticle_hide_action.setChecked(True)
+        self.reticle_hide_action.triggered.connect(lambda: self.set_reticle_mode("hidden"))
+        self.reticle_group.addAction(self.reticle_hide_action)
+        self.reticle_menu.addAction(self.reticle_hide_action)
+        # Compatibility alias for integrations using the former action.
+        self.reticle_action = self.reticle_free_action
+        self.reticle_mode = "hidden"
+        self.reticle_target = None
+        self.reticle_menu.aboutToShow.connect(self.refresh_reticle_menu)
+        self.reticle_sources_menu.aboutToShow.connect(self.refresh_reticle_menu)
         self.context_menu.addSeparator()
         options = self.context_menu.addMenu("Options du graphique")
         from pyqtgraph.graphicsItems.ViewBox.ViewBoxMenu import ViewBoxMenu
@@ -752,6 +805,84 @@ class GraphTab(QWidget):
             options.addMenu(submenu)
         options.addSeparator()
         self.export_action = options.addAction("Exporter…", self.export_graph)
+
+    def _free_reticle_toggled(self, checked):
+        if checked:
+            self.set_reticle_mode("free")
+        elif self.reticle_mode == "free":
+            self.set_reticle_mode("hidden")
+
+    def select_only_reticle_target(self):
+        targets = self.reticle_targets()
+        if len(targets) == 1:
+            self.set_reticle_mode("curve", targets[0][0])
+
+    def reticle_targets(self):
+        """Return visible experimental series and models that can be followed."""
+        targets = []
+        for item in self.series:
+            if not item.visible.isChecked():
+                continue
+            xs, ys, _ = paired_values(self.model.rows, *item.key())
+            if xs:
+                targets.append((
+                    ("series", item),
+                    f"S{item.number} — {self.axis_label(item.key()[1])} en fonction de "
+                    f"{self.axis_label(item.key()[0])}",
+                ))
+            for fit in item.fits:
+                curve_x, curve_y = fit.curve.getData()
+                if curve_x is None or curve_y is None:
+                    continue
+                valid = np.isfinite(curve_x) & np.isfinite(curve_y)
+                if np.any(valid):
+                    model_name = MODELS.get(fit.kind, ("Modèle",))[0]
+                    targets.append((
+                        ("fit", item, fit),
+                        f"S{item.number} · Modélisation {fit.number} — {model_name}",
+                    ))
+        return targets
+
+    def refresh_reticle_menu(self):
+        targets = self.reticle_targets()
+        for action in self.reticle_source_actions:
+            self.reticle_group.removeAction(action)
+            self.reticle_sources_menu.removeAction(action)
+            action.deleteLater()
+        self.reticle_source_actions = []
+        for target, label in targets:
+            action = QAction(label, self, checkable=True)
+            action.reticle_target = target
+            action.setChecked(self.reticle_mode == "curve" and self.reticle_target == target)
+            action.triggered.connect(
+                lambda checked=False, chosen=target: self.set_reticle_mode("curve", chosen)
+            )
+            self.reticle_group.addAction(action)
+            self.reticle_sources_menu.addAction(action)
+            self.reticle_source_actions.append(action)
+        self.reticle_sources_menu.setEnabled(bool(targets))
+        if self.reticle_mode == "curve" and self.reticle_target not in [target for target, _ in targets]:
+            self.set_reticle_mode("free")
+
+    def set_reticle_mode(self, mode, target=None):
+        if mode == "curve" and target is None:
+            targets = self.reticle_targets()
+            if not targets:
+                mode = "free"
+            else:
+                target = targets[0][0]
+        self.reticle_mode = mode
+        self.reticle_target = target if mode == "curve" else None
+        if mode == "free":
+            self.reticle_free_action.setChecked(True)
+        elif mode == "hidden":
+            self.reticle_hide_action.setChecked(True)
+        else:
+            for action in self.reticle_source_actions:
+                if action.reticle_target == target:
+                    action.setChecked(True)
+                    break
+        self.hide_crosshair()
 
     def set_navigation_mode(self, mode):
         view = self.plot.getViewBox()
@@ -775,17 +906,32 @@ class GraphTab(QWidget):
 
     def track_cursor(self, scene_position):
         view = self.plot.getViewBox()
-        if (not self.reticle_action.isChecked() or self.context_menu.isVisible()
+        if (self.reticle_mode == "hidden" or self.context_menu.isVisible()
                 or not view.sceneBoundingRect().contains(scene_position)):
             self.hide_crosshair()
             return
         position = view.mapSceneToView(scene_position)
-        self.cross_x.setPos(position.x())
-        self.cross_y.setPos(position.y())
+        x_value, y_value = position.x(), position.y()
+        y_position = y_value
+        target_item = None
+        target_label = None
+        if self.reticle_mode == "curve":
+            result = self.reticle_curve_value(x_value)
+            if result is None:
+                self.hide_crosshair()
+                self.coordinates.setText("Réticule lié — abscisse hors du domaine de la courbe.")
+                self.coordinates.setToolTip(self.coordinates.text())
+                return
+            y_value, target_item, target_label = result
+            target_view = self.view_for_series(target_item)
+            scene_y = target_view.mapViewToScene(QPointF(x_value, y_value)).y()
+            y_position = view.mapSceneToView(QPointF(scene_position.x(), scene_y)).y()
+        self.cross_x.setPos(x_value)
+        self.cross_y.setPos(y_position)
         self.cross_x.show()
         self.cross_y.show()
-        x = format(position.x(), ".7g").replace(".", ",")
-        y = format(position.y(), ".7g").replace(".", ",")
+        x = format(x_value, ".7g").replace(".", ",")
+        y = format(y_value, ".7g").replace(".", ",")
         x_range, y_range = view.viewRange()
         self.cross_x_label.setText(x)
         self.cross_y_label.setText(y)
@@ -795,19 +941,51 @@ class GraphTab(QWidget):
         y_padding = self.cross_y_label.boundingRect().height() * y_span / (2*y_pixels)
         edge_x = x_range[0] + 3*x_span/x_pixels
         edge_y = y_range[0] + 3*y_span/y_pixels
-        label_x = min(max(position.x(), x_range[0]+x_padding), x_range[1]-x_padding)
-        label_y = min(max(position.y(), y_range[0]+y_padding), y_range[1]-y_padding)
+        label_x = min(max(x_value, x_range[0]+x_padding), x_range[1]-x_padding)
+        label_y = min(max(y_position, y_range[0]+y_padding), y_range[1]-y_padding)
         self.cross_x_label.setPos(label_x, edge_y)
         self.cross_y_label.setPos(edge_x, label_y)
         self.cross_x_label.show()
         self.cross_y_label.show()
-        self.coordinates.setText(
-            f"X — {self.axis_caption(0)} : {x}    |    "
-            f"Y — {self.axis_caption(1)} : {y}")
-        if self.plot.getAxis('right').isVisible():
+        if self.reticle_mode == "curve":
+            self.coordinates.setText(f"{target_label}    |    X : {x}    |    Y : {y}")
+        else:
+            self.coordinates.setText(
+                f"X — {self.axis_caption(0)} : {x}    |    "
+                f"Y — {self.axis_caption(1)} : {y}")
+        if self.reticle_mode == "free" and self.plot.getAxis('right').isVisible():
             right_y = self.right_view.mapSceneToView(scene_position).y()
             self.coordinates.setText(f"X : {x} | Y gauche : {y} | Y droite : {right_y:.7g}".replace('.', ','))
         self.coordinates.setToolTip(self.coordinates.text())
+
+    def reticle_curve_value(self, x):
+        target = self.reticle_target
+        if not target:
+            return None
+        kind, item, *rest = target
+        if kind == "series":
+            xs, ys, _ = paired_values(self.model.rows, *item.key())
+            y = interpolated_value(xs, ys, x)
+            label = f"S{item.number} — {self.axis_label(item.key()[1])}"
+        else:
+            fit = rest[0]
+            curve_x, curve_y = fit.curve.getData()
+            if curve_x is None or curve_y is None:
+                return None
+            valid = np.isfinite(curve_x) & np.isfinite(curve_y)
+            if not np.any(valid) or x < np.min(curve_x[valid]) or x > np.max(curve_x[valid]):
+                return None
+            axis = item.key()[0]
+            axis_name = self.model.names[axis] if axis is not None else "x"
+            try:
+                y = float(evaluate_fit(fit.result, [x], axis_name)[0])
+            except (ValueError, TypeError, OverflowError):
+                return None
+            if not np.isfinite(y):
+                return None
+            model_name = MODELS.get(fit.kind, ("Modèle",))[0]
+            label = f"S{item.number} · Modélisation {fit.number} — {model_name}"
+        return None if y is None else (y, item, label)
 
     def hide_crosshair(self, *args):
         self.cross_x.hide()
@@ -815,9 +993,11 @@ class GraphTab(QWidget):
         self.cross_x_label.hide()
         self.cross_y_label.hide()
         self.coordinates.setText(
-            "Réticule activé — survolez le graphique pour lire les coordonnées."
-            if self.reticle_action.isChecked() else
-            "Réticule désactivé — clic droit pour l’activer.")
+            "Réticule désactivé — clic droit pour l’activer."
+            if self.reticle_mode == "hidden" else
+            "Réticule libre — survolez le graphique pour lire les coordonnées."
+            if self.reticle_mode == "free" else
+            "Réticule lié — balayez horizontalement le graphique.")
         self.coordinates.setToolTip(self.coordinates.text())
 
     def eventFilter(self, watched, event):

@@ -13,7 +13,7 @@ import pyqtgraph as pg
 from unittest.mock import patch
 
 from physalix.ui.main_window import MainWindow
-from physalix.ui.graph_tab import paired_values
+from physalix.ui.graph_tab import interpolated_value, paired_values
 from physalix.ui.theme import LIGHT
 
 
@@ -41,6 +41,16 @@ class GraphTests(unittest.TestCase):
                            ["2", "1e1"], ["", ""], ["NaN", "3"]], 0, 1),
             ([0.0, 2.0], [7.2, 10.0], 3),
         )
+
+    def test_experimental_reticle_interpolation_is_sorted_and_bounded(self):
+        self.assertEqual(interpolated_value([2, 0, 1], [4, 0, 2], .5), 1)
+        self.assertIsNone(interpolated_value([2, 0, 1], [4, 0, 2], -1))
+        self.assertIsNone(interpolated_value([2, 0, 1], [4, 0, 2], 3))
+        self.assertEqual(interpolated_value([1, 1, 2], [2, 4, 8], 1), 3)
+        self.assertEqual(interpolated_value([1, 1, 2], [2, 4, 8], 1.5), 5.5)
+        self.assertEqual(interpolated_value([3], [7], 3), 7)
+        self.assertIsNone(interpolated_value([3], [7], 3.1))
+        self.assertIsNone(interpolated_value([], [], 0))
 
     def test_legend_avoids_points_and_preserves_manual_placement(self):
         graph = self.graph
@@ -147,18 +157,46 @@ class GraphTests(unittest.TestCase):
                                  Qt.ScrollBarPolicy.ScrollBarAsNeeded)
                 self.assertEqual(combo.view().verticalScrollMode(),
                                  combo.view().ScrollMode.ScrollPerPixel)
-        for _ in range(10):
+
+        def check_popup(combo, expected_rows, scrollbar):
+            combo.showPopup()
+            self.app.processEvents()
+            try:
+                view = combo.view()
+                expected_height = (expected_rows * view.sizeHintForRow(0)
+                                   + 2 * (LIGHT.small + view.frameWidth()))
+                self.assertEqual(view.height(), expected_height)
+                self.assertEqual(view.verticalScrollBar().isVisible(), scrollbar)
+                container = view.parentWidget()
+                margins = container.layout().contentsMargins()
+                expected_container_height = (
+                    expected_height + 2 * container.frameWidth()
+                    + margins.top() + margins.bottom()
+                )
+                self.assertEqual(container.height(), expected_container_height)
+            finally:
+                combo.hidePopup()
+
+        for combo in (series.x_choice, series.y_choice, series.y_axis):
+            check_popup(combo, 2, False)
+
+        for _ in range(4):
             self.model.add_quantity()
         self.app.processEvents()
-        series.x_choice.showPopup()
+        for combo in (series.x_choice, series.y_choice):
+            check_popup(combo, 6, False)
+
+        for _ in range(2):
+            self.model.add_quantity()
         self.app.processEvents()
-        try:
-            view = series.x_choice.view()
-            self.assertGreaterEqual(view.height(), 4 * view.sizeHintForRow(0))
-            self.assertLessEqual(view.height(), 8 * view.sizeHintForRow(0) + 2 * view.frameWidth())
-            self.assertTrue(view.verticalScrollBar().isVisible())
-        finally:
-            series.x_choice.hidePopup()
+        for combo in (series.x_choice, series.y_choice):
+            check_popup(combo, 8, False)
+
+        for _ in range(4):
+            self.model.add_quantity()
+        self.app.processEvents()
+        for combo in (series.x_choice, series.y_choice):
+            check_popup(combo, 8, True)
 
     def test_connection_order_color_and_style_per_pair(self):
         self.model.rows = [["2", "4"], ["0", "1"], ["1", "3"]]
@@ -335,6 +373,45 @@ class GraphTests(unittest.TestCase):
         self.assertFalse(graph.cross_y_label.isVisible())
         graph.reticle_action.setChecked(False)
         self.assertIn('désactivé', graph.coordinates.text())
+
+    def test_reticle_menu_and_curve_mode_follow_x_only(self):
+        graph = self.graph
+        self.model.names[:2] = ["Temps", "Distance"]
+        self.model.rows = [["2", "4"], ["0", "0"], ["1", "2"]]
+        graph.refresh_plot()
+        graph.refresh_reticle_menu()
+
+        self.assertEqual(
+            [action.text() for action in graph.reticle_menu.actions()],
+            ["Libre", "Sur une courbe", "Masquer le réticule"],
+        )
+        self.assertEqual(len(graph.reticle_source_actions), 1)
+        self.assertIn("Distance", graph.reticle_source_actions[0].text())
+        graph.reticle_sources_menu.menuAction().trigger()
+        self.assertEqual(graph.reticle_mode, "curve")
+        self.assertTrue(graph.reticle_source_actions[0].isChecked())
+
+        view = graph.plot.getViewBox()
+        y_range = view.viewRange()[1]
+        low_y = y_range[0] + .25 * (y_range[1] - y_range[0])
+        high_y = y_range[0] + .75 * (y_range[1] - y_range[0])
+        graph.track_cursor(view.mapViewToScene(QPointF(.5, low_y)))
+        first_y = graph.cross_y.value()
+        self.assertAlmostEqual(graph.cross_x.value(), .5)
+        self.assertAlmostEqual(first_y, 1)
+        graph.track_cursor(view.mapViewToScene(QPointF(.5, high_y)))
+        self.assertAlmostEqual(graph.cross_y.value(), first_y)
+        self.assertEqual(graph.cross_y_label.toPlainText(), "1")
+
+        graph.track_cursor(view.mapViewToScene(QPointF(-.1, 0)))
+        self.assertFalse(graph.cross_x.isVisible())
+        self.assertIn("hors du domaine", graph.coordinates.text())
+        graph.reticle_free_action.trigger()
+        self.assertEqual(graph.reticle_mode, "free")
+        self.assertTrue(graph.reticle_free_action.isChecked())
+        graph.reticle_hide_action.trigger()
+        self.assertEqual(graph.reticle_mode, "hidden")
+        self.assertTrue(graph.reticle_hide_action.isChecked())
 
     def test_fit_constant_and_spread_data_then_clear(self):
         for samples in ([(0, 0)], [(2, 7), (2, 7)], [(-100, -50), (400, 800)]):

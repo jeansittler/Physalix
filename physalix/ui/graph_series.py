@@ -11,6 +11,47 @@ from physalix.ui.components import role
 from physalix.ui.theme import LIGHT
 
 
+class PopupComboBox(QComboBox):
+    """Keep Qt's popup container aligned with the bounded list view."""
+
+    def showPopup(self):
+        update_popup_height(self)
+        view = self.view()
+        container = view.parentWidget()
+        if container is not None:
+            margins = container.layout().contentsMargins() if container.layout() else None
+            vertical_margins = margins.top() + margins.bottom() if margins else 0
+            container.setFixedHeight(
+                view.height() + 2 * container.frameWidth() + vertical_margins
+            )
+        super().showPopup()
+
+
+def configure_popup(combo, minimum_width=None):
+    """Use the same bounded, fully padded popup for series selectors."""
+    combo.setMaxVisibleItems(8)
+    view = QListView(combo)
+    combo.setView(view)
+    if minimum_width is not None:
+        view.setMinimumWidth(minimum_width)
+    view.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+    view.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+    view.setVerticalScrollMode(QAbstractItemView.ScrollMode.ScrollPerPixel)
+    view.setUniformItemSizes(True)
+
+
+def update_popup_height(combo):
+    """Fit every visible row plus the popup padding, capped at maxVisibleItems."""
+    if not combo.count():
+        return
+    row_height = combo.view().sizeHintForRow(0)
+    if row_height <= 0:
+        return
+    visible_rows = min(combo.count(), combo.maxVisibleItems())
+    height = visible_rows * row_height + 2 * (LIGHT.small + combo.view().frameWidth())
+    combo.view().setFixedHeight(height)
+
+
 class GraphSeries(QWidget):
     """Une paire de colonnes, ses points, ses segments et ses contrôles."""
 
@@ -33,7 +74,7 @@ class GraphSeries(QWidget):
         self.visible.setChecked(True)
         self.visible.setToolTip("Afficher ou masquer cette série")
         row.addWidget(self.visible)
-        self.x_choice, self.y_choice = QComboBox(), QComboBox()
+        self.x_choice, self.y_choice = PopupComboBox(), PopupComboBox()
         for name, label, combo in (("x", "Grandeur en abscisse (X)", self.x_choice),
                                    ("y", "Grandeur en ordonnée (Y)", self.y_choice)):
             group = QWidget()
@@ -53,20 +94,15 @@ class GraphSeries(QWidget):
             combo.setMaximumWidth(LIGHT.field_medium)
             combo.setMinimumContentsLength(8)
             combo.setSizeAdjustPolicy(QComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon)
-            combo.setMaxVisibleItems(8)
-            view = QListView(combo)
-            combo.setView(view)
-            view.setMinimumWidth(LIGHT.field_medium)
-            view.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-            view.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
-            view.setVerticalScrollMode(QAbstractItemView.ScrollMode.ScrollPerPixel)
-            view.setUniformItemSizes(True)
+            configure_popup(combo, LIGHT.field_medium)
             combo.currentIndexChanged.connect(self.changed)
         self.connect_points = QCheckBox("Relier")
         self.connect_points.setToolTip("Relier les points dans l’ordre du tableau")
         row.addWidget(self.connect_points)
-        self.y_axis = QComboBox()
+        self.y_axis = PopupComboBox()
         self.y_axis.addItems(["Y gauche", "Y droite"])
+        configure_popup(self.y_axis)
+        update_popup_height(self.y_axis)
         self.y_axis.setAccessibleName("Axe des ordonnées de la série")
         self.y_axis.setToolTip("Y droite utilise une échelle indépendante ; les abscisses restent communes.")
         self.y_axis.currentIndexChanged.connect(self.changed)
@@ -97,10 +133,7 @@ class GraphSeries(QWidget):
             combo.clear()
             for column in range(model.columnCount()):
                 combo.addItem(f"{column + 1} — {axis_label(column)}", column)
-            row_height = combo.view().sizeHintForRow(0)
-            if row_height > 0:
-                visible_rows = min(combo.count(), combo.maxVisibleItems())
-                combo.view().setMaximumHeight(visible_rows * row_height + 2 * combo.view().frameWidth())
+            update_popup_height(combo)
             combo.setCurrentIndex(min(default if selected is None else selected, combo.count() - 1))
             combo.blockSignals(False)
 
