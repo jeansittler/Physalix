@@ -36,7 +36,7 @@ class UpdateTests(unittest.TestCase):
     def test_versions(self):
         for local, remote, expected in [("1.1.0", "1.1.0", False), ("1.1.0", "1.1.1", True),
                 ("1.1.9", "1.2.0", True), ("1.9.9", "2.0.0", True), ("1.2.0", "1.1.9", False),
-                ("1.9.0", "1.10.0", True)]:
+                ("1.9.0", "1.10.0", True), ("1.2.9", "1.2.10", True)]:
             with self.subTest(local=local, remote=remote):
                 self.assertEqual(u.is_newer(remote, local), expected)
 
@@ -50,17 +50,75 @@ class UpdateTests(unittest.TestCase):
             with self.subTest(raw=raw), self.assertRaises(u.UpdateError):
                 u.Manifest.parse(raw)
         for field in manifest_data():
+            if field == "notes":
+                continue
             data = manifest_data()
             del data[field]
             with self.subTest(field=field), self.assertRaises(u.UpdateError):
                 u.Manifest.parse(json.dumps(data))
+        data = manifest_data()
+        del data["notes"]
+        self.assertEqual(u.Manifest.parse(json.dumps(data)).notes, "")
 
     def test_types_and_forward_compatibility(self):
-        for changes in (dict(mandatory="false"), dict(sha256="x" * 64), dict(notes=[]), dict(installer_url="file:///x")):
+        for changes in (dict(mandatory="false"), dict(sha256="x" * 64), dict(installer_url="file:///x")):
             with self.subTest(changes=changes), self.assertRaises(u.UpdateError):
                 manifest(**changes)
         self.assertTrue(manifest(mandatory=True, future_field={}).mandatory)
         self.assertEqual(manifest(sha256="A" * 64).sha256, "a" * 64)
+        self.assertEqual(manifest(notes=["Une", "Deux"]).notes, "• Une\n• Deux")
+        self.assertEqual(manifest(notes=[]).notes, "")
+
+    def test_cumulative_release_notes_and_fallback(self):
+        changelog = [
+            {"version": "1.2.4", "notes": ["Quatrième"]},
+            {"version": "1.2.2", "notes": ["Deuxième"]},
+            {"version": "1.2.3", "notes": ["Troisième A", "Troisième B"]},
+        ]
+        self.assertEqual(
+            u.release_notes("1.2.3", "1.2.4", changelog, "Historique"),
+            "Version 1.2.4\n\n• Quatrième",
+        )
+        self.assertEqual(
+            u.release_notes("1.2.2", "1.2.4", changelog, "Historique"),
+            "Version 1.2.3\n\n• Troisième A\n• Troisième B\n\n"
+            "Version 1.2.4\n\n• Quatrième",
+        )
+        self.assertEqual(
+            u.release_notes("1.2.1", "1.2.4", changelog, "Historique"),
+            "Version 1.2.2\n\n• Deuxième\n\n"
+            "Version 1.2.3\n\n• Troisième A\n• Troisième B\n\n"
+            "Version 1.2.4\n\n• Quatrième",
+        )
+
+    def test_release_notes_ignore_invalid_entries_and_compare_numerically(self):
+        changelog = [
+            None,
+            {"notes": ["Sans version"]},
+            {"version": "v1.2.10", "notes": ["Version invalide"]},
+            {"version": "1.2.10", "notes": "Liste attendue"},
+            {"version": "1.2.9", "notes": ["Neuf"]},
+            {"version": "1.2.10", "notes": ["Dix"]},
+            {"version": "1.2.11", "notes": ["Trop récente"]},
+        ]
+        self.assertEqual(
+            u.release_notes("1.2.8", "1.2.10", changelog, "Historique"),
+            "Version 1.2.9\n\n• Neuf\n\nVersion 1.2.10\n\n• Dix",
+        )
+
+    def test_release_notes_fall_back_when_changelog_is_absent_or_unusable(self):
+        for changelog in (None, {}, [], [None, {"version": "bad", "notes": []}],
+                          [{"version": "1.2.4", "notes": "invalide"}]):
+            with self.subTest(changelog=changelog):
+                self.assertEqual(
+                    u.release_notes("1.2.3", "1.2.4", changelog, "Notes historiques"),
+                    "Notes historiques",
+                )
+
+    def test_manifest_keeps_malformed_changelog_non_blocking(self):
+        parsed = manifest(changelog={"not": "a list"})
+        self.assertEqual(parsed.version, "1.2.1")
+        self.assertEqual(parsed.changelog, {"not": "a list"})
 
     def test_network_and_timeout_failures(self):
         for error in (URLError("offline"), TimeoutError("timeout")):

@@ -18,7 +18,9 @@ class UpdateDialog(QDialog):
         layout.addWidget(QLabel(f"Physalix {manifest.version} est disponible.\nVersion installée : {__version__}"))
         layout.addWidget(QLabel("Nouveautés :"))
         self.notes = QTextBrowser()
-        self.notes.setPlainText(manifest.notes)
+        self.notes.setPlainText(
+            updates.release_notes(__version__, manifest.version, manifest.changelog, manifest.notes)
+        )
         self.notes.setOpenExternalLinks(False)
         layout.addWidget(self.notes)
         buttons = QDialogButtonBox()

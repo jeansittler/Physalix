@@ -189,3 +189,19 @@ class UpdateUiTests(unittest.TestCase):
         dialog.reject()
         self.assertEqual(dialog.result(), QDialog.DialogCode.Rejected)
         dialog.deleteLater()
+
+    def test_dialog_prefers_relevant_cumulative_changelog(self):
+        changelog = [
+            {"version": "1.2.4", "notes": ["Nouveauté 1.2.4"]},
+            {"version": "1.2.3", "notes": ["Déjà installée"]},
+        ]
+        manifest = updates.Manifest(
+            "1.2.4", "https://example.com/i.exe", "a" * 64,
+            "Notes historiques", False, changelog,
+        )
+        dialog = UpdateDialog(manifest)
+        self.assertEqual(
+            dialog.notes.toPlainText(),
+            "Version 1.2.4\n\n• Nouveauté 1.2.4",
+        )
+        dialog.deleteLater()

@@ -55,6 +55,54 @@ def is_newer(remote, local=__version__):
     return version_tuple(remote) > local_version
 
 
+def _fallback_notes(notes):
+    if isinstance(notes, str):
+        return notes if len(notes) <= 20000 else ""
+    if (isinstance(notes, list) and notes
+            and all(isinstance(note, str) and note.strip() for note in notes)):
+        text = "\n".join(f"• {note.strip()}" for note in notes)
+        return text if len(text) <= 20000 else ""
+    return ""
+
+
+def release_notes(installed, available, changelog, fallback=""):
+    """Build cumulative notes for installed < version <= available."""
+    fallback = _fallback_notes(fallback)
+    try:
+        installed_version = version_tuple(installed)
+        available_version = version_tuple(available)
+    except UpdateError:
+        return fallback
+    if not isinstance(changelog, list):
+        return fallback
+
+    sections = {}
+    for entry in changelog:
+        if not isinstance(entry, dict):
+            continue
+        try:
+            version = version_tuple(entry.get("version"))
+        except UpdateError:
+            continue
+        notes = entry.get("notes")
+        if (not installed_version < version <= available_version
+                or not isinstance(notes, list) or not notes
+                or not all(isinstance(note, str) and note.strip() for note in notes)):
+            continue
+        cleaned = [note.strip() for note in notes]
+        if sum(map(len, cleaned)) > 20000:
+            continue
+        section = sections.setdefault(version, [entry["version"], []])
+        section[1].extend(cleaned)
+
+    if not sections:
+        return fallback
+    return "\n\n".join(
+        f"Version {version}\n\n" + "\n".join(f"• {note}" for note in notes)
+        for version, notes in (sections[key] for key in sorted(sections))
+    )
+
+
 def updates_enabled():
     """Les canaux non stables ne doivent jamais proposer un retour vers une Release."""
     return not __development__
@@ -85,6 +133,7 @@ class Manifest:
     sha256: str
     notes: str
     mandatory: bool
+    changelog: object = None
 
     @classmethod
     def parse(cls, raw, allow_local=False):
@@ -96,10 +145,13 @@ class Manifest:
             validate_url(data["installer_url"], allow_local)
             if not isinstance(data["sha256"], str) or not re.fullmatch(r"[a-fA-F0-9]{64}", data["sha256"]):
                 raise UpdateError("Invalid SHA-256")
-            if not isinstance(data["notes"], str) or len(data["notes"]) > 20000 or type(data["mandatory"]) is not bool:
-                raise UpdateError("Invalid notes or mandatory flag")
-            # Additional fields are intentionally ignored for forward compatibility.
-            return cls(data["version"], data["installer_url"], data["sha256"].lower(), data["notes"], data["mandatory"])
+            if type(data["mandatory"]) is not bool:
+                raise UpdateError("Invalid mandatory flag")
+            notes = _fallback_notes(data.get("notes", ""))
+            # Changelog is deliberately kept unvalidated here: release-note
+            # errors must never prevent discovery or installation.
+            return cls(data["version"], data["installer_url"], data["sha256"].lower(),
+                       notes, data["mandatory"], data.get("changelog"))
         except (ValueError, KeyError, TypeError) as error:
             raise UpdateError("Invalid update manifest") from error
 
