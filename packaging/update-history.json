@@ -16,5 +16,14 @@
       "saisie dans le tableur et barres de défilement améliorées ;",
       "ajout des informations sur l'auteur dans À propos."
     ]
+  },
+  {
+    "version": "1.2.4",
+    "notes": [
+      "ajout d'un réticule lié à une courbe, avec suivi continu des séries expérimentales et des modélisations ;",
+      "sélection simple du réticule libre ou lié, y compris avec plusieurs courbes et les axes Y gauche / Y droite ;",
+      "amélioration des listes de sélection du Graphique, aussi bien avec peu qu'avec beaucoup de grandeurs ;",
+      "ajout de notes de mise à jour cumulatives : les nouveautés des versions manquées sont désormais regroupées automatiquement."
+    ]
   }
 ]

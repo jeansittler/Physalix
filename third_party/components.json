@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "release": "1.2.4",
+  "release": "1.2.5",
   "audit_date": "2026-09-17",
   "video_build": {
     "pyav": "17.1.0",
