@@ -1,3 +1,7 @@
-Physalix 1.2.5
+Physalix 1.3.0
 
-- amélioration de la compatibilité avec certains anciens fichiers vidéo AVI contenant des métadonnées texte non UTF-8.
+- ajout du pointage automatique optionnel, avec sélection de l'objet, suivi image par image et arrêt automatique lorsque le suivi devient incertain ;
+- possibilité d'interrompre, corriger, redéfinir l'objet puis reprendre le pointage automatique, tout en conservant le pointage manuel comme mode principal ;
+- amélioration de l'ergonomie du Graphique : sélection des séries harmonisée, masquage rapide du réticule et commandes « Masquer les tracés » plus visibles ;
+- amélioration de l'onglet Calculs : dérivées présentées plus clairement et erreurs de formule signalées par une boîte de dialogue ;
+- optimisation de l'interface du Pointage vidéo pour un affichage plus stable, compact et adapté aux différentes tailles de fenêtre.

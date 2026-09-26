@@ -141,7 +141,7 @@ class UpdateTests(unittest.TestCase):
         self.assertFalse(u.is_newer("1.2.3"))
         self.assertFalse(u.is_newer("1.2.5"))
         self.assertTrue(u.is_newer("1.2.2", "1.2.1"))
-        self.assertTrue(u.is_newer("1.2.6"))
+        self.assertTrue(u.is_newer("1.3.1"))
 
     def test_transport_timeout_and_redirect_security(self):
         with patch.object(u, "build_opener") as opener:
@@ -337,8 +337,8 @@ class ReleaseTests(unittest.TestCase):
                 self.assertEqual(result["sha256"], hashlib.sha256(content).hexdigest())
                 self.assertEqual(result["installer_url"], f"https://github.com/jeansittler/Physalix/releases/download/v{__base_version__}/Physalix-Setup-{__base_version__}.exe")
                 self.assertEqual([entry["version"] for entry in result["changelog"]],
-                                 ["1.2.2", "1.2.3", "1.2.4", "1.2.5"])
-                self.assertEqual(result["changelog"][-2]["notes"], [
+                                 ["1.2.2", "1.2.3", "1.2.4", "1.2.5", "1.3.0"])
+                self.assertEqual(result["changelog"][-3]["notes"], [
                     "ajout d'un réticule lié à une courbe, avec suivi continu des séries expérimentales et des modélisations ;",
                     "sélection simple du réticule libre ou lié, y compris avec plusieurs courbes et les axes Y gauche / Y droite ;",
                     "amélioration des listes de sélection du Graphique, aussi bien avec peu qu'avec beaucoup de grandeurs ;",

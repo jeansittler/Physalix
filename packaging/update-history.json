@@ -25,5 +25,11 @@
       "amélioration des listes de sélection du Graphique, aussi bien avec peu qu'avec beaucoup de grandeurs ;",
       "ajout de notes de mise à jour cumulatives : les nouveautés des versions manquées sont désormais regroupées automatiquement."
     ]
+  },
+  {
+    "version": "1.2.5",
+    "notes": [
+      "amélioration de la compatibilité avec certains anciens fichiers vidéo AVI contenant des métadonnées texte non UTF-8."
+    ]
   }
 ]
