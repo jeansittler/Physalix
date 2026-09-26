@@ -8,12 +8,13 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 from PySide6.QtCore import QEvent, QPoint, QPointF, Qt
 from PySide6.QtGui import QColor, QContextMenuEvent, QImage, QPainter
 from PySide6.QtTest import QTest
-from PySide6.QtWidgets import QApplication, QLabel
+from PySide6.QtWidgets import QApplication, QLabel, QPushButton
 import pyqtgraph as pg
 from unittest.mock import patch
 
 from physalix.ui.main_window import MainWindow
 from physalix.ui.graph_tab import interpolated_value, paired_values
+from physalix.ui.graph_series import PopupComboBox
 from physalix.ui.theme import LIGHT
 
 
@@ -311,6 +312,20 @@ class GraphTests(unittest.TestCase):
         self.assertEqual(graph.series_stack.currentWidget(), graph.series[graph.series_choice.currentIndex()])
         self.assertTrue(all(item.points.isVisible() for item in graph.series))
 
+    def test_series_selector_uses_bounded_popup(self):
+        combo = self.graph.series_choice
+        self.assertIsInstance(combo, PopupComboBox)
+        self.assertEqual(combo.maxVisibleItems(), 8)
+        for expected_count in (2, 5, 8, 10):
+            while len(self.graph.series) < expected_count:
+                self.graph.add_series()
+            self.app.processEvents()
+            row_height = combo.view().sizeHintForRow(0)
+            expected_height = min(expected_count, 8) * row_height + 2 * (
+                LIGHT.small + combo.view().frameWidth())
+            self.assertEqual(combo.view().height(), expected_height)
+        self.assertGreaterEqual(combo.view().minimumWidth(), LIGHT.field_wide)
+
     def test_context_menu_zoom_and_reticle_without_click(self):
         graph = self.graph
         view = graph.plot.getViewBox()
@@ -412,6 +427,32 @@ class GraphTests(unittest.TestCase):
         graph.reticle_hide_action.trigger()
         self.assertEqual(graph.reticle_mode, "hidden")
         self.assertTrue(graph.reticle_hide_action.isChecked())
+
+    def test_quick_reticle_action_and_shared_tools_menu(self):
+        graph = self.graph
+        action = graph.quick_hide_reticle_action
+        self.assertIs(graph.context_menu.actions()[0], action)
+        self.assertFalse(action.isVisible())
+        graph.set_reticle_mode("free")
+        self.assertTrue(action.isVisible())
+        self.assertTrue(action.font().bold())
+        self.assertTrue(graph.context_menu.actions()[1].isSeparator())
+        self.assertTrue(graph.context_menu.actions()[1].isVisible())
+        tools = next(button for button in graph.findChildren(QPushButton)
+                     if button.text() == "Outils du graphique")
+        self.assertIs(tools.menu(), graph.context_menu)
+        action.trigger()
+        self.assertEqual(graph.reticle_mode, "hidden")
+        self.assertFalse(action.isVisible())
+
+    def test_graph_tools_share_prominent_hide_traces_button(self):
+        for tool in (self.graph.tangent_tool, self.graph.conductimetry_tool,
+                     self.graph.curve_guides_tool):
+            buttons = [button for button in tool.findChildren(QPushButton)
+                       if button.text() == "Masquer les tracés"]
+            self.assertEqual(len(buttons), 1)
+            self.assertEqual(buttons[0].property("role"), "primary")
+            self.assertFalse(buttons[0].icon().isNull())
 
     def test_fit_constant_and_spread_data_then_clear(self):
         for samples in ([(0, 0)], [(2, 7), (2, 7)], [(-100, -50), (400, 800)]):

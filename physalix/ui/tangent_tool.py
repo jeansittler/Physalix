@@ -2,8 +2,9 @@
 import numpy as np
 import pyqtgraph as pg
 from PySide6.QtCore import Qt
-from PySide6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QLabel, QComboBox, QSlider, QPushButton
+from PySide6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QLabel, QComboBox, QSlider
 from physalix.tangents import parallel_tangents
+from physalix.ui.graph_tool_controls import hide_traces_button
 
 
 class TangentTool(QWidget):
@@ -23,8 +24,7 @@ class TangentTool(QWidget):
         self.slope.setValue(25)
         self.slope.setToolTip('Pente commune en pourcentage de la pente maximale du saut')
         row.addWidget(self.slope, 1)
-        close = QPushButton('Masquer')
-        close.clicked.connect(self.close_tool)
+        close = hide_traces_button(self.close_tool)
         row.addWidget(close)
         layout.addLayout(row)
         self.readout = QLabel()

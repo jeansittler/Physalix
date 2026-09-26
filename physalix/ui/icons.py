@@ -15,6 +15,9 @@ PATHS = {
     "calculations": '<rect x="5" y="2" width="14" height="20" rx="2"/><path d="M8 6h8M8 11h2m4 0h2M8 15h2m4 0h2M8 19h2m4 0h2"/>',
     "statistics": '<path d="M3 3v18h18M7 17v-5h3v5M12 17V6h3v11M17 17V9h3v8"/>',
     "add": '<path d="M12 5v14M5 12h14"/><circle cx="12" cy="12" r="9"/>',
+    "eye_off": ('<path d="M3 3l18 18"/><path d="M10.6 5.2A10.7 10.7 0 0 1 12 5c5.5 0 9 7 9 7a16 16 0 0 1-2.1 3"/>'
+                '<path d="M6.2 6.2C4.2 7.6 3 10 3 12c0 0 3.5 7 9 7 1 0 2-.2 2.8-.5"/>'
+                '<path d="M9.9 9.9a3 3 0 0 0 4.2 4.2"/>'),
 }
 
 

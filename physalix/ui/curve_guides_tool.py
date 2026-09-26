@@ -4,6 +4,7 @@ import pyqtgraph as pg
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QCheckBox, QComboBox, QDoubleSpinBox, QHBoxLayout, QLabel, QPushButton, QVBoxLayout, QWidget
 from physalix.curve_guides import curve_interpolator, model_plateau, tangent_at
+from physalix.ui.graph_tool_controls import hide_traces_button
 
 
 class CurveGuidesTool(QWidget):
@@ -27,8 +28,7 @@ class CurveGuidesTool(QWidget):
         self.asymptote_on = QCheckBox('Asymptote horizontale')
         row.addWidget(self.tangent_on)
         row.addWidget(self.asymptote_on)
-        close = QPushButton('Masquer')
-        close.clicked.connect(self.close_tool)
+        close = hide_traces_button(self.close_tool)
         row.addWidget(close)
         layout.addLayout(row)
         controls = QHBoxLayout()

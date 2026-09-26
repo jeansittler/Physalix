@@ -18,6 +18,7 @@ def arrow(painter, start, end, color):
 class VideoCanvas(QWidget):
     clicked = Signal(QPointF)
     point_selected = Signal(int)
+    rectangle_selected = Signal(QRectF)
     hovered = Signal(object)
 
     def __init__(self):
@@ -34,6 +35,10 @@ class VideoCanvas(QWidget):
         self.points = {}
         self.highlight_index = None
         self.selecting = False
+        self.selecting_rectangle = False
+        self.selection_start = None
+        self.selection_rect = None
+        self.selection_reference = None
         self.active = False
         self.setMinimumSize(240, 160)
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
@@ -66,6 +71,8 @@ class VideoCanvas(QWidget):
 
     def mouseMoveEvent(self, event):
         self.pointer = self.image_point(event.position())
+        if self.selecting_rectangle and self.selection_start is not None and self.pointer is not None:
+            self.selection_rect = QRectF(self.selection_start, self.pointer).normalized()
         self.hovered.emit(self.calibration_point(self.pointer))
         self.update()
 
@@ -89,12 +96,27 @@ class VideoCanvas(QWidget):
         if event.button() == Qt.MouseButton.LeftButton and self.active:
             point = self.image_point(event.position())
             if point is not None:
-                if self.selecting:
+                if self.selecting_rectangle:
+                    self.selection_start = point
+                    self.selection_rect = QRectF(point, point)
+                    self.update()
+                elif self.selecting:
                     index = self.point_at(event.position())
                     if index is not None:
                         self.point_selected.emit(index)
                 else:
                     self.clicked.emit(point)
+
+    def mouseReleaseEvent(self, event):
+        if (event.button() == Qt.MouseButton.LeftButton and self.selecting_rectangle
+                and self.selection_start is not None):
+            point = self.image_point(event.position())
+            rectangle = QRectF(self.selection_start, point).normalized() if point is not None else QRectF()
+            self.selection_start = None
+            self.selection_rect = rectangle if rectangle.width() >= 1 and rectangle.height() >= 1 else None
+            self.update()
+            if self.selection_rect is not None:
+                self.rectangle_selected.emit(self.selection_rect)
 
     def point_at(self, position):
         """Sélection à distance constante à l'écran, quel que soit le zoom."""
@@ -143,6 +165,15 @@ class VideoCanvas(QWidget):
             painter.drawEllipse(center, 5, 5)
             painter.setPen(QPen(QColor("#ff6584"), 2))
             painter.drawEllipse(center, 5, 5)
+        if self.selection_rect is not None:
+            rectangle = QRectF(self.screen_point(self.selection_rect.topLeft()),
+                               self.screen_point(self.selection_rect.bottomRight())).normalized()
+            painter.setPen(QPen(QColor("#54e1ba"), 2))
+            painter.drawRect(rectangle)
+            center = (self.screen_point(self.selection_reference)
+                      if self.selection_reference is not None else rectangle.center())
+            painter.drawLine(center - QPointF(8, 0), center + QPointF(8, 0))
+            painter.drawLine(center - QPointF(0, 8), center + QPointF(0, 8))
         if self.active and not self.selecting and self.pointer is not None:
             center = self.screen_point(self.calibration_point(self.pointer))
             for color, width in (("#000000", 3), ("#ffffff", 1)):

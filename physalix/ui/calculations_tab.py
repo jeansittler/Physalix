@@ -5,6 +5,7 @@ from PySide6.QtWidgets import (
     QAbstractItemView, QComboBox, QFormLayout, QHBoxLayout, QHeaderView,
     QLabel, QLineEdit, QPushButton, QScrollArea, QTableWidget, QTableWidgetItem,
     QVBoxLayout, QWidget, QDialog, QDialogButtonBox, QMenu, QFrame, QSizePolicy,
+    QMessageBox,
 )
 
 from physalix.calculations import CalculationEngine, derivative_unit
@@ -85,7 +86,7 @@ class CalculationsTab(QWidget):
             "Créez des dérivées et des grandeurs par formule, disponibles dans Données et Graphique.",
         ))
 
-        derivative, derivative_layout = panel("Dérivée centrée")
+        derivative, derivative_layout = panel("Calcul de dérivée")
         form = QFormLayout()
         form.setVerticalSpacing(LIGHT.related)
         form.setRowWrapPolicy(QFormLayout.RowWrapPolicy.WrapLongRows)
@@ -202,7 +203,7 @@ class CalculationsTab(QWidget):
         self.history.setRowCount(len(self.engine.items))
         for row, item in enumerate(self.engine.items):
             description = (item.formula.description(self.model.names) if item.formula else
-                           f"d({self.model.names[item.source]}) / d({self.model.names[item.axis]}) · centrée")
+                           f"d({self.model.names[item.source]}) / d({self.model.names[item.axis]})")
             for col, text in enumerate((self.model.names[item.column], self.model.units[item.column], description, item.status)):
                 cell = QTableWidgetItem(text)
                 cell.setToolTip(text)
@@ -239,7 +240,7 @@ class CalculationsTab(QWidget):
         source, axis = self.source.currentData(), self.axis.currentData()
         if source is None or axis is None:
             return
-        self.derivative_name.setText(f"d{self.model.names[source]}_d{self.model.names[axis]}")
+        self.derivative_name.setText(f"d{self.model.names[source]}/d{self.model.names[axis]}")
         self.derivative_unit.setText(derivative_unit(self.model.units[source], self.model.units[axis]))
 
     def insert_text(self, text):
@@ -262,7 +263,14 @@ class CalculationsTab(QWidget):
         try:
             column = self.engine.add(name, unit, **definition)
         except ValueError as error:
-            self.feedback.setText(str(error))
+            message = str(error)
+            self.feedback.setText(message)
+            if "expression" in definition:
+                if message.startswith("Grandeur inconnue :"):
+                    unknown = message.split(". Utilisez", 1)[0]
+                    message = (f"{unknown}\n\nVérifiez la formule ou utilisez « Insérer la grandeur » "
+                               "pour sélectionner une grandeur existante.")
+                QMessageBox.warning(self, "Formule invalide", message)
             return
         self.feedback.setText(f"{self.model.names[column]} créée dans Données (C{column + 1}). "
                               "Vous pouvez y modifier son nom et son unité. " + self.engine.items[-1].status)

@@ -8,6 +8,7 @@ from PySide6.QtWidgets import (
     QLabel, QPushButton, QVBoxLayout, QWidget,
 )
 from physalix.conductimetry import fit_equivalence
+from physalix.ui.graph_tool_controls import hide_traces_button
 
 
 class ConductimetryTool(QWidget):
@@ -32,8 +33,7 @@ class ConductimetryTool(QWidget):
         reset = QPushButton('Réinitialiser les zones')
         reset.clicked.connect(self.reset_regions)
         row.addWidget(reset)
-        close = QPushButton('Masquer')
-        close.clicked.connect(self.close_tool)
+        close = hide_traces_button(self.close_tool)
         row.addWidget(close)
         layout.addLayout(row)
         result_row = QHBoxLayout()

@@ -14,7 +14,9 @@ from PySide6.QtWidgets import (
 import pyqtgraph as pg
 
 from physalix.fitting import MODELS, evaluate_fit
-from physalix.ui.graph_series import GraphSeries
+from physalix.ui.graph_series import (
+    GraphSeries, PopupComboBox, configure_popup, update_popup_height,
+)
 from physalix.ui.graph_axis import EndAxis
 from physalix.ui.graph_legend import SmartLegend
 from physalix.ui.theme import LIGHT, SERIES_COLORS
@@ -191,12 +193,12 @@ class GraphTab(QWidget):
         series_row = QHBoxLayout()
         series_row.setSpacing(LIGHT.related)
         self.series_label = role(QLabel("Série active"), "toolbarLabel")
-        self.series_choice = QComboBox()
+        self.series_choice = PopupComboBox()
         self.series_choice.setAccessibleName("Série à régler")
         self.series_choice.setMinimumContentsLength(18)
         self.series_choice.setMaximumWidth(LIGHT.field_wide)
         self.series_choice.setSizeAdjustPolicy(QComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon)
-        self.series_choice.setMaxVisibleItems(10)
+        configure_popup(self.series_choice, LIGHT.field_wide)
         self.series_label.setBuddy(self.series_choice)
         self.series_choice.setToolTip("Choisir les réglages d'une série sans masquer les autres courbes")
         self.settings_button = QPushButton("Masquer les réglages")
@@ -470,6 +472,7 @@ class GraphTab(QWidget):
         if current in self.series:
             self.series_choice.setCurrentIndex(self.series.index(current))
         self.series_choice.blockSignals(False)
+        update_popup_height(self.series_choice)
 
     def add_series(self):
         palette = SERIES_COLORS
@@ -750,6 +753,14 @@ class GraphTab(QWidget):
 
     def _build_menu(self):
         self.context_menu = QMenu(self)
+        self.quick_hide_reticle_action = self.context_menu.addAction(
+            "Masquer le réticule", lambda: self.set_reticle_mode("hidden"))
+        font = self.quick_hide_reticle_action.font()
+        font.setBold(True)
+        self.quick_hide_reticle_action.setFont(font)
+        self.quick_hide_reticle_separator = self.context_menu.addSeparator()
+        self.quick_hide_reticle_action.setVisible(False)
+        self.quick_hide_reticle_separator.setVisible(False)
         self.context_menu.addAction("Ajuster la vue", self.fit_points)
         self.context_menu.addAction("Modéliser…", self.modeling_requested.emit)
         self.context_menu.addAction("Méthode des tangentes…", self.tangent_tool.open_tool)
@@ -793,6 +804,7 @@ class GraphTab(QWidget):
         self.reticle_target = None
         self.reticle_menu.aboutToShow.connect(self.refresh_reticle_menu)
         self.reticle_sources_menu.aboutToShow.connect(self.refresh_reticle_menu)
+        self.context_menu.aboutToShow.connect(self.update_quick_reticle_action)
         self.context_menu.addSeparator()
         options = self.context_menu.addMenu("Options du graphique")
         from pyqtgraph.graphicsItems.ViewBox.ViewBoxMenu import ViewBoxMenu
@@ -811,6 +823,11 @@ class GraphTab(QWidget):
             self.set_reticle_mode("free")
         elif self.reticle_mode == "free":
             self.set_reticle_mode("hidden")
+
+    def update_quick_reticle_action(self):
+        visible = self.reticle_mode != "hidden"
+        self.quick_hide_reticle_action.setVisible(visible)
+        self.quick_hide_reticle_separator.setVisible(visible)
 
     def select_only_reticle_target(self):
         targets = self.reticle_targets()
@@ -882,6 +899,7 @@ class GraphTab(QWidget):
                 if action.reticle_target == target:
                     action.setChecked(True)
                     break
+        self.update_quick_reticle_action()
         self.hide_crosshair()
 
     def set_navigation_mode(self, mode):

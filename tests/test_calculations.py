@@ -2,12 +2,13 @@
 
 import os
 import unittest
+from unittest.mock import patch
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from PySide6.QtCore import Qt
 from PySide6.QtTest import QTest
-from PySide6.QtWidgets import QApplication
+from PySide6.QtWidgets import QApplication, QLabel, QMessageBox
 
 from physalix.calculations import CalculationEngine, Formula, derivative_unit
 from physalix.ui.data_tab import MeasurementsModel
@@ -151,6 +152,46 @@ class CalculationsTests(unittest.TestCase):
             self.assertEqual(model.rows[2][-1], "5")
             self.assertEqual(tab.history.rowCount(), 3)
             self.assertEqual(window.graph_tab.series[0].x_choice.count(), 6)
+        finally:
+            window._discard_on_close = True
+            window.close()
+
+    def test_derivative_wording_name_history_and_formula_error_dialog(self):
+        window = MainWindow()
+        tab = window.calculations_tab
+        try:
+            # Utiliser le modèle partagé par l'onglet réellement construit.
+            actual = window.data_tab.model
+            actual.add_quantity()
+            actual.names = ["x", "y", "t"]
+            actual.units = ["m", "m", "s"]
+            for row in range(5):
+                actual.rows[row] = [str(row * row), str(2 * row), str(row)]
+            tab.refresh()
+            tab.source.setCurrentIndex(1)
+            tab.axis.setCurrentIndex(2)
+            self.assertEqual(tab.derivative_name.text(), "dy/dt")
+            self.assertIn("Calcul de dérivée", [label.text() for label in tab.findChildren(QLabel)])
+            tab.derive_button.click()
+            self.assertEqual(actual.names[-1], "dy/dt")
+            self.assertEqual(tab.history.item(0, 2).text(), "d(y) / d(t)")
+            self.assertNotIn("centrée", tab.history.item(0, 2).text())
+
+            tab.formula_name.setText("invalide")
+            with patch.object(QMessageBox, "warning", return_value=QMessageBox.StandardButton.Ok) as warning:
+                tab.expression.setText("XY + 1")
+                warning.assert_not_called()
+                tab.formula_button.click()
+                warning.assert_called_once()
+                self.assertEqual(warning.call_args.args[1], "Formule invalide")
+                self.assertIn("Grandeur inconnue : XY", warning.call_args.args[2])
+                self.assertIn("Insérer la grandeur", warning.call_args.args[2])
+                tab.formula_name.setText("valide")
+                # Le nom visible contient '/', mais la référence stable C4 reste utilisable.
+                tab.expression.setText("C4 * 2")
+                tab.formula_button.click()
+                self.assertEqual(warning.call_count, 1)
+                self.assertEqual(actual.names[-1], "valide")
         finally:
             window._discard_on_close = True
             window.close()
