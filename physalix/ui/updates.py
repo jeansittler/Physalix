@@ -1,12 +1,15 @@
 """Qt presentation and asynchronous update orchestration."""
+from html import escape
 import threading
 
-from PySide6.QtCore import QObject, Qt, QTimer, Signal, Slot
+from PySide6.QtCore import QObject, Qt, QTimer, QUrl, Signal, Slot
+from PySide6.QtGui import QDesktopServices
 from PySide6.QtWidgets import (QDialog, QDialogButtonBox, QLabel, QMessageBox,
                                QProgressDialog, QPushButton, QTextBrowser, QVBoxLayout)
 
 from physalix import __version__
 from physalix import updates
+from physalix.release_notes import ReleaseNotesError, load_release_notes
 
 
 class UpdateDialog(QDialog):
@@ -32,6 +35,47 @@ class UpdateDialog(QDialog):
         layout.addWidget(buttons)
 
 
+class ReleaseNotesDialog(QDialog):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("Notes de version — Physalix")
+        self.resize(620, 480)
+        layout = QVBoxLayout(self)
+        self.notes = QTextBrowser()
+        self.notes.setOpenExternalLinks(False)
+        try:
+            entries = load_release_notes()
+        except ReleaseNotesError:
+            self.notes.setPlainText(
+                "Les notes de version locales sont absentes ou illisibles."
+            )
+        else:
+            sections = []
+            for entry in entries:
+                installed = entry["version"] == __version__
+                heading = f"Version {escape(entry['version'])}"
+                if installed:
+                    heading += " — Version installée"
+                notes = "".join(f"<li>{escape(note)}</li>" for note in entry["notes"])
+                level = "h2" if installed else "h3"
+                sections.append(f"<{level}>{heading}</{level}><ul>{notes}</ul>")
+            self.notes.setHtml("".join(sections))
+        layout.addWidget(self.notes)
+        buttons = QDialogButtonBox()
+        self.github_button = buttons.addButton(
+            "Voir toutes les versions sur GitHub", QDialogButtonBox.ButtonRole.ActionRole
+        )
+        close_button = buttons.addButton("Fermer", QDialogButtonBox.ButtonRole.RejectRole)
+        close_button.setDefault(True)
+        self.github_button.clicked.connect(
+            lambda: QDesktopServices.openUrl(
+                QUrl(updates.DISTRIBUTION_REPOSITORY_URL + "/releases")
+            )
+        )
+        buttons.rejected.connect(self.reject)
+        layout.addWidget(buttons)
+
+
 class UpdateController(QObject):
     completed = Signal(str, object, object)
     progress = Signal(object, object)
@@ -50,8 +94,11 @@ class UpdateController(QObject):
         self.completed.connect(self.finish, Qt.ConnectionType.QueuedConnection)
         self.progress.connect(self.show_progress, Qt.ConnectionType.QueuedConnection)
         help_menu = window.menuBar().addMenu("Aide")
-        help_menu.addAction("À propos de Physalix…", self.about)
-        self.check_action = help_menu.addAction("Rechercher les mises à jour", self.manual_check)
+        self.check_action = help_menu.addAction(
+            "Rechercher des mises à jour…", self.manual_check
+        )
+        self.notes_action = help_menu.addAction("Notes de version…", self.show_release_notes)
+        self.about_action = help_menu.addAction("À propos de Physalix…", self.about)
 
     def start(self):
         # Called only by the real entry point, never by staging/test MainWindows.
@@ -62,6 +109,9 @@ class UpdateController(QObject):
         self.stopped = True
         self.timer.stop()
         self.cancel.set()
+
+    def show_release_notes(self):
+        ReleaseNotesDialog(self.window).exec()
 
     def about(self):
         dialog = QDialog(self.window)

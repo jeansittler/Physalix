@@ -11,7 +11,8 @@ from PySide6.QtCore import QTimer
 from PySide6.QtWidgets import QApplication, QMainWindow, QDialog, QLabel
 
 from physalix import __base_version__, __version__, updates
-from physalix.ui.updates import UpdateController, UpdateDialog
+from physalix.release_notes import ReleaseNotesError
+from physalix.ui.updates import ReleaseNotesDialog, UpdateController, UpdateDialog
 
 
 class UpdateUiTests(unittest.TestCase):
@@ -36,6 +37,47 @@ class UpdateUiTests(unittest.TestCase):
             self.app.processEvents()
             time.sleep(.005)
         self.assertFalse(self.controller.busy)
+
+    def test_help_menu_order(self):
+        menu = self.window.menuBar().actions()[0].menu()
+        self.assertEqual([action.text() for action in menu.actions()], [
+            "Rechercher des mises à jour…",
+            "Notes de version…",
+            "À propos de Physalix…",
+        ])
+
+    def test_release_notes_dialog_is_local_and_marks_current_version(self):
+        with patch.object(updates, "open_url") as network:
+            dialog = ReleaseNotesDialog(self.window)
+        network.assert_not_called()
+        text = dialog.notes.toPlainText()
+        self.assertIn(f"Version {__version__} — Version installée", text)
+        self.assertIn("réticule enrichi", text)
+        self.assertLess(text.index("Version 1.3.0"), text.index("Version 1.2.5"))
+        dialog.deleteLater()
+
+    def test_release_notes_menu_action_opens_dialog(self):
+        with patch.object(ReleaseNotesDialog, "exec", return_value=QDialog.DialogCode.Rejected) as execute:
+            self.controller.notes_action.trigger()
+        execute.assert_called_once_with()
+
+    def test_release_notes_dialog_handles_invalid_local_file(self):
+        with patch("physalix.ui.updates.load_release_notes", side_effect=ReleaseNotesError()):
+            dialog = ReleaseNotesDialog(self.window)
+        self.assertIn("absentes ou illisibles", dialog.notes.toPlainText())
+        dialog.deleteLater()
+
+    def test_release_notes_github_button_opens_only_after_click(self):
+        with patch("physalix.ui.updates.QDesktopServices.openUrl") as open_url:
+            dialog = ReleaseNotesDialog(self.window)
+            open_url.assert_not_called()
+            dialog.github_button.click()
+            open_url.assert_called_once()
+        self.assertEqual(
+            open_url.call_args.args[0].toString(),
+            updates.DISTRIBUTION_REPOSITORY_URL + "/releases",
+        )
+        dialog.deleteLater()
 
     def test_about_identifies_author_and_keeps_dynamic_version(self):
         with patch.object(QDialog, "exec", return_value=QDialog.DialogCode.Rejected):

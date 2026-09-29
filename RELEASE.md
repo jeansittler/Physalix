@@ -172,8 +172,10 @@ Références : [chargeur et UAC Inno](https://jrsoftware.org/is6help/topic_secur
 
 Prérequis et environnement verrouillé : [BUILD_WINDOWS.md](BUILD_WINDOWS.md).
 Depuis la racine, modifier uniquement la version et le canal dans
-`physalix/_version.py`, puis mettre à jour les notes courtes dans
-`packaging/update-notes.txt`. Exemple de build :
+`physalix/_version.py`, puis ajouter les notes de cette version à la source
+canonique `physalix/ui/resources/release-notes.json`. La dernière version
+documentée doit correspondre exactement à la version de l'application. Exemple
+de build :
 
 ```powershell
 Set-Location C:\Physalix
@@ -200,8 +202,8 @@ externe **définitive** de l'installateur :
 
 ```powershell
 .\.venv\Scripts\python.exe .\scripts\prepare_release.py
-# Autres notes UTF-8 ou dossier d'artefacts, si nécessaire :
-.\.venv\Scripts\python.exe .\scripts\prepare_release.py --notes-file .\packaging\update-notes.txt --artifacts .\artifacts
+# Autre dossier d'artefacts, si nécessaire :
+.\.venv\Scripts\python.exe .\scripts\prepare_release.py --artifacts .\artifacts
 ```
 
 Ne jamais modifier/signer l'EXE après ce calcul sans régénérer son manifeste.
