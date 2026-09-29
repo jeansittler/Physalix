@@ -10,13 +10,13 @@ from PySide6.QtCore import QAbstractTableModel, QEvent, QItemSelection, QItemSel
 from PySide6.QtGui import QKeySequence, QRegularExpressionValidator, QColor, QBrush, QPen, QUndoCommand, QUndoStack
 from PySide6.QtCore import QRegularExpression
 from PySide6.QtWidgets import (
-    QAbstractItemDelegate, QAbstractItemView, QApplication, QComboBox, QCompleter, QHeaderView,
+    QAbstractItemDelegate, QAbstractItemView, QApplication, QComboBox, QHeaderView,
     QHBoxLayout, QLabel, QLineEdit, QMenu, QMessageBox, QPushButton, QStyle, QStyleOptionViewItem,
     QStyledItemDelegate, QVBoxLayout, QWidget,
 )
 
 from physalix.ui.fill_table import FillTableView
-from physalix.ui.units import COMMON_UNITS
+from physalix.ui.units import unit_combo
 from physalix.ui.theme import LIGHT
 from physalix.ui.components import help_toggle, page_layout, panel, role
 from physalix.ui.icons import icon
@@ -266,6 +266,43 @@ class MeasurementsModel(QAbstractTableModel):
             row.append("")
         self.endInsertColumns()
 
+    def append_measurements(self, names, units, rows):
+        """Ajouter des colonnes de valeurs validées et retourner leurs indices."""
+        names, units, rows = list(names), list(units), [list(row) for row in rows]
+        if not names or len(names) != len(units) or any(len(row) != len(names) for row in rows):
+            raise ValueError("Structure de mesures incorrecte.")
+        if any(not isinstance(value, str) for value in names + units + [value for row in rows for value in row]):
+            raise ValueError("Les noms, unités et valeurs doivent être du texte.")
+        first = self.columnCount()
+        for _ in names:
+            self.add_quantity()
+        used = set(self.names[:first])
+        unique_names = []
+        for original in names:
+            base = original.strip() or f"Grandeur {first + len(unique_names) + 1}"
+            candidate, suffix = base, 2
+            while candidate in used:
+                candidate, suffix = f"{base}_{suffix}", suffix + 1
+            used.add(candidate)
+            unique_names.append(candidate)
+        while len(self.rows) <= len(rows):
+            self.add_row()
+        for offset, (name, unit) in enumerate(zip(unique_names, units)):
+            column = first + offset
+            self.names[column] = name
+            self.units[column] = unit.strip()
+            for row, values in enumerate(rows):
+                self.rows[row][column] = values[offset].strip()
+        self.headerDataChanged.emit(Qt.Orientation.Horizontal, first, first + len(names) - 1)
+        if rows:
+            self.dataChanged.emit(self.index(self.first_data_row, first),
+                                  self.index(self.first_data_row + len(rows) - 1,
+                                             first + len(names) - 1),
+                                  [Qt.ItemDataRole.DisplayRole, Qt.ItemDataRole.EditRole])
+        # Les commandes de cellules mémorisent des coordonnées de colonnes antérieures.
+        self.undo_stack.clear()
+        return tuple(range(first, first + len(names)))
+
     def quantities_to_remove(self, column):
         if not 0 <= column < self.columnCount():
             return []
@@ -308,19 +345,7 @@ class MeasurementDelegate(QStyledItemDelegate):
 
     def createEditor(self, parent, option, index):
         if index.row() == index.model().unit_row:
-            editor = QComboBox(parent)
-            editor.setEditable(True)
-            editor.setInsertPolicy(QComboBox.InsertPolicy.NoInsert)
-            editor.addItems(COMMON_UNITS)
-            editor.setMaxVisibleItems(12)
-            editor.lineEdit().setPlaceholderText("Choisir ou saisir une unité")
-            editor.completer().setCompletionMode(QCompleter.CompletionMode.PopupCompletion)
-            editor.completer().setFilterMode(Qt.MatchFlag.MatchContains)
-            editor.completer().setCaseSensitivity(Qt.CaseSensitivity.CaseSensitive)
-            editor.lineEdit().setTextMargins(2, 0, 2, 0)
-            editor.lineEdit().setAlignment(Qt.AlignmentFlag.AlignLeft |
-                                            Qt.AlignmentFlag.AlignVCenter)
-            return editor
+            return unit_combo(parent)
         editor = QLineEdit(parent)
         editor.setTextMargins(2, 0, 2, 0)
         editor.setAlignment((Qt.AlignmentFlag.AlignLeft if index.row() < index.model().first_data_row
@@ -669,3 +694,7 @@ class DataTab(QWidget):
         self.table.scrollTo(index)
         self.table.setFocus()
         self.table.edit(index)
+
+    def append_measurements(self, names, units, rows):
+        """API publique utilisée par les outils d'acquisition de données."""
+        return self.model.append_measurements(names, units, rows)

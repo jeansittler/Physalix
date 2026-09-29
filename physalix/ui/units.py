@@ -1,5 +1,8 @@
 """Suggestions d'unités ; la saisie reste entièrement libre."""
 
+from PySide6.QtCore import Qt
+from PySide6.QtWidgets import QComboBox, QCompleter
+
 # Cette liste aide à la saisie, sans imposer de catalogue ni de conversion.
 COMMON_UNITS = (
     "", "Sans unité", "%",
@@ -18,3 +21,19 @@ COMMON_UNITS = (
     "Hz", "kHz", "MHz", "rad", "°", "rad/s", "dB", "lx", "cd",
     "m⁻¹", "s⁻¹", "L/(mol·cm)", "mol/(L·s)", "Bq",
 )
+
+
+def unit_combo(parent=None):
+    """Créer le sélecteur éditable commun au tableur et aux outils d'acquisition."""
+    editor = QComboBox(parent)
+    editor.setEditable(True)
+    editor.setInsertPolicy(QComboBox.InsertPolicy.NoInsert)
+    editor.addItems(COMMON_UNITS)
+    editor.setMaxVisibleItems(12)
+    editor.lineEdit().setPlaceholderText("Choisir ou saisir une unité")
+    editor.completer().setCompletionMode(QCompleter.CompletionMode.PopupCompletion)
+    editor.completer().setFilterMode(Qt.MatchFlag.MatchContains)
+    editor.completer().setCaseSensitivity(Qt.CaseSensitivity.CaseSensitive)
+    editor.lineEdit().setTextMargins(2, 0, 2, 0)
+    editor.lineEdit().setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
+    return editor

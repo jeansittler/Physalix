@@ -102,6 +102,20 @@ class GraphWorkspace(QWidget):
         self.arrange()
         return graph
 
+    def add_data_graph(self, x_column, y_column, title=None):
+        """Créer un graphique neuf explicitement configuré sur deux colonnes."""
+        if not (0 <= x_column < self.model.columnCount() and 0 <= y_column < self.model.columnCount()):
+            raise ValueError("Colonnes du graphique introuvables.")
+        graph = self.add_graph()
+        graph.sync_columns()
+        series = graph.series[0]
+        series.x_choice.setCurrentIndex(series.x_choice.findData(x_column))
+        series.y_choice.setCurrentIndex(series.y_choice.findData(y_column))
+        if title:
+            next(window for window in self.windows if window.graph is graph).setWindowTitle(title)
+        graph.refresh_plot()
+        return graph
+
     def activated(self, window):
         if window is not None and window in self.windows:
             self.graph_activated.emit(window.graph)

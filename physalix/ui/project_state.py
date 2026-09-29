@@ -102,7 +102,8 @@ def snapshot(window):
                 graphs=graphs, arrangement=window.graph_tab.arrangement.currentIndex(),
                 active_graph=next(i for i, w in enumerate(window.graph_tab.windows) if w.graph is window.graph_tab.active_graph),
                 calculations_controls=controls(window.calculations_tab), statistics=controls(window.statistics_tab),
-                video=video, tab=window.tabs.currentIndex())
+                video=video, tab=(0 if window.tabs.currentWidget() is getattr(window, 'digitizer_tab', None)
+                                  else window.tabs.currentIndex()))
 
 
 def restore(window, state, path=None):

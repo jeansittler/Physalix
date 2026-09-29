@@ -168,7 +168,8 @@ class ProjectFiles:
                 return False
             self.video_tab.shutdown()
             old = self.takeCentralWidget()
-            for name in ('tabs', 'data_tab', 'graph_tab', 'modeling_tab', 'video_tab', 'calculations_tab', 'statistics_tab'):
+            for name in ('tabs', 'data_tab', 'graph_tab', 'modeling_tab', 'video_tab', 'calculations_tab',
+                         'statistics_tab', 'digitizer_tab'):
                 setattr(self, name, getattr(staging, name))
             staging.takeCentralWidget()
             self.setCentralWidget(self.tabs)

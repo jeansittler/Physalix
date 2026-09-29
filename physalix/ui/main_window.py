@@ -12,6 +12,7 @@ from physalix.ui.modeling_tab import ModelingTab
 from physalix.ui.video_tab import VideoTab
 from physalix.ui.calculations_tab import CalculationsTab
 from physalix.ui.statistics_tab import StatisticsTab
+from physalix.ui.graph_digitizer_tab import GraphDigitizerTab
 from physalix.ui.graph_workspace import GraphWorkspace, ModelingWorkspace
 from physalix.ui.project_files import ProjectFiles
 from physalix.ui.updates import UpdateController
@@ -54,6 +55,8 @@ class MainWindow(QMainWindow, ProjectFiles):
         self.tabs.addTab(self.calculations_tab, "Calculs")
         self.statistics_tab = StatisticsTab(self.data_tab)
         self.tabs.addTab(self.statistics_tab, "Statistiques")
+        self.digitizer_tab = GraphDigitizerTab(self.data_tab, self.graph_tab)
+        self.tabs.addTab(self.digitizer_tab, "Numérisation")
         self.tabs.currentChanged.connect(self.update_navigation)
         self.update_navigation()
         self.setCentralWidget(self.tabs)
@@ -66,7 +69,7 @@ class MainWindow(QMainWindow, ProjectFiles):
         self.updater = UpdateController(self)
 
     def update_navigation(self, *args):
-        for index, name in enumerate(("data", "graph", "model", "video", "calculations", "statistics")):
+        for index, name in enumerate(("data", "graph", "model", "video", "calculations", "statistics", "digitizer")):
             self.tabs.setTabIcon(index, icon(name, index == self.tabs.currentIndex(), navigation=True))
 
     def closeEvent(self, event):
