@@ -7,8 +7,8 @@ from PySide6.QtCore import QTimer, Qt
 from PySide6.QtGui import QImage, QImageReader
 from PySide6.QtWidgets import (
     QAbstractItemView, QApplication, QFileDialog, QFormLayout, QHBoxLayout,
-    QHeaderView, QLabel, QLineEdit, QMenu, QMessageBox, QPushButton, QScrollArea,
-    QSizePolicy, QSplitter, QTableWidget, QTableWidgetItem, QToolButton, QVBoxLayout, QWidget,
+    QHeaderView, QLabel, QLineEdit, QMessageBox, QPushButton, QScrollArea,
+    QSizePolicy, QSplitter, QTableWidget, QTableWidgetItem, QVBoxLayout, QWidget,
 )
 
 from physalix.graph_digitization import (
@@ -17,6 +17,7 @@ from physalix.graph_digitization import (
 )
 from physalix.ui.components import help_toggle, label, page_layout, panel, refresh_style, role
 from physalix.ui.graph_digitizer_canvas import GraphImageCanvas
+from physalix.ui.scientific_symbols import scientific_symbol_field
 from physalix.ui.theme import LIGHT
 from physalix.ui.units import unit_combo
 
@@ -41,7 +42,6 @@ def image_array(image):
 class GraphDigitizerTab(QWidget):
     """Préparer une série dans une session locale, puis la transférer explicitement."""
 
-    SCIENTIFIC_SYMBOLS = ("α", "β", "γ", "Δ", "δ", "ε", "λ", "μ", "ρ", "σ", "φ", "ω")
     COLOR_TOLERANCE = 65
 
     def __init__(self, data_tab, graph_workspace, parent=None):
@@ -123,9 +123,11 @@ class GraphDigitizerTab(QWidget):
         self.x_unit.setAccessibleName("Unité X")
         self.y_name.setAccessibleName("Grandeur Y")
         self.y_unit.setAccessibleName("Unité Y")
-        metadata.addRow("Grandeur X :", self.symbol_field(self.x_name))
+        x_name_field, self.x_symbol_button = scientific_symbol_field(self.x_name)
+        y_name_field, self.y_symbol_button = scientific_symbol_field(self.y_name)
+        metadata.addRow("Grandeur X :", x_name_field)
         metadata.addRow("Unité X :", self.x_unit)
-        metadata.addRow("Grandeur Y :", self.symbol_field(self.y_name))
+        metadata.addRow("Grandeur Y :", y_name_field)
         metadata.addRow("Unité Y :", self.y_unit)
         axes_layout.addLayout(metadata)
         self.value_fields = {"x": [], "y": []}
@@ -204,30 +206,6 @@ class GraphDigitizerTab(QWidget):
 
         self.set_mode("pan")
         self.refresh_controls()
-
-    def symbol_field(self, field):
-        container = QWidget()
-        row = QHBoxLayout(container)
-        row.setContentsMargins(0, 0, 0, 0)
-        row.setSpacing(LIGHT.related)
-        row.addWidget(field, 1)
-        button = QToolButton()
-        button.setText("α…")
-        button.setToolTip("Insérer un symbole scientifique ou grec")
-        button.setAccessibleName("Insérer un symbole scientifique")
-        button.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup)
-        menu = QMenu(button)
-        for symbol in self.SCIENTIFIC_SYMBOLS:
-            menu.addAction(symbol, lambda checked=False, value=symbol, target=field: self.insert_symbol(target, value))
-        button.setMenu(menu)
-        row.addWidget(button)
-        return container
-
-    @staticmethod
-    def insert_symbol(field, symbol):
-        field.setText(symbol)
-        field.setCursorPosition(len(symbol))
-        field.setFocus()
 
     def unit_text(self, axis):
         return (self.x_unit if axis == "x" else self.y_unit).currentText().strip()

@@ -10,9 +10,10 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 from PySide6.QtCore import QPointF
 from PySide6.QtGui import QColor, QImage
 from PySide6.QtTest import QTest
-from PySide6.QtWidgets import QApplication, QComboBox, QSpinBox, QToolButton
+from PySide6.QtWidgets import QApplication, QComboBox, QSpinBox
 
 from physalix.ui.main_window import MainWindow
+from physalix.ui.scientific_symbols import SCIENTIFIC_SYMBOLS
 
 
 class DigitizerTransferTests(unittest.TestCase):
@@ -36,13 +37,20 @@ class DigitizerTransferTests(unittest.TestCase):
         self.assertEqual(self.window.tabs.tabText(self.window.tabs.count() - 1), "Numérisation")
 
     def test_scientific_symbols_units_and_explicit_actions(self):
-        symbol_button = next(button for button in self.tab.findChildren(QToolButton)
-                             if button.accessibleName() == "Insérer un symbole scientifique")
+        self.window.tabs.setCurrentWidget(self.tab)
+        self.app.processEvents()
+        symbol_button = self.tab.x_symbol_button
+        expected = ("α", "β", "γ", "Δ", "δ", "ε", "θ", "λ", "μ", "ρ", "σ", "φ", "ω")
+        self.assertEqual(SCIENTIFIC_SYMBOLS, expected)
         self.assertEqual([action.text() for action in symbol_button.menu().actions()],
-                         list(self.tab.SCIENTIFIC_SYMBOLS))
-        self.tab.x_name.setCursorPosition(len(self.tab.x_name.text()))
-        self.tab.insert_symbol(self.tab.x_name, "σ")
+                         list(expected))
+        self.assertEqual(ord("μ"), 0x03BC)
+        self.tab.x_name.setText("Grandeur X")
+        next(action for action in symbol_button.menu().actions()
+             if action.text() == "σ").trigger()
+        self.app.processEvents()
         self.assertEqual(self.tab.x_name.text(), "σ")
+        self.assertTrue(self.tab.x_name.hasFocus())
         self.assertIsInstance(self.tab.x_unit, QComboBox)
         self.assertTrue(self.tab.x_unit.isEditable())
         self.tab.x_unit.setEditText("unité personnalisée")

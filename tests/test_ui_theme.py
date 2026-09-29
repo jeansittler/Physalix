@@ -89,6 +89,7 @@ class ThemeLayoutTests(unittest.TestCase):
         data = self.window.data_tab
         modeling = self.window.modeling_tab
         self.window.tabs.setCurrentWidget(data)
+        data.table.setCurrentIndex(data.model.index(data.model.first_data_row, 0))
         data.formula_bar.setFocus()
         self.app.processEvents()
         self.assertTrue(data.formula_bar.hasFocus())

@@ -23,6 +23,7 @@ class FormulaTests(unittest.TestCase):
         self.assertEqual(Formula("-2^2", []).evaluate([]), -4)
         self.assertEqual(Formula("2^3^2", []).evaluate([]), 512)
         self.assertEqual(Formula("ABS(-3) + 2×4", []).evaluate([]), 11)
+        self.assertEqual(Formula("σ*2", ["σ"]).evaluate(["3"]), 6)
 
     def test_invalid_and_unsafe_formulas(self):
         for expression in ("__import__('os')", "C1.real", "C1[0]", "[x for x in C1]",
@@ -152,6 +153,31 @@ class CalculationsTests(unittest.TestCase):
             self.assertEqual(model.rows[2][-1], "5")
             self.assertEqual(tab.history.rowCount(), 3)
             self.assertEqual(window.graph_tab.series[0].x_choice.count(), 6)
+        finally:
+            window._discard_on_close = True
+            window.close()
+
+    def test_unicode_names_derivative_and_formula(self):
+        window = MainWindow()
+        try:
+            window.show()
+            tab = window.calculations_tab
+            model = window.data_tab.model
+            model.setData(model.index(0, 0), "σ")
+            model.setData(model.index(0, 1), "t")
+            for row in range(5):
+                model.setData(model.index(row + 2, 0), str(row * row))
+                model.setData(model.index(row + 2, 1), str(row))
+            tab.refresh()
+            tab.source.setCurrentIndex(0)
+            tab.axis.setCurrentIndex(1)
+            tab.derivative_name.setText("Δ")
+            tab.derive_button.click()
+            tab.formula_name.setText("ω")
+            tab.expression.setText("σ*2")
+            tab.formula_button.click()
+            self.assertEqual(model.names[-2:], ["Δ", "ω"])
+            self.assertEqual(model.rows[2][-1], "8")
         finally:
             window._discard_on_close = True
             window.close()

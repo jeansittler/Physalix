@@ -85,6 +85,16 @@ class ProjectTests(unittest.TestCase):
         self.assertEqual(m.rows[0][4], '11')
         self.assertFalse(first.series[0].fits)  # Invalidation normale après modification des mesures.
 
+    def test_unicode_quantity_names_roundtrip(self):
+        model = self.window.data_tab.model
+        model.setData(model.index(0, 0), 'σ')
+        model.setData(model.index(0, 1), 'λ')
+        write_project(self.path, snapshot(self.window))
+        restored = MainWindow()
+        self.windows.append(restored)
+        restore(restored, read_project(self.path), self.path)
+        self.assertEqual(restored.data_tab.model.names[:2], ['σ', 'λ'])
+
     def legacy_project(self):
         """Build an authentic version-1 legacy archive, independent of the writer."""
         path = self.path.with_suffix('.physalyx')

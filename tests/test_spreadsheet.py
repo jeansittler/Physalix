@@ -11,6 +11,7 @@ from PySide6.QtWidgets import QApplication, QLineEdit
 
 from physalix.spreadsheet import CellFormula, column_label, translate_formula
 from physalix.ui.main_window import MainWindow
+from physalix.ui.theme import LIGHT
 
 
 class SpreadsheetTests(unittest.TestCase):
@@ -72,6 +73,57 @@ class SpreadsheetTests(unittest.TestCase):
         self.assertEqual(self.model.rows[0][1], "15")
         self.model.undo_stack.undo()
         self.assertEqual(self.model.rows[0][1], "6")
+
+    def test_scientific_symbol_renames_quantity_with_undo_and_updates_graph(self):
+        self.select(self.model.name_row, 0)
+        self.app.processEvents()
+        self.assertIs(self.tab.editor_stack.currentWidget(), self.tab.name_context)
+        self.assertEqual(self.tab.name_context_label.text(), "Nom de la grandeur :")
+        self.assertIs(self.tab.name_context.layout().itemAt(1).widget(), self.tab.name_editor)
+        self.assertIs(self.tab.name_context.layout().itemAt(2).widget(), self.tab.symbol_button)
+        self.assertTrue(self.tab.symbol_button.isVisible())
+        self.assertTrue(self.tab.symbol_button.isEnabled())
+        self.assertEqual(self.tab.name_editor.maximumWidth(), LIGHT.field_medium)
+        next(action for action in self.tab.symbol_button.menu().actions()
+             if action.text() == "σ").trigger()
+        self.app.processEvents()
+        self.assertEqual(self.model.names[0], "σ")
+        self.assertEqual(self.tab.name_editor.text(), "σ")
+        self.assertIn("σ", self.window.graph_tab.series[0].x_choice.itemText(0))
+        self.model.undo_stack.undo()
+        self.assertEqual(self.model.names[0], "x")
+        self.model.undo_stack.redo()
+        self.assertEqual(self.model.names[0], "σ")
+
+        self.select(self.model.unit_row, 0)
+        self.app.processEvents()
+        self.assertIs(self.tab.editor_stack.currentWidget(), self.tab.unit_context)
+        self.assertEqual(self.tab.unit_context_label.text(), "Unité de la grandeur :")
+        unit_index = self.tab.unit_editor.findText("mL")
+        self.tab.unit_editor.setCurrentIndex(unit_index)
+        self.tab.unit_editor.activated.emit(unit_index)
+        self.assertEqual(self.model.units[0], "mL")
+        self.tab.unit_editor.lineEdit().setText("unité personnalisée")
+        self.tab.unit_editor_changed()
+        self.tab.apply_unit_editor()
+        self.assertEqual(self.model.units[0], "unité personnalisée")
+        self.model.undo_stack.undo()
+        self.assertEqual(self.model.units[0], "mL")
+        self.assertEqual(self.tab.unit_editor.currentText(), "mL")
+        self.model.undo_stack.redo()
+        self.assertEqual(self.model.units[0], "unité personnalisée")
+        self.assertEqual(self.tab.unit_editor.currentText(), "unité personnalisée")
+
+        self.select(self.model.first_data_row, 0)
+        self.app.processEvents()
+        self.assertIs(self.tab.editor_stack.currentWidget(), self.tab.data_context)
+        self.assertEqual(self.tab.edit_context_label.text(), "Cellule")
+        self.assertTrue(self.tab.cell_address.isVisible())
+        self.assertTrue(self.tab.formula_mark.isVisible())
+        self.assertTrue(self.tab.math_help_button.isVisible())
+        self.assertFalse(self.tab.symbol_button.isVisible())
+        self.assertFalse(self.tab.symbol_button.isEnabled())
+        self.assertEqual(self.tab.formula_bar.maximumWidth(), LIGHT.formula_wide)
 
     def test_formula_fill_is_relative_and_one_undo(self):
         for row in range(5):

@@ -12,7 +12,7 @@ from PySide6.QtCore import QRegularExpression
 from PySide6.QtWidgets import (
     QAbstractItemDelegate, QAbstractItemView, QApplication, QComboBox, QHeaderView,
     QHBoxLayout, QLabel, QLineEdit, QMenu, QMessageBox, QPushButton, QStyle, QStyleOptionViewItem,
-    QStyledItemDelegate, QVBoxLayout, QWidget,
+    QStackedWidget, QStyledItemDelegate, QVBoxLayout, QWidget,
 )
 
 from physalix.ui.fill_table import FillTableView
@@ -21,6 +21,7 @@ from physalix.ui.theme import LIGHT
 from physalix.ui.components import help_toggle, page_layout, panel, role
 from physalix.ui.icons import icon
 from physalix.ui.math_help import math_help_button
+from physalix.ui.scientific_symbols import replace_name, scientific_symbol_button
 from physalix.spreadsheet import CellFormula, CellError, column_label, remove_formula_column, translate_formula
 
 
@@ -648,9 +649,41 @@ class DataTab(QWidget):
         self.redo_button.setToolTip("Ctrl+Y · Rétablir la dernière modification annulée")
         actions.addStretch()
         toolbar_layout.addLayout(actions)
-        formula_row = QHBoxLayout()
+        self.editor_stack = QStackedWidget()
+
+        self.name_context = QWidget()
+        name_row = QHBoxLayout(self.name_context)
+        name_row.setContentsMargins(0, 0, 0, 0)
+        name_row.setSpacing(LIGHT.related)
+        self.name_context_label = role(QLabel("Nom de la grandeur :"), "toolbarLabel")
+        self.name_editor = QLineEdit()
+        self.name_editor.setAccessibleName("Nom de la grandeur")
+        self.name_editor.setPlaceholderText("Saisir un nom")
+        self.name_editor.setMaximumWidth(LIGHT.field_medium)
+        self.symbol_button = scientific_symbol_button(self.set_quantity_symbol)
+        name_row.addWidget(self.name_context_label)
+        name_row.addWidget(self.name_editor)
+        name_row.addWidget(self.symbol_button)
+        name_row.addStretch()
+
+        self.unit_context = QWidget()
+        unit_row = QHBoxLayout(self.unit_context)
+        unit_row.setContentsMargins(0, 0, 0, 0)
+        unit_row.setSpacing(LIGHT.related)
+        self.unit_context_label = role(QLabel("Unité de la grandeur :"), "toolbarLabel")
+        self.unit_editor = unit_combo()
+        self.unit_editor.setAccessibleName("Unité de la grandeur")
+        self.unit_editor.setMaximumWidth(LIGHT.field_medium)
+        unit_row.addWidget(self.unit_context_label)
+        unit_row.addWidget(self.unit_editor)
+        unit_row.addStretch()
+
+        self.data_context = QWidget()
+        formula_row = QHBoxLayout(self.data_context)
+        formula_row.setContentsMargins(0, 0, 0, 0)
         formula_row.setSpacing(LIGHT.related)
-        formula_row.addWidget(role(QLabel("Cellule"), "toolbarLabel"))
+        self.edit_context_label = role(QLabel("Cellule"), "toolbarLabel")
+        formula_row.addWidget(self.edit_context_label)
         self.cell_address = role(QLabel("—"), "cellAddress")
         self.cell_address.setMinimumWidth(70)
         self.formula_bar = QLineEdit()
@@ -658,27 +691,73 @@ class DataTab(QWidget):
         self.formula_bar.setPlaceholderText("Valeur ou formule, par exemple =A1*2")
         self.formula_bar.setMaximumWidth(LIGHT.formula_wide)
         formula_row.addWidget(self.cell_address)
-        formula_row.addWidget(role(QLabel("fx"), "formulaMark"))
+        self.formula_mark = role(QLabel("fx"), "formulaMark")
+        formula_row.addWidget(self.formula_mark)
         formula_row.addWidget(self.formula_bar, 1)
-        formula_row.addWidget(math_help_button(self, spreadsheet=True))
-        toolbar_layout.addLayout(formula_row)
+        self.math_help_button = math_help_button(self, spreadsheet=True)
+        formula_row.addWidget(self.math_help_button)
+        for context in (self.name_context, self.unit_context, self.data_context):
+            self.editor_stack.addWidget(context)
+        toolbar_layout.addWidget(self.editor_stack)
         layout.addWidget(toolbar)
         self.table.selectionModel().currentChanged.connect(self.update_formula_bar)
         self.model.dataChanged.connect(self.update_formula_bar)
         self.model.columnsRemoved.connect(self.update_formula_bar)
+        self.name_editor.returnPressed.connect(self.apply_name_editor)
         self.formula_bar.returnPressed.connect(self.apply_formula_bar)
+        self._unit_editor_column = None
+        self._unit_editor_dirty = False
+        self.unit_editor.lineEdit().textEdited.connect(self.unit_editor_changed)
+        self.unit_editor.lineEdit().editingFinished.connect(self.apply_unit_editor)
+        self.unit_editor.activated.connect(self.apply_unit_editor)
         self.update_formula_bar()
         layout.addWidget(self.table)
 
     def update_formula_bar(self, *args):
         index = self.table.currentIndex()
         valid = index.isValid() and index.column() < self.model.columnCount()
-        self.formula_bar.setEnabled(valid and bool(self.model.flags(index) & Qt.ItemFlag.ItemIsEditable))
+        naming = valid and index.row() == self.model.name_row
+        unit = valid and index.row() == self.model.unit_row
+        self.editor_stack.setCurrentWidget(
+            self.name_context if naming else self.unit_context if unit else self.data_context)
+        self.symbol_button.setEnabled(naming)
+        self.name_editor.setEnabled(naming)
+        if naming and not self.name_editor.hasFocus():
+            self.name_editor.setText(index.data(Qt.ItemDataRole.EditRole) or "")
+        if unit:
+            column_changed = self._unit_editor_column != index.column()
+            self._unit_editor_column = index.column()
+            if column_changed or not self._unit_editor_dirty:
+                self._unit_editor_dirty = False
+                self.unit_editor.setEditText(index.data(Qt.ItemDataRole.EditRole) or "")
+        self.formula_bar.setEnabled(
+            valid and not naming and not unit
+            and bool(self.model.flags(index) & Qt.ItemFlag.ItemIsEditable))
         self.cell_address.setText((column_label(index.column()) +
                                   (str(index.row() - 1) if index.row() >= 2 else " · " + ("Nom" if index.row() == 0 else "Unité")))
                                  if valid else "—")
-        if not self.formula_bar.hasFocus():
+        if not naming and not unit and not self.formula_bar.hasFocus():
             self.formula_bar.setText(index.data(Qt.ItemDataRole.EditRole) or "" if valid else "")
+
+    def apply_name_editor(self):
+        index = self.table.currentIndex()
+        if index.isValid() and index.row() == self.model.name_row:
+            self.model.edit_cells(
+                {(self.model.name_row, index.column()): self.name_editor.text()},
+                "Renommer une grandeur")
+            self.table.setFocus()
+
+    def unit_editor_changed(self, *args):
+        self._unit_editor_dirty = True
+
+    def apply_unit_editor(self, *args):
+        column = self._unit_editor_column
+        if column is None or not 0 <= column < self.model.columnCount():
+            return
+        self._unit_editor_dirty = False
+        self.model.edit_cells(
+            {(self.model.unit_row, column): self.unit_editor.currentText()},
+            "Modifier une unité")
 
     def apply_formula_bar(self):
         index = self.table.currentIndex()
@@ -686,6 +765,14 @@ class DataTab(QWidget):
             self.model.edit_cells({(index.row(), index.column()): self.formula_bar.text()}, "Modifier une cellule")
             self.table.setFocus()
             self.update_formula_bar()
+
+    def set_quantity_symbol(self, symbol):
+        index = self.table.currentIndex()
+        if not index.isValid() or index.row() != self.model.name_row:
+            return
+        self.model.edit_cells(
+            {(self.model.name_row, index.column()): symbol}, "Renommer une grandeur")
+        replace_name(self.name_editor, symbol)
 
     def add_quantity(self):
         self.model.add_quantity()
