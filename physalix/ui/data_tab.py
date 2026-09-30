@@ -603,7 +603,7 @@ class DataTab(QWidget):
             "Formules : =A1*2 ou =SOMME(A1:A5). A1 = première mesure de A ; $A$1 reste fixe.\n"
             "Tirez le carré de sélection vers le bas pour recopier une formule ou prolonger deux valeurs.\n"
             "Décimales : virgule ou point. Les données restent en mémoire pendant cette session.",
-            "Une grandeur par colonne · une mesure par ligne",
+            "",
         )
         layout.addWidget(instructions)
 

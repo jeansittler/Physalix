@@ -99,9 +99,12 @@ def help_toggle(title, text, description=None):
     """Aide au clavier comme à la souris, repliée au lancement."""
     box, layout = panel(kind="help")
     heading = QHBoxLayout()
-    if description:
+    if description is not None:
         heading.addWidget(label(title, "pageTitle"))
-        heading.addWidget(label(description, "pageSubtitle"), 1)
+        if description:
+            heading.addWidget(label(description, "pageSubtitle"), 1)
+        else:
+            heading.addStretch(1)
     else:
         heading.addWidget(label(title, "caption"), 1)
     toggle = QPushButton("Afficher l’aide")

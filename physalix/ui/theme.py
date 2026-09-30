@@ -90,14 +90,21 @@ def stylesheet(t=LIGHT):
     QWidget {{ color: {t.text}; font-family: '{t.font}'; font-size: {t.font_px}px; }}
     QMainWindow, QDialog, QTabWidget::pane, QScrollArea > QWidget > QWidget {{ background: {t.background}; }}
     QTabWidget::pane {{ border: 0; border-top: 1px solid {t.border_strong}; }}
-    QTabWidget#mainNavigation::pane {{ border-top: 3px solid {t.navy}; }}
-    QTabWidget#mainNavigation QTabBar {{ background: {t.navy}; }}
-    QTabWidget#mainNavigation QTabBar::tab {{ background: transparent; color: {t.nav_text};
-        border: 1px solid transparent; border-radius: {t.radius}px; padding: 10px 16px;
-        margin: 8px 3px; font-weight: 600; }}
-    QTabWidget#mainNavigation QTabBar::tab:hover {{ background: {t.navy_hover}; color: white; }}
-    QTabWidget#mainNavigation QTabBar::tab:selected {{ background: {t.primary}; color: white; }}
-    QTabWidget#mainNavigation QTabBar::tab:focus {{ border: 2px solid white; padding: 9px 15px; }}
+    QTabWidget#mainPages::pane {{ border: 0; }}
+    QWidget#mainNavigation {{ background: {t.navy}; border: 0; }}
+    QWidget#mainNavigation QToolButton[role="mainNavigationButton"] {{
+        background: transparent; color: {t.nav_text}; border: 1px solid transparent;
+        border-bottom: 3px solid transparent; border-radius: 0; padding: 6px 10px;
+        margin: 0; font-weight: 600; }}
+    QWidget#mainNavigation[navigationMode="compact"] QToolButton[role="mainNavigationButton"],
+    QWidget#mainNavigation[navigationMode="icon"] QToolButton[role="mainNavigationButton"] {{
+        padding-left: 4px; padding-right: 4px; }}
+    QWidget#mainNavigation QToolButton[role="mainNavigationButton"]:hover {{
+        background: {t.navy_hover}; color: white; }}
+    QWidget#mainNavigation QToolButton[role="mainNavigationButton"]:checked {{
+        background: {t.navy}; color: white; border-bottom-color: {t.primary}; }}
+    QWidget#mainNavigation QToolButton[role="mainNavigationButton"]:focus {{
+        border-color: {t.nav_muted}; }}
     QTabBar#graphTabs {{ background: {t.navy}; }}
     QTabBar#graphTabs::tab {{ background: transparent; color: {t.nav_text}; border: 0;
         border-bottom: 3px solid transparent; padding: 6px 12px; margin: 3px 2px; font-weight: 600; }}
@@ -106,7 +113,7 @@ def stylesheet(t=LIGHT):
         border-bottom-color: {t.primary}; }}
     QTabBar#graphTabs::tab:focus {{ border: 1px solid white; border-bottom: 3px solid {t.primary};
         padding: 5px 11px; }}
-    QWidget[role="brand"] {{ background: {t.surface}; border-right: 3px solid {t.primary}; }}
+    QFrame[role="brandCartouche"] {{ background: {t.surface}; border: 0; border-radius: 4px; }}
     QLabel[role="brandTitle"] {{ font-size: {t.title_px}px; font-weight: 700; }}
     QLabel[role="pageTitle"] {{ color: {t.navy}; font-size: {t.title_px}px; font-weight: 700; }}
     QLabel[role="pageSubtitle"] {{ color: {t.muted}; font-size: {t.font_px}px; }}

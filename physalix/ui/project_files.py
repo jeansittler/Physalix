@@ -168,11 +168,13 @@ class ProjectFiles:
                 return False
             self.video_tab.shutdown()
             old = self.takeCentralWidget()
-            for name in ('tabs', 'data_tab', 'graph_tab', 'modeling_tab', 'video_tab', 'calculations_tab',
+            for name in ('main_container', 'navigation', 'navigation_layout', 'navigation_group',
+                         'navigation_buttons', 'brand_cartouche', 'brand_logo', '_navigation_mode',
+                         'tabs', 'data_tab', 'graph_tab', 'modeling_tab', 'video_tab', 'calculations_tab',
                          'statistics_tab', 'digitizer_tab'):
                 setattr(self, name, getattr(staging, name))
             staging.takeCentralWidget()
-            self.setCentralWidget(self.tabs)
+            self.setCentralWidget(self.main_container)
             self.tabs.currentChanged.disconnect()
             self.tabs.currentChanged.connect(self.update_navigation)
             self.graph_tab.modeling_requested.disconnect()

@@ -18,7 +18,7 @@ class ReleaseNotesTests(unittest.TestCase):
         self.assertEqual(entries[0]["version"], __version__)
         self.assertEqual(
             [entry["version"] for entry in entries],
-            ["1.3.0", "1.2.5", "1.2.4", "1.2.3", "1.2.2"],
+            ["1.4.0", "1.3.0", "1.2.5", "1.2.4", "1.2.3", "1.2.2"],
         )
         self.assertEqual(current_release(entries), entries[0])
         self.assertTrue(any("réticule" in note for entry in entries for note in entry["notes"]))

@@ -8,6 +8,7 @@ import unittest
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
+from PySide6.QtCore import QRect, QRectF
 from PySide6.QtGui import QImage
 from PySide6.QtWidgets import QApplication
 
@@ -31,8 +32,15 @@ class BrandingTests(unittest.TestCase):
                     self.assertTrue(image.hasAlphaChannel())
                 self.assertFalse(application_icon().isNull())
                 logo = BrandLogo()
+                self.assertEqual(logo._source_rect, QRect(211, 70, 1750, 549))
                 self.assertFalse(logo.grab().isNull())
                 self.assertEqual(logo.accessibleName(), "Physalix")
+                self.assertEqual((logo.width(), logo.height()), (124, 38))
+                logo.setDisplaySize(100, 32)
+                self.assertEqual((logo.width(), logo.height()), (100, 32))
+                target = logo._target_rect()
+                widget_center = QRectF(logo.rect()).center()
+                self.assertEqual(target.center(), widget_center)
             finally:
                 os.chdir(previous)
 

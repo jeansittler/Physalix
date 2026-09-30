@@ -41,5 +41,14 @@
       "amélioration de l'onglet Calculs : dérivées présentées plus clairement et erreurs de formule signalées par une boîte de dialogue ;",
       "optimisation de l'interface du Pointage vidéo pour un affichage plus stable, compact et adapté aux différentes tailles de fenêtre."
     ]
+  },
+  {
+    "version": "1.4.0",
+    "notes": [
+      "ajout de la numérisation de graphiques à partir d’images JPEG ou PNG, avec sélection de la zone, calibration des axes, détection assistée et correction manuelle des points, puis transfert direct vers le tableur-grapheur ;",
+      "amélioration de la saisie des grandeurs scientifiques grâce à une palette de lettres grecques et de symboles, ainsi qu’à une barre contextuelle dans le tableur ;",
+      "ajout de notes de version consultables hors ligne depuis le menu Aide ;",
+      "refonte responsive de la navigation principale, désormais plus compacte et toujours accessible sur les petites fenêtres."
+    ]
   }
 ]

@@ -3,10 +3,10 @@ import os
 import unittest
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
-from PySide6.QtCore import Qt
+from PySide6.QtCore import QSize, Qt
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import (
-    QApplication, QBoxLayout, QFrame, QPushButton, QScrollArea, QSizePolicy, QTabBar,
+    QApplication, QBoxLayout, QFrame, QLabel, QPushButton, QScrollArea, QSizePolicy, QTabBar,
 )
 from physalix.ui.components import ResponsiveCards
 from physalix.ui.main_window import MainWindow
@@ -109,14 +109,151 @@ class ThemeLayoutTests(unittest.TestCase):
     def test_navigation_and_plot_after_resize(self):
         for size in ((1366, 700), (1920, 1000), (900, 620), (1366, 700)):
             self.window.resize(*size)
-            for index in range(6):
+            for index in range(self.window.tabs.count()):
                 self.window.tabs.setCurrentIndex(index)
                 self.app.processEvents()
                 self.assertEqual(self.window.tabs.currentIndex(), index)
-                self.assertFalse(self.window.tabs.tabIcon(index).isNull())
+                self.assertFalse(self.window.navigation_buttons[index].icon().isNull())
             self.window.tabs.setCurrentWidget(self.window.graph_tab)
             QTest.qWait(20)
             self.assertGreaterEqual(self.window.graph_tab.plot.height(), 220)
+
+    def test_main_navigation_labels_density_and_three_modes(self):
+        tabs = self.window.tabs
+        navigation = self.window.navigation
+        buttons = self.window.navigation_buttons
+        labels = ["Données", "Graphique", "Modélisation", "Pointage", "Calculs",
+                  "Statistiques", "Numérisation"]
+        tooltips = ["Données", "Graphique", "Modélisation", "Pointage vidéo", "Calculs",
+                    "Statistiques", "Numérisation"]
+        self.window.resize(self.window._navigation_required_width("normal") + 100, 800)
+        QTest.qWait(20)
+        self.assertEqual([button.text() for button in buttons], labels)
+        self.assertEqual([button.toolTip() for button in buttons], tooltips)
+        self.assertTrue(all(button.iconSize() == QSize(18, 18) for button in buttons))
+        self.assertFalse(tabs.tabBar().isVisible())
+
+        for width in (1280, 1366, 1600, 1920):
+            with self.subTest(width=width):
+                self.window.resize(width, 800)
+                QTest.qWait(20)
+                self.assertEqual(navigation.height(), 44)
+                if QApplication.platformName() == "windows":
+                    self.assertEqual(navigation.property("navigationMode"), "normal")
+                self.assertTrue(all(button.isVisible() for button in buttons))
+
+        self.window.resize(900, 700)
+        QTest.qWait(20)
+        expected = ("compact" if 900 >= self.window._navigation_required_width("compact")
+                    else "icon")
+        self.assertEqual(navigation.property("navigationMode"), expected)
+        if QApplication.platformName() == "windows":
+            self.assertEqual(expected, "compact")
+        self.assertTrue(all(button.isVisible() for button in buttons))
+
+        self.window.resize(640, 420)
+        QTest.qWait(20)
+        self.assertEqual(navigation.property("navigationMode"), "icon")
+        self.assertTrue(all(
+            button.toolButtonStyle() == Qt.ToolButtonStyle.ToolButtonIconOnly for button in buttons))
+        self.assertEqual([button.toolTip() for button in buttons], tooltips)
+        self.assertTrue(all(not button.icon().isNull() for button in buttons))
+        self.assertTrue(all(button.isVisible() for button in buttons))
+        widths = [button.width() for button in buttons]
+        self.assertEqual(len(set(widths)), 1)
+        self.assertLessEqual(buttons[-1].geometry().right(), navigation.width())
+        self.assertEqual(self.window.brand_logo.size().toTuple(), (70, 24))
+        for index, button in enumerate(buttons):
+            QTest.mouseClick(button, Qt.MouseButton.LeftButton)
+            self.app.processEvents()
+            self.assertEqual(tabs.currentIndex(), index)
+
+    def test_navigation_density_is_stable_and_internal_tabs_are_unchanged(self):
+        tabs = self.window.tabs
+        graph_tabs = self.window.graph_tab.area.findChild(QTabBar, "graphTabs")
+        self.assertIsNotNone(graph_tabs)
+        internal_height = graph_tabs.sizeHint().height()
+        normal_width = self.window._navigation_required_width("normal")
+        compact_width = self.window._navigation_required_width("compact")
+        states = []
+        for width in (normal_width + 100, normal_width - 10, compact_width - 10,
+                      compact_width + 10, compact_width + 30, normal_width + 10,
+                      normal_width + 30):
+            self.window.resize(width, 700)
+            QTest.qWait(20)
+            states.append(self.window.navigation.property("navigationMode"))
+            self.assertEqual(graph_tabs.sizeHint().height(), internal_height)
+        self.assertEqual(states, ["normal", "compact", "icon", "icon", "compact",
+                                  "compact", "normal"])
+
+    def test_brand_cartouche_is_centered_on_continuous_navigation_background(self):
+        for mode, width, cartouche_size, logo_size in (
+                ("normal", self.window._navigation_required_width("normal") + 100, (112, 34), (100, 28)),
+                ("compact", self.window._navigation_required_width("normal") - 10, (96, 34), (86, 26)),
+                ("icon", 640, (80, 34), (70, 24))):
+            with self.subTest(mode=mode):
+                self.window.resize(width, 700)
+                QTest.qWait(20)
+                self.assertEqual(self.window.navigation.property("navigationMode"), mode)
+                navigation = self.window.navigation
+                cartouche = self.window.brand_cartouche
+                logo = self.window.brand_logo
+                self.assertEqual(navigation.height(), 44)
+                self.assertEqual(cartouche.size().toTuple(), cartouche_size)
+                self.assertEqual(logo.size().toTuple(), logo_size)
+                self.assertEqual(cartouche.x(), 8)
+                self.assertEqual(cartouche.y(), 5)
+                self.assertEqual(cartouche.y() + cartouche.height() + 5, navigation.height())
+                self.assertEqual(logo.y() * 2 + logo.height(), cartouche.height())
+                self.assertIs(cartouche.parentWidget(), navigation)
+                for button in self.window.navigation_buttons:
+                    self.assertIs(button.parentWidget(), navigation)
+                    self.assertEqual((button.y(), button.height()), (5, 34))
+                rendered = navigation.grab().toImage()
+                # Logical samples converted to device pixels for HiDPI displays.
+                ratio = rendered.devicePixelRatio()
+                for x, y in ((0, 0), (0, 22), (navigation.width() - 1, 22)):
+                    self.assertEqual(rendered.pixelColor(int(x * ratio), int(y * ratio)).name(), LIGHT.navy.lower())
+
+    def test_main_navigation_mouse_and_keyboard_focus_keep_geometry(self):
+        self.window.resize(self.window._navigation_required_width("normal") + 100, 700)
+        QTest.qWait(20)
+        buttons = self.window.navigation_buttons
+        self.assertEqual(buttons[0].focusPolicy(), Qt.FocusPolicy.TabFocus)
+        before = [button.geometry() for button in buttons]
+
+        buttons[1].clearFocus()
+        QTest.mouseClick(buttons[1], Qt.MouseButton.LeftButton)
+        self.app.processEvents()
+        self.assertEqual(self.window.tabs.currentIndex(), 1)
+        self.assertFalse(buttons[1].hasFocus())
+        self.assertTrue(buttons[1].isChecked())
+        self.assertEqual([button.geometry() for button in buttons], before)
+
+        self.assertEqual(buttons[1].focusPolicy(), Qt.FocusPolicy.TabFocus)
+        buttons[1].setFocus(Qt.FocusReason.TabFocusReason)
+        self.app.processEvents()
+        self.assertTrue(buttons[1].hasFocus())
+        QTest.keyClick(buttons[1], Qt.Key.Key_Right)
+        self.app.processEvents()
+        self.assertEqual(self.window.tabs.currentIndex(), 2)
+        self.assertTrue(buttons[2].hasFocus())
+        self.assertTrue(buttons[2].isChecked())
+        self.assertEqual([button.geometry() for button in buttons], before)
+
+        self.window.tabs.setCurrentIndex(4)
+        self.app.processEvents()
+        self.assertTrue(buttons[4].isChecked())
+        self.assertEqual(sum(button.isChecked() for button in buttons), 1)
+
+        self.window.graph_tab.modeling_requested.emit()
+        self.app.processEvents()
+        self.assertIs(self.window.tabs.currentWidget(), self.window.modeling_tab)
+        self.assertTrue(buttons[2].isChecked())
+        self.window.modeling_tab.graph_requested.emit()
+        self.app.processEvents()
+        self.assertIs(self.window.tabs.currentWidget(), self.window.graph_tab)
+        self.assertTrue(buttons[1].isChecked())
 
     def test_graph_workspace_prioritizes_plot_height(self):
         workspace = self.window.graph_tab
@@ -219,13 +356,16 @@ class ThemeLayoutTests(unittest.TestCase):
     def test_data_help_preserves_table_access(self):
         self.window.resize(900, 620)
         tab = self.window.data_tab
+        texts = [widget.text() for widget in tab.findChildren(QLabel)]
+        self.assertIn("Données / Tableur", texts)
+        self.assertNotIn("Une grandeur par colonne · une mesure par ligne", texts)
         toggle = next(b for b in tab.findChildren(QPushButton) if b.isCheckable())
         toggle.click()
-        self.app.processEvents()
+        QTest.qWait(20)
         self.assertTrue(toggle.isChecked())
         self.assertGreater(tab.table.viewport().height(), 80)
         toggle.click()
-        self.app.processEvents()
+        QTest.qWait(20)
         self.assertGreater(tab.table.viewport().height(), 200)
 
 
