@@ -123,9 +123,9 @@ class ThemeLayoutTests(unittest.TestCase):
         navigation = self.window.navigation
         buttons = self.window.navigation_buttons
         labels = ["Données", "Graphique", "Modélisation", "Pointage", "Calculs",
-                  "Statistiques", "Numérisation"]
+                  "Statistiques", "Numérisation", "Acquisition"]
         tooltips = ["Données", "Graphique", "Modélisation", "Pointage vidéo", "Calculs",
-                    "Statistiques", "Numérisation"]
+                    "Statistiques", "Numérisation", "Acquisition"]
         self.window.resize(self.window._navigation_required_width("normal") + 100, 800)
         QTest.qWait(20)
         self.assertEqual([button.text() for button in buttons], labels)

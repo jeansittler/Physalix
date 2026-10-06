@@ -11,6 +11,7 @@ import zipfile
 from PySide6.QtCore import QPointF, QTimer
 from PySide6.QtWidgets import QApplication, QMessageBox, QFileDialog
 from physalix.app import main as app_main, project_path_from_arguments
+from physalix.acquisition import AcquisitionConfig, DigitalStepConfig
 from physalix.fitting import fit_model
 from physalix.project import read_project, write_project, read_csv, write_csv, atomic_write
 from physalix.ui.main_window import MainWindow
@@ -251,6 +252,20 @@ class ProjectTests(unittest.TestCase):
         self.assertEqual(len(self.window.graph_tab.windows), 2)
         self.assertEqual(len(self.window.calculations_tab.engine.items), 2)
         self.assertEqual(self.window.document_signature(), self.window._saved_state)
+
+    def test_acquisition_transfer_after_replace_navigates_current_window(self):
+        state = snapshot(self.window)
+        self.assertTrue(self.window.replace_project(state))
+        acquisition = self.window.acquisition_tab
+        acquisition.controller.config = AcquisitionConfig(
+            2500, 2, 0, DigitalStepConfig(8, False, True, 0))
+        acquisition.controller.samples[:] = [0, 1023]
+        acquisition._store_result(True, "Acquisition terminée.")
+        self.window.tabs.setCurrentWidget(self.window.data_tab)
+
+        acquisition.transfer_result()
+
+        self.assertIs(self.window.tabs.currentWidget(), self.window.graph_tab)
 
     def french_confirmation(self, choice):
         """Click the real standard button through the modal Qt event loop."""
