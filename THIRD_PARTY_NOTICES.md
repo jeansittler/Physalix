@@ -6,6 +6,16 @@ les URL des sources et les obligations détaillées se trouvent dans
 `third_party/components.json`. Les textes de licence sont fournis dans
 `third_party/licenses/` et dans les répertoires `.dist-info` embarqués.
 
+## AVRDUDE
+
+Le bundle Windows contient AVRDUDE 8.1, build officiel MSVC x64, sous
+GPL-2.0-or-later. Seuls `avrdude.exe` et `avrdude.conf` sont distribués ; ce
+build est lié statiquement à ses dépendances et utilise les DLL système de
+Windows. Le texte GPL et la liste des auteurs sont conservés dans
+`third_party/licenses/`. L'archive binaire officielle, son SHA-256, l'archive
+source correspondante et son SHA-256 sont enregistrés dans
+`third_party/components.json`.
+
 ## Pile vidéo réellement distribuée
 
 La roue PyAV 17.1.0 contient FFmpeg 8.1.1 construit par le projet

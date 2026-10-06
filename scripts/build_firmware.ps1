@@ -17,6 +17,7 @@ $metadata = Join-Path $sketch 'firmware_metadata.h'
 $resourceDirectory = Join-Path $root 'physalix\resources\firmware\uno'
 $resourceHex = Join-Path $resourceDirectory 'physalix_acquisition_uno.hex'
 $manifest = Join-Path $resourceDirectory 'manifest.json'
+$uploaderDirectory = $resourceDirectory
 
 try {
     $ArduinoCli = (Get-Command $ArduinoCli -ErrorAction Stop).Source
@@ -72,7 +73,7 @@ Copy-Item -LiteralPath $compiledHex -Destination $stagedHex -Force
 
 Push-Location $root
 try {
-    & $Python scripts/generate_firmware_manifest.py --metadata $metadata --hex $stagedHex --output $stagedManifest
+    & $Python scripts/generate_firmware_manifest.py --metadata $metadata --hex $stagedHex --output $stagedManifest --uploader-directory $uploaderDirectory
     if ($LASTEXITCODE -ne 0) { throw "La génération du manifeste a échoué avec le code $LASTEXITCODE." }
 } finally { Pop-Location }
 

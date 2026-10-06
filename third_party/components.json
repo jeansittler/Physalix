@@ -12,6 +12,15 @@
   },
   "components": [
     {
+      "name": "AVRDUDE", "version": "8.1", "license": "GPL-2.0-or-later",
+      "copyright": "Brian S. Dean, AVRDUDE maintainers and contributors", "runtime": true,
+      "binary_url": "https://github.com/avrdudes/avrdude/releases/download/v8.1/avrdude-v8.1-windows-x64.zip",
+      "binary_sha256": "e4d571d81fee3387d51bfdedd0b6565e4c201e974101cac2caec7adfd6201da3",
+      "source_url": "https://github.com/avrdudes/avrdude/releases/download/v8.1/avrdude-8.1.zip",
+      "source_sha256": "29f54217b54148344ee2e98a3686d2e8fe3f38826dc78d2b37fe901a85f261bb",
+      "notice": "Distribute the GPL text and author notice; make the exact corresponding source available with binary releases. The bundled MSVC x64 executable is statically linked and requires only Windows system DLLs."
+    },
+    {
       "name": "PyAV", "version": "17.1.0", "license": "BSD-3-Clause",
       "copyright": "PyAV contributors", "runtime": true,
       "source_url": "https://github.com/PyAV-Org/PyAV/archive/refs/tags/v17.1.0.tar.gz",

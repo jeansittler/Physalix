@@ -47,6 +47,9 @@ def main(bundle: Path, target: Path) -> None:
     installed = {name: importlib.metadata.version(name) for name in EXPECTED_PACKAGES}
     assert installed == EXPECTED_PACKAGES, f"unexpected runtime packages: {installed}"
     assert bundle.is_dir(), f"bundle not found: {bundle}"
+    avrdude = next((item for item in data["components"]
+                    if item["name"] == "AVRDUDE"), None)
+    assert avrdude and avrdude["version"] == "8.1", "AVRDUDE provenance missing"
     matches = {}
     for pattern in EXPECTED_DLL_PATTERNS:
         found = list(bundle.rglob(pattern))
@@ -61,6 +64,19 @@ def main(bundle: Path, target: Path) -> None:
             "bytes": path.stat().st_size,
             "sha256": sha256(path),
         })
+    firmware_manifest_path = (
+        bundle / "_internal/physalix/resources/firmware/uno/manifest.json")
+    firmware_manifest = json.loads(firmware_manifest_path.read_text(encoding="utf-8"))
+    for item in firmware_manifest["uploader"]["files"]:
+        path = firmware_manifest_path.parent.joinpath(*Path(item["path"]).parts)
+        assert path.is_file() and sha256(path) == item["sha256"], path
+        binaries.append({
+            "expected_pattern": item["path"],
+            "name": path.name,
+            "path": path.relative_to(bundle).as_posix(),
+            "bytes": path.stat().st_size,
+            "sha256": item["sha256"],
+        })
     output = {
         "schema": 1,
         "physalix": VERSION,
@@ -73,7 +89,7 @@ def main(bundle: Path, target: Path) -> None:
     }
     target.parent.mkdir(exist_ok=True)
     target.write_text(json.dumps(output, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
-    print(f"Third-party inventory OK: {len(binaries)} audited DLLs -> {target}")
+    print(f"Third-party inventory OK: {len(binaries)} audited runtime files -> {target}")
 
 
 if __name__ == "__main__":

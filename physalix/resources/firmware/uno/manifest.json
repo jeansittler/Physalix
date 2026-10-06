@@ -5,5 +5,21 @@
   "hex_sha256": "9d9d690d1c3561f9746969810c0b4afba95ef2270f111c3f0b4f7bf246fd67b3",
   "protocol_version": 1,
   "required_capabilities": 7,
-  "schema": 1
+  "schema": 2,
+  "uploader": {
+    "config": "tools/avrdude.conf",
+    "executable": "tools/avrdude.exe",
+    "files": [
+      {
+        "path": "tools/avrdude.exe",
+        "sha256": "b08186071b0877ceed6ec3e86dd42ee6d2b7556859659b34d4e326069cafbf45"
+      },
+      {
+        "path": "tools/avrdude.conf",
+        "sha256": "690c40a8163ae845bf2b6d4635e8a3534ea75c263d8e7e59d693b182c738cf41"
+      }
+    ],
+    "name": "avrdude",
+    "version": "8.1"
+  }
 }

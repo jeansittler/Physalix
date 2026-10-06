@@ -17,6 +17,8 @@ scripts et correctifs de `pyav-ffmpeg` et rendre le code source correspondant
 accessible depuis le même emplacement que le binaire. Le manifeste ne remplace
 pas cette mise à disposition.
 
+Cela inclut l'archive source AVRDUDE exacte déclarée dans `components.json`.
+
 Commande de contrôle locale :
 
 ```powershell
