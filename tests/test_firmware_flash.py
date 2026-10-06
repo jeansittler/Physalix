@@ -200,11 +200,15 @@ class FirmwareFlashTests(unittest.TestCase):
 
     def test_timeout_terminates_then_can_force_kill(self):
         process = self.start_running()
+        settled = []
+        self.service.process_settled.connect(lambda: settled.append(True))
         self.service._on_timeout()
         self.assertEqual(self.failures[-1].kind, FlashErrorKind.TIMEOUT)
         self.assertEqual(process.terminate_count, 1)
         self.service._force_kill()
         self.assertEqual(process.kill_count, 1)
+        process.simulate_finished(-1, QProcess.ExitStatus.CrashExit)
+        self.assertEqual(settled, [True])
 
     def test_timeout_also_covers_process_startup(self):
         self.assertTrue(self.service.start_flash("COM3"))
@@ -251,6 +255,14 @@ class FirmwareFlashTests(unittest.TestCase):
         process = self.start_running()
         process.simulate_finished()
         self.assertFalse(self.service.confirm_firmware((1, 1, 0), 1, 7))
+        self.assertEqual(self.failures[-1].kind, FlashErrorKind.FIRMWARE_MISMATCH)
+
+    def test_post_flash_reconnection_failure_can_close_workflow(self):
+        process = self.start_running()
+        process.simulate_finished()
+        self.service.fail_post_flash_verification(
+            "L’Arduino n’est pas revenue.", "Délai de reconnexion dépassé.")
+        self.assertEqual(self.service.state, FlashState.FAILED)
         self.assertEqual(self.failures[-1].kind, FlashErrorKind.FIRMWARE_MISMATCH)
 
 

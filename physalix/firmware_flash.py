@@ -143,6 +143,7 @@ class FirmwareFlash(QObject):
     upload_verified = Signal(object)
     succeeded = Signal(object)
     failed = Signal(object)
+    process_settled = Signal()
 
     def __init__(self, parent: QObject | None = None, *,
                  resource_directory: Path = UNO_RESOURCE_DIRECTORY,
@@ -245,6 +246,15 @@ class FirmwareFlash(QObject):
         self.succeeded.emit(result)
         return True
 
+    def fail_post_flash_verification(self, user_message: str,
+                                     technical_details: str) -> None:
+        """Terminer un upload dont la reconnexion/identification a échoué."""
+        if self.state not in (FlashState.WAITING_FOR_FIRMWARE,
+                              FlashState.VERIFYING_FIRMWARE):
+            raise RuntimeError("La vérification firmware n’est pas attendue.")
+        self._fail(FlashErrorKind.FIRMWARE_MISMATCH,
+                   user_message, technical_details)
+
     def shutdown(self) -> None:
         if self._process_running():
             self._fail(FlashErrorKind.INTERRUPTED,
@@ -308,6 +318,7 @@ class FirmwareFlash(QObject):
         self._read_stderr()
         self._process = None
         if self._failure_committed:
+            self.process_settled.emit()
             return
         if exit_status == QProcess.ExitStatus.CrashExit:
             self._fail(FlashErrorKind.PROCESS_CRASHED,

@@ -15,8 +15,12 @@ from PySide6.QtWidgets import (
 
 from physalix.acquisition import (
     AcquisitionConfig, AcquisitionController, AcquisitionResult, AcquisitionState,
-    DataBatch, DigitalStepConfig, SERIAL_RESOURCE_DISCONNECTED_MESSAGE,
+    DataBatch, DigitalStepConfig, PROTOCOL_VERSION, SERIAL_RESOURCE_DISCONNECTED_MESSAGE,
 )
+from physalix.firmware_flash import (
+    FirmwareCompatibility, FirmwareFlash, FlashErrorKind, compare_firmware,
+)
+from physalix.firmware_resources import FirmwareResourceError, load_uno_resources
 from physalix.ui.components import label, page_header, panel, workspace_layout
 from physalix.ui.theme import LIGHT
 
@@ -24,6 +28,9 @@ from physalix.ui.theme import LIGHT
 ADC_REFERENCE_V = 5.0
 ADC_MAX_CODE = 1023
 PLOT_REFRESH_MS = 40
+PORT_RELEASE_DELAY_MS = 300
+RECONNECT_RETRY_MS = 600
+RECONNECT_TIMEOUT_MS = 20_000
 
 
 @dataclass(frozen=True)
@@ -46,9 +53,20 @@ class AcquisitionTab(QWidget):
     """Piloter une acquisition et afficher une courbe temporaire Uc(t)."""
 
     def __init__(self, controller: AcquisitionController | None = None, data_tab=None,
-                 graph_workspace=None, show_graph=None, parent=None):
+                 graph_workspace=None, show_graph=None, parent=None, *,
+                 firmware_flash=None, firmware_resource_loader=load_uno_resources,
+                 port_release_delay_ms: int = PORT_RELEASE_DELAY_MS,
+                 reconnect_retry_ms: int = RECONNECT_RETRY_MS,
+                 reconnect_timeout_ms: int = RECONNECT_TIMEOUT_MS):
         super().__init__(parent)
         self.controller = controller or AcquisitionController(self)
+        self.firmware_flash = firmware_flash or FirmwareFlash(self)
+        try:
+            self.firmware_resources = firmware_resource_loader()
+            self._firmware_resource_error = ""
+        except FirmwareResourceError as error:
+            self.firmware_resources = None
+            self._firmware_resource_error = str(error)
         self.data_tab = data_tab
         self.graph_workspace = graph_workspace
         self.show_graph = show_graph
@@ -59,8 +77,26 @@ class AcquisitionTab(QWidget):
         self._plot_dirty = False
         self._transferred = False
         self._transfer_columns = None
+        self._firmware_mode = "absent"
+        self._detected_firmware_info = None
+        self._flash_workflow_active = False
+        self._flash_port = None
+        self._reconnect_opened = False
         self._build_ui()
         self._connect_controller()
+        self._connect_firmware_flash()
+        self.port_release_timer = QTimer(self)
+        self.port_release_timer.setSingleShot(True)
+        self.port_release_timer.setInterval(port_release_delay_ms)
+        self.port_release_timer.timeout.connect(self._start_flash_after_release)
+        self.reconnect_retry_timer = QTimer(self)
+        self.reconnect_retry_timer.setSingleShot(True)
+        self.reconnect_retry_timer.setInterval(reconnect_retry_ms)
+        self.reconnect_retry_timer.timeout.connect(self._attempt_flash_reconnect)
+        self.reconnect_timeout_timer = QTimer(self)
+        self.reconnect_timeout_timer.setSingleShot(True)
+        self.reconnect_timeout_timer.setInterval(reconnect_timeout_ms)
+        self.reconnect_timeout_timer.timeout.connect(self._flash_reconnect_timed_out)
         self.plot_timer = QTimer(self)
         self.plot_timer.setInterval(PLOT_REFRESH_MS)
         self.plot_timer.timeout.connect(self.refresh_plot)
@@ -74,17 +110,26 @@ class AcquisitionTab(QWidget):
         layout.addWidget(page_header(
             "Acquisition", "Mesurer la tension Uc d'un circuit RC avec un Arduino Physalix."))
 
-        connection, connection_layout = panel("Connexion", horizontal=True)
+        connection, connection_layout = panel("Connexion")
+        connection_row = QHBoxLayout()
         self.port_combo = QComboBox()
         self.port_combo.setMinimumWidth(260)
         self.refresh_button = QPushButton("Actualiser")
         self.connect_button = QPushButton("Connecter")
         self.connection_status = QLabel("Déconnecté")
-        connection_layout.addWidget(label("Port série", "fieldLabel"))
-        connection_layout.addWidget(self.port_combo, 1)
-        connection_layout.addWidget(self.refresh_button)
-        connection_layout.addWidget(self.connect_button)
-        connection_layout.addWidget(self.connection_status)
+        connection_row.addWidget(label("Port série", "fieldLabel"))
+        connection_row.addWidget(self.port_combo, 1)
+        connection_row.addWidget(self.refresh_button)
+        connection_row.addWidget(self.connect_button)
+        connection_row.addWidget(self.connection_status)
+        connection_layout.addLayout(connection_row)
+        firmware_row = QHBoxLayout()
+        firmware_row.addWidget(label("Firmware", "fieldLabel"))
+        self.firmware_status = QLabel("Firmware non détecté")
+        firmware_row.addWidget(self.firmware_status, 1)
+        self.firmware_button = QPushButton("Installer le firmware Physalix…")
+        firmware_row.addWidget(self.firmware_button)
+        connection_layout.addLayout(firmware_row)
         layout.addWidget(connection)
 
         settings, settings_layout = panel("Paramètres — Acquisition V1")
@@ -153,6 +198,8 @@ class AcquisitionTab(QWidget):
 
         self.refresh_button.clicked.connect(self.refresh_ports)
         self.connect_button.clicked.connect(self.toggle_connection)
+        self.port_combo.currentIndexChanged.connect(self._update_firmware_offer)
+        self.firmware_button.clicked.connect(self.request_firmware_installation)
         self.duration_spin.valueChanged.connect(self._update_requested_values)
         self.points_spin.valueChanged.connect(self._update_requested_values)
         self.start_button.clicked.connect(self.start_acquisition)
@@ -166,6 +213,12 @@ class AcquisitionTab(QWidget):
         self.controller.data_batch_received.connect(self._data_received)
         self.controller.acquisition_finished.connect(self._acquisition_finished)
         self.controller.error_occurred.connect(self._controller_error)
+
+    def _connect_firmware_flash(self):
+        self.firmware_flash.upload_verified.connect(self._flash_upload_verified)
+        self.firmware_flash.succeeded.connect(self._flash_succeeded)
+        self.firmware_flash.failed.connect(self._flash_failed)
+        self.firmware_flash.process_settled.connect(self._flash_process_settled)
 
     def refresh_ports(self):
         selected = self.port_combo.currentData()
@@ -181,6 +234,7 @@ class AcquisitionTab(QWidget):
             index = self.port_combo.findData(selected)
             if index >= 0:
                 self.port_combo.setCurrentIndex(index)
+        self._update_firmware_offer()
 
     def toggle_connection(self):
         if self.controller.state in (AcquisitionState.DISCONNECTED, AcquisitionState.ERROR):
@@ -198,6 +252,163 @@ class AcquisitionTab(QWidget):
             self._preserve_partial(reason)
         self._start_after_configuration = False
         self.controller.close()
+
+    def _update_firmware_offer(self, *args):
+        if self.firmware_resources is None:
+            self.firmware_status.setText("Ressources firmware invalides")
+            self.firmware_button.hide()
+            return
+        labels = {
+            "absent": "Installer le firmware Physalix…",
+            "older": "Mettre à jour le firmware…",
+            "incompatible": "Réinstaller le firmware…",
+        }
+        visible = self._firmware_mode in labels
+        self.firmware_button.setText(labels.get(self._firmware_mode, ""))
+        self.firmware_button.setVisible(visible)
+        controller_busy = self.controller.state in {
+            AcquisitionState.WAITING_HANDSHAKE, AcquisitionState.ACQUIRING,
+            AcquisitionState.STOPPING,
+        }
+        enabled = (visible and bool(self.port_combo.currentData())
+                   and not controller_busy and not self._start_after_configuration
+                   and not self._flash_workflow_active
+                   and not self.firmware_flash.active)
+        self.firmware_button.setEnabled(enabled)
+
+    def _display_detected_firmware(self, firmware_info):
+        self._detected_firmware_info = firmware_info
+        result = compare_firmware(
+            self.firmware_resources.manifest, firmware_info.version,
+            PROTOCOL_VERSION, firmware_info.capabilities)
+        version = ".".join(map(str, firmware_info.version))
+        if result.status is FirmwareCompatibility.COMPATIBLE:
+            self._firmware_mode = "current"
+            self.firmware_status.setText(f"Firmware {version} — à jour")
+        elif result.status is FirmwareCompatibility.OLDER:
+            self._firmware_mode = "older"
+            self.firmware_status.setText(
+                f"Firmware {version} — mise à jour disponible")
+        elif result.status is FirmwareCompatibility.NEWER:
+            self._firmware_mode = "newer"
+            self.firmware_status.setText(f"Firmware {version} — compatible")
+        else:
+            self._firmware_mode = "incompatible"
+            self.firmware_status.setText("Firmware Physalix incompatible")
+        self._update_firmware_offer()
+
+    def request_firmware_installation(self):
+        if not self.firmware_button.isEnabled():
+            return
+        port = self.port_combo.currentData()
+        if not port or not self._confirm_firmware_installation(port):
+            return
+        self._flash_port = port
+        self._flash_workflow_active = True
+        self._reconnect_opened = False
+        self._start_after_configuration = False
+        self.firmware_status.setText("Installation du firmware…")
+        self.controller.close()
+        self._update_controls(self.controller.state)
+        self.port_release_timer.start()
+
+    def _confirm_firmware_installation(self, port: str) -> bool:
+        text = self._firmware_confirmation_text(port)
+        dialog = QMessageBox(self)
+        dialog.setWindowTitle("Installer le firmware Physalix")
+        dialog.setIcon(QMessageBox.Icon.Warning)
+        dialog.setText(text)
+        install = dialog.addButton("Installer", QMessageBox.ButtonRole.AcceptRole)
+        dialog.addButton("Annuler", QMessageBox.ButtonRole.RejectRole)
+        dialog.exec()
+        return dialog.clickedButton() is install
+
+    def _firmware_confirmation_text(self, port: str) -> str:
+        target = self.firmware_resources.manifest.firmware_version
+        if self._firmware_mode == "older" and self._detected_firmware_info is not None:
+            current = ".".join(map(str, self._detected_firmware_info.version))
+            return (f"Mettre à jour le firmware Physalix de {current} vers {target} "
+                    f"sur {port} ?\n\nLe programme actuellement présent sera remplacé.")
+        return (
+            "L’installation du firmware Physalix remplacera le programme "
+            "actuellement présent sur cette carte.\n\n"
+            f"Port : {port}\n\n"
+            "Vérifiez qu’il s’agit bien d’une Arduino Uno R3 / "
+            "ATmega328P compatible.")
+
+    def _start_flash_after_release(self):
+        if not self._flash_workflow_active or not self._flash_port:
+            return
+        self.firmware_status.setText("Installation du firmware…")
+        if not self.firmware_flash.start_flash(self._flash_port):
+            # Le service émet normalement failed de façon synchrone.
+            if self._flash_workflow_active:
+                self._finish_flash_failure("Installation échouée")
+
+    def _flash_upload_verified(self, manifest):
+        if not self._flash_workflow_active:
+            return
+        self.firmware_status.setText("Redémarrage de l’Arduino…")
+        self._reconnect_opened = False
+        self.reconnect_timeout_timer.start()
+        self.reconnect_retry_timer.start()
+
+    def _attempt_flash_reconnect(self):
+        if not self._flash_workflow_active or not self._flash_port:
+            return
+        if self.controller.state not in (AcquisitionState.DISCONNECTED,
+                                         AcquisitionState.ERROR):
+            return
+        self.firmware_status.setText("Vérification du firmware…")
+        if self.controller.open(self._flash_port):
+            self._reconnect_opened = True
+        else:
+            self.reconnect_retry_timer.start()
+
+    def _flash_reconnect_timed_out(self):
+        if not self._flash_workflow_active:
+            return
+        self.reconnect_retry_timer.stop()
+        self.controller.close()
+        if self._reconnect_opened:
+            message = "Arduino revenue mais firmware Physalix non détecté."
+        else:
+            message = "L’Arduino n’est pas revenue après l’installation."
+        try:
+            self.firmware_flash.fail_post_flash_verification(
+                message, "Délai global de reconnexion dépassé.")
+        except RuntimeError:
+            self._finish_flash_failure(message)
+
+    def _flash_succeeded(self, result):
+        version = ".".join(map(str, result.actual_version))
+        self._stop_flash_timers()
+        self._flash_workflow_active = False
+        self._firmware_mode = "current"
+        self.firmware_status.setText(f"Firmware {version} — installé et prêt")
+        self._update_controls(self.controller.state)
+
+    def _flash_failed(self, failure):
+        message = failure.user_message
+        if failure.kind is FlashErrorKind.AVRDUDE_FAILED:
+            message += " Vérifiez que l’Arduino est toujours connectée."
+        self._finish_flash_failure(message)
+
+    def _flash_process_settled(self):
+        if not self._flash_workflow_active:
+            self._update_controls(self.controller.state)
+
+    def _finish_flash_failure(self, message: str):
+        self._stop_flash_timers()
+        self._flash_workflow_active = False
+        self.firmware_status.setText(f"Installation échouée — {message}")
+        self._firmware_mode = "absent" if self._detected_firmware_info is None else self._firmware_mode
+        self._update_controls(self.controller.state)
+
+    def _stop_flash_timers(self):
+        self.port_release_timer.stop()
+        self.reconnect_retry_timer.stop()
+        self.reconnect_timeout_timer.stop()
 
     def requested_period_us(self) -> int:
         intervals = self.points_spin.value() - 1
@@ -244,6 +455,14 @@ class AcquisitionTab(QWidget):
     def _controller_ready(self, firmware_info):
         version = ".".join(map(str, firmware_info.version))
         self.connection_status.setText(f"Arduino détecté / Prêt — firmware {version}")
+        if self._flash_workflow_active:
+            self.reconnect_retry_timer.stop()
+            self._display_detected_firmware(firmware_info)
+            self.firmware_status.setText("Vérification du firmware…")
+            self.firmware_flash.confirm_firmware(
+                firmware_info.version, PROTOCOL_VERSION, firmware_info.capabilities)
+        elif self.firmware_resources is not None:
+            self._display_detected_firmware(firmware_info)
 
     def _configuration_accepted(self, config: AcquisitionConfig):
         duration_s = (config.sample_count - 1) * config.sampling_period_us / 1_000_000
@@ -341,6 +560,18 @@ class AcquisitionTab(QWidget):
 
     def _controller_error(self, message: str):
         self._start_after_configuration = False
+        protocol_incompatible = "protocole incompatible" in message.lower()
+        if self._flash_workflow_active and self.reconnect_timeout_timer.isActive():
+            if protocol_incompatible:
+                self.controller.close()
+                self.firmware_flash.fail_post_flash_verification(
+                    "Le firmware installé utilise un protocole incompatible.", message)
+                return
+            self.controller.close()
+            self.firmware_status.setText("Redémarrage de l’Arduino…")
+            self.reconnect_retry_timer.start()
+            self._update_controls(self.controller.state)
+            return
         display_message = message
         if (message == SERIAL_RESOURCE_DISCONNECTED_MESSAGE
                 and self.controller.config is not None and self.controller.samples):
@@ -348,6 +579,10 @@ class AcquisitionTab(QWidget):
         self._preserve_partial(display_message)
         self.connection_status.setText(f"Erreur — {display_message}")
         self._update_controls(AcquisitionState.ERROR)
+        if protocol_incompatible and self.firmware_resources is not None:
+            self._firmware_mode = "incompatible"
+            self.firmware_status.setText("Firmware Physalix incompatible")
+            self._update_firmware_offer()
 
     def _update_controls(self, state: AcquisitionState):
         labels = {
@@ -361,25 +596,38 @@ class AcquisitionTab(QWidget):
         }
         if state is not AcquisitionState.ERROR or not self.connection_status.text().startswith("Erreur —"):
             self.connection_status.setText(labels[state])
+        if (not self._flash_workflow_active
+                and state in (AcquisitionState.DISCONNECTED, AcquisitionState.ERROR)):
+            self._detected_firmware_info = None
+            if self.firmware_resources is not None:
+                self._firmware_mode = "absent"
+                if not self.firmware_status.text().startswith("Installation échouée"):
+                    self.firmware_status.setText("Firmware non détecté")
+        flash_active = self._flash_workflow_active or self.firmware_flash.active
         disconnected = state in (AcquisitionState.DISCONNECTED, AcquisitionState.ERROR)
         active = state in (AcquisitionState.ACQUIRING, AcquisitionState.STOPPING)
         self.connect_button.setText("Connecter" if disconnected else "Déconnecter")
-        self.port_combo.setEnabled(disconnected)
-        self.refresh_button.setEnabled(disconnected)
+        self.connect_button.setEnabled(not flash_active)
+        self.port_combo.setEnabled(disconnected and not flash_active)
+        self.refresh_button.setEnabled(disconnected and not flash_active)
         self.start_button.setEnabled(state in (AcquisitionState.READY, AcquisitionState.CONFIGURED)
-                                     and not self._start_after_configuration)
-        self.stop_button.setEnabled(active)
+                                     and not self._start_after_configuration and not flash_active)
+        self.stop_button.setEnabled(active and not flash_active)
         transferable = (not active and not self._start_after_configuration and
                         bool(self.results) and bool(self.results[-1].voltages_v) and
                         not self._transferred and self.data_tab is not None and
-                        self.graph_workspace is not None)
+                        self.graph_workspace is not None and not flash_active)
         self.transfer_button.setEnabled(transferable)
         for widget in (self.duration_spin, self.points_spin, self.channel_combo, self.output_pin):
-            widget.setEnabled(not active and not self._start_after_configuration)
+            widget.setEnabled(not active and not self._start_after_configuration
+                              and not flash_active)
+        self._update_firmware_offer()
 
     def shutdown(self):
         """Arrêter raisonnablement puis libérer le port sans bloquer la fermeture."""
         self.plot_timer.stop()
+        self._stop_flash_timers()
+        self.firmware_flash.shutdown()
         if self.controller.state in (AcquisitionState.ACQUIRING, AcquisitionState.STOPPING):
             self.controller.stop()
             self._preserve_partial("Acquisition interrompue à la fermeture.")
