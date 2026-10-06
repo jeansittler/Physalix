@@ -1,23 +1,25 @@
 /*
- * Physalix Acquisition firmware 1.0.0
+ * Physalix Acquisition firmware (version in firmware_metadata.h)
  * Target: Arduino Uno / ATmega328P at 16 MHz
  */
 
 #include <Arduino.h>
 #include <avr/interrupt.h>
 
+#include "firmware_metadata.h"
+
 namespace {
 
 constexpr uint8_t MAGIC_0 = 0xA5;
 constexpr uint8_t MAGIC_1 = 0x5A;
-constexpr uint8_t PROTOCOL_VERSION = 1;
+constexpr uint8_t PROTOCOL_VERSION = PHYSALIX_PROTOCOL_VERSION;
 constexpr uint16_t MAX_PAYLOAD = 512;
 constexpr uint32_t BAUD_RATE = 115200;
 
-constexpr uint8_t FIRMWARE_MAJOR = 1;
-constexpr uint8_t FIRMWARE_MINOR = 0;
-constexpr uint8_t FIRMWARE_PATCH = 0;
-constexpr uint32_t CAPABILITIES = 0x00000007UL;  // A0, digital step, Timer1/ADC IRQ.
+constexpr uint8_t FIRMWARE_MAJOR = PHYSALIX_FIRMWARE_VERSION_MAJOR;
+constexpr uint8_t FIRMWARE_MINOR = PHYSALIX_FIRMWARE_VERSION_MINOR;
+constexpr uint8_t FIRMWARE_PATCH = PHYSALIX_FIRMWARE_VERSION_PATCH;
+constexpr uint32_t CAPABILITIES = PHYSALIX_REQUIRED_CAPABILITIES;
 
 constexpr uint32_t MIN_PERIOD_US = 250;
 constexpr uint32_t MAX_PERIOD_US = 4194304UL;

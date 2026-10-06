@@ -1,4 +1,7 @@
-# Physalix Acquisition Uno 1.0.0
+# Physalix Acquisition Uno
+
+La version canonique du firmware, la version du protocole et les capacités
+annoncées par `HELLO_ACK` sont définies dans `firmware_metadata.h`.
 
 - Cible : Arduino Uno R3 / ATmega328P 16 MHz, logique et référence ADC AVcc 5 V.
 - V1 : entrée A0 uniquement ; sortie D8 par défaut (D2 à D13 acceptées).
@@ -9,3 +12,33 @@
 - Sécurité logique : à la fin, sur STOP ou sur erreur, la sortie revient au niveau initial configuré. Cela ne remplace aucune protection électrique de l'entrée.
 
 Pour flasher manuellement : ouvrir `physalix_acquisition_uno.ino` dans Arduino IDE, sélectionner **Arduino Uno** et le port série, puis cliquer sur **Téléverser**. Fermer le moniteur série avant de connecter Physalix.
+
+## Produire l'artefact officiel
+
+Prérequis développeur épinglés :
+
+- Arduino CLI `1.5.1` ;
+- core `arduino:avr@1.8.8` ;
+- FQBN `arduino:avr:uno` ;
+- environnement Python du dépôt.
+
+Le script ne télécharge ni outil ni core. Si nécessaire, installer explicitement
+le core sur une machine de développement connectée :
+
+```powershell
+arduino-cli core update-index
+arduino-cli core install arduino:avr@1.8.8
+```
+
+Depuis la racine du dépôt :
+
+```powershell
+.\scripts\build_firmware.ps1
+```
+
+Le dossier `build/firmware/physalix_acquisition_uno/` reçoit les sorties de
+compilation temporaires. Seul le HEX applicatif normal est copié vers
+`physalix/resources/firmware/uno/physalix_acquisition_uno.hex`; le fichier
+`*.with_bootloader.hex` n'est jamais copié dans les ressources. Le manifeste
+déterministe `physalix/resources/firmware/uno/manifest.json` est ensuite généré
+avec la version, le protocole, les capacités et le SHA-256 du HEX.

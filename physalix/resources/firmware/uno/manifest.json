@@ -1,0 +1,9 @@
+{
+  "board": "uno-r3-atmega328p",
+  "firmware_version": "1.0.0",
+  "hex_file": "physalix_acquisition_uno.hex",
+  "hex_sha256": "9d9d690d1c3561f9746969810c0b4afba95ef2270f111c3f0b4f7bf246fd67b3",
+  "protocol_version": 1,
+  "required_capabilities": 7,
+  "schema": 1
+}
