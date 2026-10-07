@@ -149,10 +149,11 @@ class AcquisitionFirmwareUiTests(unittest.TestCase):
 
     def test_firmware_display_current_older_newer_and_incompatible(self):
         cases = (
-            ((1, 0, 0), 7, "Firmware 1.0.0 — à jour", True),
+            ((1, 1, 0), 15, "Firmware 1.1.0 — à jour", True),
+            ((1, 0, 0), 7, "mise à jour disponible", False),
             ((0, 9, 0), 7, "mise à jour disponible", False),
-            ((1, 1, 0), 7, "Firmware 1.1.0 — compatible", True),
-            ((1, 0, 0), 1, "Firmware Physalix incompatible", False),
+            ((1, 2, 0), 15, "Firmware 1.2.0 — compatible", True),
+            ((1, 1, 0), 7, "Firmware Physalix incompatible", False),
         )
         for version, capabilities, text, hidden in cases:
             with self.subTest(version=version, capabilities=capabilities):
@@ -201,7 +202,7 @@ class AcquisitionFirmwareUiTests(unittest.TestCase):
         self.assertIn("Arduino Uno R3 / ATmega328P", text)
         self.emit_ready((0, 9, 0), 7)
         text = self.tab._firmware_confirmation_text("COM12")
-        self.assertIn("de 0.9.0 vers 1.0.0", text)
+        self.assertIn("de 0.9.0 vers 1.1.0", text)
         self.assertIn("programme actuellement présent sera remplacé", text)
 
     def test_cancelled_confirmation_does_not_close_port_or_start_flash(self):
@@ -234,10 +235,10 @@ class AcquisitionFirmwareUiTests(unittest.TestCase):
         self.flash.emit_upload_verified()
         self.tab.reconnect_retry_timer.stop()
         self.tab._attempt_flash_reconnect()
-        self.controller.ready.emit(FirmwareInfo((1, 0, 0), 7))
+        self.controller.ready.emit(FirmwareInfo((1, 1, 0), 15))
         self.assertFalse(self.tab._flash_workflow_active)
         self.assertEqual(
-            self.tab.firmware_status.text(), "Firmware 1.0.0 — installé et prêt")
+            self.tab.firmware_status.text(), "Firmware 1.1.0 — installé et prêt")
         self.assertTrue(self.tab.connect_button.isEnabled())
 
     def test_incorrect_final_handshake_fails_and_returns_to_usable_ui(self):

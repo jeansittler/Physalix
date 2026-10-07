@@ -6,7 +6,9 @@ from pathlib import Path
 import tempfile
 import unittest
 
-from physalix.acquisition import PROTOCOL_VERSION, REQUIRED_FIRMWARE_CAPABILITIES
+from physalix.acquisition import (
+    CAPABILITY_SQUARE_BURST, PROTOCOL_VERSION, REQUIRED_FIRMWARE_CAPABILITIES,
+)
 from physalix.firmware_resources import (
     AVRDUDE_CONFIG,
     AVRDUDE_EXECUTABLE,
@@ -52,15 +54,17 @@ class FirmwareResourceTests(unittest.TestCase):
         return path
 
     def test_canonical_source_matches_pc_protocol_and_capabilities(self):
-        self.assertEqual(self.metadata.firmware_version, "1.0.0")
+        self.assertEqual(self.metadata.firmware_version, "1.1.0")
         self.assertEqual(self.metadata.protocol_version, PROTOCOL_VERSION)
         self.assertEqual(self.metadata.required_capabilities,
-                         REQUIRED_FIRMWARE_CAPABILITIES)
+                         REQUIRED_FIRMWARE_CAPABILITIES | CAPABILITY_SQUARE_BURST)
+        self.assertFalse(REQUIRED_FIRMWARE_CAPABILITIES & CAPABILITY_SQUARE_BURST)
         sketch = SKETCH_PATH.read_text(encoding="utf-8")
         self.assertIn('#include "firmware_metadata.h"', sketch)
         self.assertIn("FIRMWARE_MAJOR = PHYSALIX_FIRMWARE_VERSION_MAJOR", sketch)
         self.assertIn("PROTOCOL_VERSION = PHYSALIX_PROTOCOL_VERSION", sketch)
         self.assertIn("CAPABILITIES = PHYSALIX_REQUIRED_CAPABILITIES", sketch)
+        self.assertIn("GENERATION_SQUARE_BURST = 1", sketch)
 
     def test_manifest_round_trip_schema_target_version_and_hash(self):
         manifest = create_manifest(self.hex_path, self.metadata, self.directory)
@@ -68,10 +72,10 @@ class FirmwareResourceTests(unittest.TestCase):
 
         self.assertEqual(loaded.schema, FIRMWARE_MANIFEST_SCHEMA)
         self.assertEqual(loaded.board, UNO_BOARD)
-        self.assertEqual(loaded.firmware_version, "1.0.0")
+        self.assertEqual(loaded.firmware_version, "1.1.0")
         self.assertEqual(loaded.protocol_version, PROTOCOL_VERSION)
         self.assertEqual(loaded.required_capabilities,
-                         REQUIRED_FIRMWARE_CAPABILITIES)
+                         REQUIRED_FIRMWARE_CAPABILITIES | CAPABILITY_SQUARE_BURST)
         self.assertEqual(loaded.hex_file, UNO_HEX_FILE)
         self.assertEqual(loaded.verify_hex(self.directory), self.hex_path)
         self.assertEqual(loaded.uploader.name, AVRDUDE_NAME)

@@ -24,9 +24,10 @@ def main(metadata_path: Path, hex_path: Path, output_path: Path,
     if metadata.protocol_version != PROTOCOL_VERSION:
         raise FirmwareResourceError(
             f"Protocole firmware {metadata.protocol_version} != protocole PC {PROTOCOL_VERSION}.")
-    if metadata.required_capabilities != REQUIRED_FIRMWARE_CAPABILITIES:
+    if (metadata.required_capabilities & REQUIRED_FIRMWARE_CAPABILITIES
+            != REQUIRED_FIRMWARE_CAPABILITIES):
         raise FirmwareResourceError(
-            "Les capacités du firmware divergent des capacités requises par Physalix.")
+            "Le firmware ne fournit pas toutes les capacités requises par Physalix.")
     manifest = create_manifest(hex_path, metadata, uploader_directory)
     validate_manifest_metadata(manifest, metadata)
     output_path.parent.mkdir(parents=True, exist_ok=True)

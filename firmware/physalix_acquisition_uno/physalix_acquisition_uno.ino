@@ -25,6 +25,8 @@ constexpr uint32_t MIN_PERIOD_US = 250;
 constexpr uint32_t MAX_PERIOD_US = 4194304UL;
 constexpr uint8_t ADC_RING_SIZE = 64;            // Must remain a power of two.
 constexpr uint8_t DATA_VALUES_PER_FRAME = 48;
+constexpr uint8_t LEGACY_CONFIG_SIZE = 15;
+constexpr uint8_t EXTENDED_CONFIG_SIZE = 20;
 
 enum MessageType : uint8_t {
   HELLO = 1,
@@ -52,18 +54,26 @@ enum ErrorCode : uint16_t {
   ERR_ADC_BUSY = 5,
 };
 
+enum GenerationType : uint8_t {
+  GENERATION_STEP = 0,
+  GENERATION_SQUARE_BURST = 1,
+};
+
 struct AcquisitionConfig {
   uint32_t periodUs;
   uint32_t sampleCount;
   uint8_t analogChannel;
+  uint8_t generationType;
   uint8_t outputPin;
   uint8_t levels;
-  uint32_t transitionIndex;
+  uint32_t parameter1;
+  uint32_t parameter2;
 };
 
 FirmwareState state = IDLE;
 AcquisitionConfig activeConfig{};
 bool hasConfig = false;
+bool activeConfigExtended = false;
 uint16_t timerCompare = 0;
 uint8_t timerClockBits = 0;
 
@@ -80,6 +90,7 @@ uint32_t sessionId = 0;
 uint32_t sequenceNumber = 0;
 uint32_t sentSampleCount = 0;
 bool safeLevelApplied = true;
+uint32_t nextSquareTransitionIndex = 0;
 
 volatile uint8_t *stepOutputRegister = nullptr;
 uint8_t stepBitMask = 0;
@@ -157,11 +168,11 @@ void sendError(uint16_t code, const char *text) {
   sendFrame(ERROR_MESSAGE, payload, length);
 }
 
-bool initialLevelHigh() {
+bool lowLevelHigh() {
   return (activeConfig.levels & 0x01) != 0;
 }
 
-bool finalLevelHigh() {
+bool highLevelHigh() {
   return (activeConfig.levels & 0x02) != 0;
 }
 
@@ -175,7 +186,7 @@ void setStepLevelDirect(bool high) {
 
 void applySafeLevel() {
   if (hasConfig) {
-    digitalWrite(activeConfig.outputPin, initialLevelHigh() ? HIGH : LOW);
+    digitalWrite(activeConfig.outputPin, lowLevelHigh() ? HIGH : LOW);
   } else {
     digitalWrite(8, LOW);
   }
@@ -221,22 +232,49 @@ bool chooseTimer(uint32_t requestedUs, uint32_t &actualUs,
 
 bool decodeAndValidateConfig(const uint8_t *payload, uint16_t length,
                              AcquisitionConfig &candidate,
-                             uint16_t &compare, uint8_t &clockBits) {
-  if (length != 15) {
+                             uint16_t &compare, uint8_t &clockBits,
+                             bool &extended) {
+  if (length != LEGACY_CONFIG_SIZE && length != EXTENDED_CONFIG_SIZE) {
     return false;
   }
+  extended = length == EXTENDED_CONFIG_SIZE;
   candidate.periodUs = readU32(payload);
   candidate.sampleCount = readU32(payload + 4);
   candidate.analogChannel = payload[8];
-  candidate.outputPin = payload[9];
-  candidate.levels = payload[10];
-  candidate.transitionIndex = readU32(payload + 11);
+  if (extended) {
+    candidate.generationType = payload[9];
+    candidate.outputPin = payload[10];
+    candidate.levels = payload[11];
+    candidate.parameter1 = readU32(payload + 12);
+    candidate.parameter2 = readU32(payload + 16);
+  } else {
+    candidate.generationType = GENERATION_STEP;
+    candidate.outputPin = payload[9];
+    candidate.levels = payload[10];
+    candidate.parameter1 = readU32(payload + 11);
+    candidate.parameter2 = 0;
+  }
 
   if (candidate.sampleCount == 0 || candidate.sampleCount > 1000000UL ||
       candidate.analogChannel != 0 || candidate.outputPin < 2 ||
-      candidate.outputPin > 13 || (candidate.levels & 0xFC) != 0 ||
-      (candidate.levels & 0x01) == ((candidate.levels >> 1) & 0x01) ||
-      candidate.transitionIndex >= candidate.sampleCount) {
+      candidate.outputPin > 13 || (candidate.levels & 0xFC) != 0) {
+    return false;
+  }
+  if (candidate.generationType == GENERATION_STEP) {
+    if ((candidate.levels & 0x01) == ((candidate.levels >> 1) & 0x01) ||
+        candidate.parameter1 >= candidate.sampleCount || candidate.parameter2 != 0) {
+      return false;
+    }
+  } else if (candidate.generationType == GENERATION_SQUARE_BURST) {
+    if (candidate.levels != 0x02 || candidate.parameter1 == 0 || candidate.parameter2 == 0) {
+      return false;
+    }
+    const uint64_t expectedCount =
+        2ULL * candidate.parameter1 * candidate.parameter2 + 1ULL;
+    if (expectedCount != candidate.sampleCount) {
+      return false;
+    }
+  } else {
     return false;
   }
   uint32_t actualUs = 0;
@@ -247,13 +285,22 @@ bool decodeAndValidateConfig(const uint8_t *payload, uint16_t length,
   return true;
 }
 
-void encodeConfig(const AcquisitionConfig &config, uint8_t *payload) {
+uint8_t encodeConfig(const AcquisitionConfig &config, bool extended, uint8_t *payload) {
   writeU32(payload, config.periodUs);
   writeU32(payload + 4, config.sampleCount);
   payload[8] = config.analogChannel;
+  if (extended) {
+    payload[9] = config.generationType;
+    payload[10] = config.outputPin;
+    payload[11] = config.levels;
+    writeU32(payload + 12, config.parameter1);
+    writeU32(payload + 16, config.parameter2);
+    return EXTENDED_CONFIG_SIZE;
+  }
   payload[9] = config.outputPin;
   payload[10] = config.levels;
-  writeU32(payload + 11, config.transitionIndex);
+  writeU32(payload + 11, config.parameter1);
+  return LEGACY_CONFIG_SIZE;
 }
 
 void configureAdcAndPrime() {
@@ -345,7 +392,7 @@ void startAcquisition(uint32_t newSessionId) {
   resetAcquisitionCounters();
   sessionId = newSessionId;
   pinMode(activeConfig.outputPin, OUTPUT);
-  digitalWrite(activeConfig.outputPin, initialLevelHigh() ? HIGH : LOW);
+  digitalWrite(activeConfig.outputPin, lowLevelHigh() ? HIGH : LOW);
   stepOutputRegister = portOutputRegister(digitalPinToPort(activeConfig.outputPin));
   stepBitMask = digitalPinToBitMask(activeConfig.outputPin);
   safeLevelApplied = false;
@@ -362,8 +409,14 @@ void startAcquisition(uint32_t newSessionId) {
   cli();
   samplingActive = true;
   state = ACQUIRING;
-  if (activeConfig.transitionIndex == 0) {
-    setStepLevelDirect(finalLevelHigh());
+  if (activeConfig.generationType == GENERATION_STEP) {
+    if (activeConfig.parameter1 == 0) {
+      setStepLevelDirect(highLevelHigh());
+    }
+  } else {
+    // SQUARE_BURST sample 0: the rising edge defines t=0 and precedes ADC start.
+    setStepLevelDirect(highLevelHigh());
+    nextSquareTransitionIndex = activeConfig.parameter1;
   }
   ADCSRA = _BV(ADEN) | _BV(ADIE) | _BV(ADIF) |
             _BV(ADPS2) | _BV(ADPS1) | _BV(ADPS0);
@@ -424,18 +477,21 @@ void handleFrame(uint8_t version, uint8_t type, const uint8_t *payload, uint16_t
     AcquisitionConfig candidate{};
     uint16_t candidateCompare = 0;
     uint8_t candidateClockBits = 0;
+    bool candidateExtended = false;
     if (!decodeAndValidateConfig(payload, length, candidate,
-                                 candidateCompare, candidateClockBits)) {
+                                 candidateCompare, candidateClockBits,
+                                 candidateExtended)) {
       sendError(ERR_CONFIGURATION, "invalid CONFIG");
       return;
     }
     if (hasConfig && activeConfig.outputPin != candidate.outputPin) {
-      digitalWrite(activeConfig.outputPin, initialLevelHigh() ? HIGH : LOW);
+      digitalWrite(activeConfig.outputPin, lowLevelHigh() ? HIGH : LOW);
       pinMode(activeConfig.outputPin, INPUT);
     } else if (!hasConfig && candidate.outputPin != 8) {
       pinMode(8, INPUT);
     }
     activeConfig = candidate;
+    activeConfigExtended = candidateExtended;
     timerCompare = candidateCompare;
     timerClockBits = candidateClockBits;
     hasConfig = true;
@@ -443,9 +499,9 @@ void handleFrame(uint8_t version, uint8_t type, const uint8_t *payload, uint16_t
     applySafeLevel();
     configureAdcAndPrime();
     ADCSRA &= static_cast<uint8_t>(~_BV(ADEN));
-    uint8_t ack[15];
-    encodeConfig(activeConfig, ack);
-    sendFrame(CONFIG_ACK, ack, sizeof(ack));
+    uint8_t ack[EXTENDED_CONFIG_SIZE];
+    const uint8_t ackLength = encodeConfig(activeConfig, activeConfigExtended, ack);
+    sendFrame(CONFIG_ACK, ack, ackLength);
     state = CONFIGURED;
     return;
   }
@@ -587,6 +643,7 @@ void serviceAcquisition() {
     return;
   }
   if (!safeLevelApplied && (!samplingActive || endPending || faultPending != 0)) {
+    stopSampling();
     applySafeLevel();
   }
   const uint8_t buffered = currentRingCount();
@@ -626,8 +683,20 @@ ISR(TIMER1_COMPA_vect) {
     faultPending = ERR_ADC_BUSY;
     return;
   }
-  if (acquiredCount == activeConfig.transitionIndex) {
-    setStepLevelDirect(finalLevelHigh());
+  if (activeConfig.generationType == GENERATION_STEP) {
+    if (acquiredCount == activeConfig.parameter1) {
+      setStepLevelDirect(highLevelHigh());
+    }
+  } else if (acquiredCount == nextSquareTransitionIndex) {
+    // Equivalent to generated_level(): final index stays LOW; otherwise the
+    // integer half-period phase selects HIGH for even phases and LOW for odd.
+    if (acquiredCount == activeConfig.sampleCount - 1) {
+      setStepLevelDirect(lowLevelHigh());
+    } else {
+      const uint32_t phase = acquiredCount / activeConfig.parameter1;
+      setStepLevelDirect((phase & 1UL) == 0 ? highLevelHigh() : lowLevelHigh());
+      nextSquareTransitionIndex += activeConfig.parameter1;
+    }
   }
   ADCSRA |= _BV(ADSC);
 }

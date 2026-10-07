@@ -121,12 +121,15 @@ def compare_firmware(manifest: FirmwareManifest,
     if protocol_version != manifest.protocol_version:
         status = FirmwareCompatibility.PROTOCOL_INCOMPATIBLE
         missing = 0
+    elif actual < expected:
+        # Une capacité ajoutée par le firmware cible ne rend pas les anciennes
+        # versions incompatibles : elles restent utilisables et mises à jour.
+        missing = manifest.required_capabilities & ~capabilities
+        status = FirmwareCompatibility.OLDER
     else:
         missing = manifest.required_capabilities & ~capabilities
         if missing:
             status = FirmwareCompatibility.MISSING_CAPABILITIES
-        elif actual < expected:
-            status = FirmwareCompatibility.OLDER
         elif actual > expected:
             status = FirmwareCompatibility.NEWER
         else:
