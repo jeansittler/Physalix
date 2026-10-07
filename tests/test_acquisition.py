@@ -15,20 +15,32 @@ from physalix.acquisition import (
     AcquisitionController,
     AcquisitionError,
     AcquisitionState,
+    CAPABILITY_SQUARE_BURST,
     DataBatch,
     DigitalStepConfig,
     FrameParser,
+    GenerationType,
     MAGIC,
     MAX_PARSER_BUFFER,
     MAX_PAYLOAD_SIZE,
     MessageType,
     PROTOCOL_VERSION,
+    REQUIRED_FIRMWARE_CAPABILITIES,
     SERIAL_RESOURCE_DISCONNECTED_MESSAGE,
+    SquareBurstConfig,
+    UNO_LOGIC_HIGH_VOLTS,
+    UNO_LOGIC_LOW_VOLTS,
+    applied_duration_s,
+    applied_square_frequency_hz,
+    applied_square_period_s,
     decode_config,
     encode_config,
     encode_data,
     encode_frame,
     encode_hello_ack,
+    generated_level,
+    generated_voltage_series,
+    plan_square_burst,
 )
 
 
@@ -86,6 +98,40 @@ class CodecParserTests(unittest.TestCase):
         self.assertEqual(parsed[0].message_type, MessageType.CONFIG)
         self.assertEqual(decode_config(parsed[0].payload), config())
 
+    def test_legacy_step_payload_is_byte_for_byte_unchanged(self):
+        selected = config()
+        expected = struct.pack("<IIBBBI", 1000, 4, 0, 8, 2, 1)
+        self.assertEqual(len(expected), 15)
+        self.assertEqual(encode_config(selected), expected)
+        self.assertEqual(decode_config(expected), selected)
+
+    def test_extended_step_and_square_round_trip(self):
+        selected = config()
+        extended_step = encode_config(selected, extended=True)
+        self.assertEqual(len(extended_step), 20)
+        self.assertEqual(extended_step, struct.pack("<IIBBBBII", 1000, 4, 0, 0, 8, 2, 1, 0))
+        self.assertEqual(decode_config(extended_step), selected)
+
+        square = AcquisitionConfig(10_000, 13, 0, SquareBurstConfig(8, False, True, 2, 3))
+        encoded_square = encode_config(square)
+        self.assertEqual(len(encoded_square), 20)
+        self.assertEqual(
+            encoded_square,
+            struct.pack("<IIBBBBII", 10_000, 13, 0, 1, 8, 2, 3, 2),
+        )
+        self.assertEqual(decode_config(encoded_square), square)
+
+    def test_extended_config_rejects_unknown_or_invalid_parameters(self):
+        unknown = struct.pack("<IIBBBBII", 1000, 3, 0, 2, 8, 2, 1, 0)
+        with self.assertRaises(AcquisitionError):
+            decode_config(unknown)
+        invalid_step_reserved = struct.pack("<IIBBBBII", 1000, 3, 0, 0, 8, 2, 1, 1)
+        with self.assertRaises(AcquisitionError):
+            decode_config(invalid_step_reserved)
+        with self.assertRaises(AcquisitionError):
+            encode_config(AcquisitionConfig(
+                1000, 3, 0, SquareBurstConfig(8, False, True, 1, 1)), extended=False)
+
     def test_fragmented_frame(self):
         parser = FrameParser()
         frame = encode_frame(MessageType.HELLO)
@@ -117,6 +163,93 @@ class CodecParserTests(unittest.TestCase):
                          payload)
         with self.assertRaises(AcquisitionError):
             encode_frame(MessageType.ERROR, payload + b"x")
+
+
+class GenerationModelTests(unittest.TestCase):
+    def square_config(self, *, period_us=1000, periods=2, half_samples=3):
+        return AcquisitionConfig(
+            period_us, 2 * periods * half_samples + 1, 0,
+            SquareBurstConfig(8, False, True, periods, half_samples),
+        )
+
+    def test_generation_types_and_valid_square(self):
+        self.assertEqual(int(GenerationType.STEP), 0)
+        self.assertEqual(int(GenerationType.SQUARE_BURST), 1)
+        selected = self.square_config()
+        selected.validate()
+        self.assertEqual(selected.generation.generation_type, GenerationType.SQUARE_BURST)
+
+    def test_square_rejects_invalid_period_half_period_pin_and_levels(self):
+        invalid_generations = (
+            SquareBurstConfig(8, False, True, 0, 1),
+            SquareBurstConfig(8, False, True, 1, 0),
+            SquareBurstConfig(1, False, True, 1, 1),
+            SquareBurstConfig(8, False, False, 1, 1),
+            SquareBurstConfig(8, 0, True, 1, 1),
+            SquareBurstConfig(8, True, False, 1, 1),
+        )
+        for generation in invalid_generations:
+            with self.subTest(generation=generation), self.assertRaises(AcquisitionError):
+                AcquisitionConfig(1000, 3, 0, generation).validate()
+
+    def test_square_sample_count_invariant_is_strict(self):
+        self.square_config(periods=2, half_samples=3).validate()
+        for count in (12, 14):
+            with self.subTest(count=count), self.assertRaises(AcquisitionError):
+                AcquisitionConfig(
+                    1000, count, 0, SquareBurstConfig(8, False, True, 2, 3)).validate()
+
+    def test_plan_adjusts_points_and_computes_requested_period(self):
+        plan = plan_square_burst(2.0, 200, 2)
+        self.assertEqual(plan.requested_sample_count, 200)
+        self.assertEqual(plan.half_period_samples, 50)
+        self.assertEqual(plan.applied_sample_count, 201)
+        self.assertEqual(plan.requested_sampling_period_us, 10_000)
+        self.assertEqual(plan.requested_duration_s, 2.0)
+
+    def test_plan_rounding_and_minimum_half_period(self):
+        rounded_up = plan_square_burst(1.0, 12, 2)
+        self.assertEqual(rounded_up.half_period_samples, 3)
+        self.assertEqual(rounded_up.applied_sample_count, 13)
+        minimum = plan_square_burst(1.0, 2, 20)
+        self.assertEqual(minimum.half_period_samples, 1)
+        self.assertEqual(minimum.applied_sample_count, 41)
+        self.assertEqual(minimum.requested_sampling_period_us, 25_000)
+
+    def test_plan_rejects_invalid_user_values(self):
+        for arguments in ((0.0, 10, 1), (1.0, 1, 1), (1.0, 10, 0)):
+            with self.subTest(arguments=arguments), self.assertRaises(AcquisitionError):
+                plan_square_burst(*arguments)
+
+    def test_applied_timing_uses_ack_period(self):
+        applied = self.square_config(period_us=1004, periods=2, half_samples=3)
+        self.assertEqual(applied_duration_s(applied), 0.012048)
+        self.assertEqual(applied_square_period_s(applied), 0.006024)
+        self.assertAlmostEqual(applied_square_frequency_hz(applied), 1 / 0.006024)
+
+    def test_square_level_reconstruction_and_partial_voltage_series(self):
+        selected = self.square_config(periods=2, half_samples=2)
+        expected = (True, True, False, False, True, True, False, False, False)
+        self.assertEqual(tuple(generated_level(selected, index)
+                               for index in range(selected.sample_count)), expected)
+        self.assertTrue(generated_level(selected, 0))
+        self.assertFalse(generated_level(selected, 2))
+        self.assertTrue(generated_level(selected, 4))
+        self.assertFalse(generated_level(selected, 8))
+        self.assertEqual(
+            generated_voltage_series(selected, 5),
+            (UNO_LOGIC_HIGH_VOLTS, UNO_LOGIC_HIGH_VOLTS,
+             UNO_LOGIC_LOW_VOLTS, UNO_LOGIC_LOW_VOLTS, UNO_LOGIC_HIGH_VOLTS),
+        )
+
+    def test_square_capability_is_optional_for_current_firmware(self):
+        self.assertEqual(CAPABILITY_SQUARE_BURST, 0x00000008)
+        self.assertFalse(REQUIRED_FIRMWARE_CAPABILITIES & CAPABILITY_SQUARE_BURST)
+        current_firmware_capabilities = REQUIRED_FIRMWARE_CAPABILITIES
+        self.assertEqual(
+            current_firmware_capabilities & REQUIRED_FIRMWARE_CAPABILITIES,
+            REQUIRED_FIRMWARE_CAPABILITIES,
+        )
 
 
 class ControllerTests(unittest.TestCase):
@@ -158,6 +291,20 @@ class ControllerTests(unittest.TestCase):
         self.assertEqual(self.controller.state, AcquisitionState.CONFIGURED)
         self.assertEqual(self.controller.config, applied)
         self.assertEqual(accepted, [applied])
+
+    def test_extended_square_config_ack_keeps_applied_timer_period(self):
+        self.handshake()
+        requested = AcquisitionConfig(
+            1000, 13, 0, SquareBurstConfig(8, False, True, 2, 3))
+        self.controller.configure(requested)
+        written = FrameParser().feed(self.serial.writes[-1])[0]
+        self.assertEqual(len(written.payload), 20)
+        applied = AcquisitionConfig(
+            1004, 13, 0, SquareBurstConfig(8, False, True, 2, 3))
+        self.controller.process_bytes(encode_frame(
+            MessageType.CONFIG_ACK, encode_config(applied)))
+        self.assertEqual(self.controller.config, applied)
+        self.assertEqual(applied_duration_s(self.controller.config), 0.012048)
 
     def test_incompatible_protocol_version(self):
         errors = []

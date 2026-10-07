@@ -19,6 +19,7 @@ from __future__ import annotations
 import binascii
 from dataclasses import dataclass
 from enum import Enum, IntEnum, auto
+import math
 import secrets
 import struct
 
@@ -31,6 +32,7 @@ PROTOCOL_VERSION = 1
 CAPABILITY_ANALOG_A0 = 0x00000001
 CAPABILITY_DIGITAL_STEP = 0x00000002
 CAPABILITY_TIMER1_ADC_IRQ = 0x00000004
+CAPABILITY_SQUARE_BURST = 0x00000008
 REQUIRED_FIRMWARE_CAPABILITIES = (
     CAPABILITY_ANALOG_A0 | CAPABILITY_DIGITAL_STEP | CAPABILITY_TIMER1_ADC_IRQ
 )
@@ -38,6 +40,8 @@ MAX_PAYLOAD_SIZE = 512
 MAX_PARSER_BUFFER = 2 * (len(MAGIC) + 6 + MAX_PAYLOAD_SIZE)
 MAX_SAMPLE_COUNT = 1_000_000
 SERIAL_RESOURCE_DISCONNECTED_MESSAGE = "Arduino déconnecté."
+UNO_LOGIC_LOW_VOLTS = 0.0
+UNO_LOGIC_HIGH_VOLTS = 5.0
 _HEADER = struct.Struct("<2sBBH")
 _CRC = struct.Struct("<H")
 
@@ -62,6 +66,11 @@ class AcquisitionState(Enum):
     ACQUIRING = auto()
     STOPPING = auto()
     ERROR = auto()
+
+
+class GenerationType(IntEnum):
+    STEP = 0
+    SQUARE_BURST = 1
 
 
 class AcquisitionError(ValueError):
@@ -89,13 +98,51 @@ class DigitalStepConfig:
         if self.initial_high == self.final_high:
             raise AcquisitionError("Les niveaux initial et final de l'échelon doivent différer.")
 
+    @property
+    def generation_type(self) -> GenerationType:
+        return GenerationType.STEP
+
+
+@dataclass(frozen=True)
+class SquareBurstConfig:
+    """Carré fini, dont chaque demi-période contient un nombre entier d'intervalles Te."""
+
+    pin: int
+    low_high: bool = False
+    high_high: bool = True
+    period_count: int = 1
+    half_period_samples: int = 1
+
+    def validate(self, sample_count: int) -> None:
+        if not 2 <= self.pin <= 13:
+            raise AcquisitionError("La broche numérique Uno doit être comprise entre 2 et 13.")
+        if self.low_high is not False or self.high_high is not True:
+            raise AcquisitionError("Le carré Uno doit utiliser LOW comme niveau bas et HIGH comme niveau haut.")
+        if self.period_count < 1:
+            raise AcquisitionError("Le nombre de périodes du carré doit être au moins égal à 1.")
+        if self.half_period_samples < 1:
+            raise AcquisitionError("La demi-période du carré doit contenir au moins un intervalle.")
+        expected_count = 2 * self.period_count * self.half_period_samples + 1
+        if sample_count != expected_count:
+            raise AcquisitionError(
+                f"Le carré exige exactement {expected_count} points pour finir après "
+                f"{self.period_count} période(s)."
+            )
+
+    @property
+    def generation_type(self) -> GenerationType:
+        return GenerationType.SQUARE_BURST
+
+
+DigitalGenerationConfig = DigitalStepConfig | SquareBurstConfig
+
 
 @dataclass(frozen=True)
 class AcquisitionConfig:
     sampling_period_us: int
     sample_count: int
     analog_channel: int
-    digital_step: DigitalStepConfig
+    generation: DigitalGenerationConfig
 
     def validate(self) -> None:
         if not 1 <= self.sampling_period_us <= 0xFFFFFFFF:
@@ -104,7 +151,39 @@ class AcquisitionConfig:
             raise AcquisitionError(f"Le nombre de points doit être compris entre 1 et {MAX_SAMPLE_COUNT}.")
         if not 0 <= self.analog_channel <= 5:
             raise AcquisitionError("La voie analogique doit être comprise entre A0 et A5.")
-        self.digital_step.validate(self.sample_count)
+        if not isinstance(self.generation, (DigitalStepConfig, SquareBurstConfig)):
+            raise AcquisitionError("Type de génération numérique inconnu.")
+        self.generation.validate(self.sample_count)
+
+    @property
+    def digital_step(self) -> DigitalStepConfig:
+        """Alias de compatibilité pour le modèle historique spécialisé."""
+        if not isinstance(self.generation, DigitalStepConfig):
+            raise AcquisitionError("Cette configuration ne contient pas d'échelon numérique.")
+        return self.generation
+
+
+@dataclass(frozen=True)
+class SquareBurstPlan:
+    """Choix utilisateur et configuration carrée rendue compatible avec l'échantillonnage."""
+
+    requested_duration_s: float
+    requested_sample_count: int
+    config: AcquisitionConfig
+
+    @property
+    def applied_sample_count(self) -> int:
+        return self.config.sample_count
+
+    @property
+    def requested_sampling_period_us(self) -> int:
+        return self.config.sampling_period_us
+
+    @property
+    def half_period_samples(self) -> int:
+        generation = self.config.generation
+        assert isinstance(generation, SquareBurstConfig)
+        return generation.half_period_samples
 
 
 @dataclass(frozen=True)
@@ -201,33 +280,145 @@ class FrameParser:
         return frames
 
 
-_CONFIG = struct.Struct("<IIBBBI")
+_LEGACY_CONFIG = struct.Struct("<IIBBBI")
+_EXTENDED_CONFIG = struct.Struct("<IIBBBBII")
 _HELLO_ACK = struct.Struct("<BBBI")
 _DATA_HEADER = struct.Struct("<IIIH")
 _SESSION = struct.Struct("<I")
 _END = struct.Struct("<II")
 
 
-def encode_config(config: AcquisitionConfig) -> bytes:
+def _encoded_levels(low_high: bool, high_high: bool) -> int:
+    return int(low_high) | (int(high_high) << 1)
+
+
+def encode_config(config: AcquisitionConfig, *, extended: bool | None = None) -> bytes:
+    """Encoder CONFIG, en conservant par défaut les 15 octets du STEP historique."""
     config.validate()
-    step = config.digital_step
-    levels = int(step.initial_high) | (int(step.final_high) << 1)
-    return _CONFIG.pack(config.sampling_period_us, config.sample_count,
-                        config.analog_channel, step.pin, levels,
-                        step.transition_sample_index)
+    generation = config.generation
+    if isinstance(generation, DigitalStepConfig) and extended is not True:
+        return _LEGACY_CONFIG.pack(
+            config.sampling_period_us, config.sample_count, config.analog_channel,
+            generation.pin, _encoded_levels(generation.initial_high, generation.final_high),
+            generation.transition_sample_index,
+        )
+    if extended is False:
+        raise AcquisitionError("SQUARE_BURST exige le format CONFIG étendu.")
+    if isinstance(generation, DigitalStepConfig):
+        first_parameter = generation.transition_sample_index
+        second_parameter = 0
+        low_high = generation.initial_high
+        high_high = generation.final_high
+    else:
+        first_parameter = generation.half_period_samples
+        second_parameter = generation.period_count
+        low_high = generation.low_high
+        high_high = generation.high_high
+    return _EXTENDED_CONFIG.pack(
+        config.sampling_period_us, config.sample_count, config.analog_channel,
+        generation.generation_type, generation.pin,
+        _encoded_levels(low_high, high_high), first_parameter, second_parameter,
+    )
 
 
 def decode_config(payload: bytes) -> AcquisitionConfig:
-    if len(payload) != _CONFIG.size:
+    if len(payload) == _LEGACY_CONFIG.size:
+        period, count, channel, pin, levels, transition = _LEGACY_CONFIG.unpack(payload)
+        generation: DigitalGenerationConfig = DigitalStepConfig(
+            pin, bool(levels & 1), bool(levels & 2), transition)
+    elif len(payload) == _EXTENDED_CONFIG.size:
+        period, count, channel, generation_value, pin, levels, first, second = (
+            _EXTENDED_CONFIG.unpack(payload)
+        )
+        try:
+            generation_type = GenerationType(generation_value)
+        except ValueError:
+            raise AcquisitionError("Type de génération CONFIG inconnu.") from None
+        if generation_type is GenerationType.STEP:
+            if second != 0:
+                raise AcquisitionError("Paramètre réservé STEP invalide.")
+            generation = DigitalStepConfig(pin, bool(levels & 1), bool(levels & 2), first)
+        else:
+            generation = SquareBurstConfig(
+                pin, bool(levels & 1), bool(levels & 2), second, first)
+    else:
         raise AcquisitionError("Payload CONFIG invalide.")
-    period, count, channel, pin, levels, transition = _CONFIG.unpack(payload)
     if levels & ~0x03:
         raise AcquisitionError("Niveaux numériques CONFIG invalides.")
-    config = AcquisitionConfig(period, count, channel,
-                               DigitalStepConfig(pin, bool(levels & 1),
-                                                 bool(levels & 2), transition))
+    config = AcquisitionConfig(period, count, channel, generation)
     config.validate()
     return config
+
+
+def plan_square_burst(duration_s: float, requested_sample_count: int, period_count: int,
+                      *, pin: int = 8, low_high: bool = False,
+                      high_high: bool = True, analog_channel: int = 0) -> SquareBurstPlan:
+    """Ajuster les points au carré fini le plus proche et calculer Te en microsecondes."""
+    if not math.isfinite(duration_s) or duration_s <= 0:
+        raise AcquisitionError("La durée demandée doit être finie et strictement positive.")
+    if requested_sample_count < 2:
+        raise AcquisitionError("Le nombre de points demandé doit être au moins égal à 2.")
+    if period_count < 1:
+        raise AcquisitionError("Le nombre de périodes du carré doit être au moins égal à 1.")
+    half_period_samples = max(1, round((requested_sample_count - 1) / (2 * period_count)))
+    applied_sample_count = 2 * period_count * half_period_samples + 1
+    sampling_period_us = max(1, round(duration_s * 1_000_000 / (applied_sample_count - 1)))
+    generation = SquareBurstConfig(
+        pin, low_high, high_high, period_count, half_period_samples)
+    config = AcquisitionConfig(
+        sampling_period_us, applied_sample_count, analog_channel, generation)
+    config.validate()
+    return SquareBurstPlan(duration_s, requested_sample_count, config)
+
+
+def applied_duration_s(config: AcquisitionConfig) -> float:
+    config.validate()
+    return (config.sample_count - 1) * config.sampling_period_us / 1_000_000
+
+
+def applied_square_period_s(config: AcquisitionConfig) -> float:
+    config.validate()
+    generation = config.generation
+    if not isinstance(generation, SquareBurstConfig):
+        raise AcquisitionError("La période carrée exige une configuration SQUARE_BURST.")
+    return 2 * generation.half_period_samples * config.sampling_period_us / 1_000_000
+
+
+def applied_square_frequency_hz(config: AcquisitionConfig) -> float:
+    return 1.0 / applied_square_period_s(config)
+
+
+def generated_level(config: AcquisitionConfig, sample_index: int) -> bool:
+    """Niveau logique appliqué avant l'échantillon d'index donné."""
+    config.validate()
+    if not 0 <= sample_index < config.sample_count:
+        raise AcquisitionError("L'index demandé doit appartenir à l'acquisition.")
+    generation = config.generation
+    if isinstance(generation, DigitalStepConfig):
+        return (generation.initial_high if sample_index < generation.transition_sample_index
+                else generation.final_high)
+    last_index = 2 * generation.period_count * generation.half_period_samples
+    if sample_index == last_index:
+        return generation.low_high
+    phase = sample_index // generation.half_period_samples
+    return generation.high_high if phase % 2 == 0 else generation.low_high
+
+
+def generated_voltage(config: AcquisitionConfig, sample_index: int, *,
+                      low_volts: float = UNO_LOGIC_LOW_VOLTS,
+                      high_volts: float = UNO_LOGIC_HIGH_VOLTS) -> float:
+    return high_volts if generated_level(config, sample_index) else low_volts
+
+
+def generated_voltage_series(config: AcquisitionConfig, count: int | None = None, *,
+                             low_volts: float = UNO_LOGIC_LOW_VOLTS,
+                             high_volts: float = UNO_LOGIC_HIGH_VOLTS) -> tuple[float, ...]:
+    config.validate()
+    count = config.sample_count if count is None else count
+    if not 0 <= count <= config.sample_count:
+        raise AcquisitionError("La série générée dépasse le nombre de points configuré.")
+    return tuple(generated_voltage(config, index, low_volts=low_volts,
+                                   high_volts=high_volts) for index in range(count))
 
 
 def encode_hello_ack(version: tuple[int, int, int], capabilities: int) -> bytes:
