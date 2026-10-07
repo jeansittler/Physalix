@@ -73,6 +73,7 @@ from physalix.acquisition import (
     generated_voltage_series,
     plan_continuous_square,
     plan_square_burst,
+    timer2_ctc_chunks,
 )
 
 
@@ -341,6 +342,16 @@ class ContinuousSquareModelTests(unittest.TestCase):
         ):
             with self.subTest(config=config), self.assertRaises(AcquisitionError):
                 plan_continuous_square(config)
+
+    def test_timer2_ctc_chunks_are_exact_and_compare_is_chunk_minus_one(self):
+        for total_ticks in (1, 125, 250, 256, 257, 1250, 12500, 125000, 1250000):
+            with self.subTest(total_ticks=total_ticks):
+                chunks = timer2_ctc_chunks(total_ticks)
+                self.assertEqual(sum(chunks), total_ticks)
+                self.assertTrue(all(1 <= chunk <= 256 for chunk in chunks))
+                self.assertEqual([chunk - 1 for chunk in chunks],
+                                 [min(remaining, 256) - 1
+                                  for remaining in range(total_ticks, 0, -256)])
 
 
 class ContinuousSquareCodecTests(unittest.TestCase):

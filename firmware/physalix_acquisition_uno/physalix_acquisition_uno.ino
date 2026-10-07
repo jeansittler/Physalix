@@ -27,6 +27,13 @@ constexpr uint8_t ADC_RING_SIZE = 64;            // Must remain a power of two.
 constexpr uint8_t DATA_VALUES_PER_FRAME = 48;
 constexpr uint8_t LEGACY_CONFIG_SIZE = 15;
 constexpr uint8_t EXTENDED_CONFIG_SIZE = 20;
+constexpr uint8_t GENERATOR_CONFIG_SIZE = 8;
+constexpr uint8_t GENERATOR_PIN = 8;
+constexpr uint8_t GENERATOR_LEVELS = 0x02;
+constexpr uint16_t GENERATOR_PRESCALER = 64;
+constexpr uint32_t GENERATOR_MIN_HALF_PERIOD_TICKS = 125UL;
+constexpr uint32_t GENERATOR_MAX_HALF_PERIOD_TICKS = 1250000UL;
+constexpr uint32_t GENERATOR_KEEPALIVE_TIMEOUT_MS = 2500UL;
 
 enum MessageType : uint8_t {
   HELLO = 1,
@@ -38,6 +45,17 @@ enum MessageType : uint8_t {
   DATA = 7,
   END = 8,
   ERROR_MESSAGE = 9,
+  GEN_CONFIG = 10,
+  GEN_CONFIG_ACK = 11,
+  GEN_START = 12,
+  GEN_START_ACK = 13,
+  GEN_STOP = 14,
+  GEN_STOP_ACK = 15,
+  GEN_STATUS = 16,
+  GEN_STATUS_ACK = 17,
+  GEN_KEEPALIVE = 18,
+  ACQ_STARTED = 19,
+  DATA_GBF = 20,
 };
 
 enum FirmwareState : uint8_t {
@@ -52,6 +70,12 @@ enum ErrorCode : uint16_t {
   ERR_STATE = 3,
   ERR_OVERFLOW = 4,
   ERR_ADC_BUSY = 5,
+  ERR_GENERATOR = 6,
+};
+
+enum GeneratorState : uint8_t {
+  GENERATOR_STOPPED = 0,
+  GENERATOR_RUNNING = 1,
 };
 
 enum GenerationType : uint8_t {
@@ -68,6 +92,13 @@ struct AcquisitionConfig {
   uint8_t levels;
   uint32_t parameter1;
   uint32_t parameter2;
+};
+
+struct GeneratorConfig {
+  uint8_t outputPin;
+  uint8_t levels;
+  uint16_t prescaler;
+  uint32_t halfPeriodTicks;
 };
 
 FirmwareState state = IDLE;
@@ -91,9 +122,21 @@ uint32_t sequenceNumber = 0;
 uint32_t sentSampleCount = 0;
 bool safeLevelApplied = true;
 uint32_t nextSquareTransitionIndex = 0;
+bool acquisitionUsesContinuousGenerator = false;
 
 volatile uint8_t *stepOutputRegister = nullptr;
 uint8_t stepBitMask = 0;
+
+GeneratorConfig generatorConfig{};
+bool hasGeneratorConfig = false;
+volatile GeneratorState generatorState = GENERATOR_STOPPED;
+volatile uint32_t generatorRemainingTicks = 0;
+volatile uint16_t generatorActiveChunkTicks = 0;
+volatile bool generatorLevelHigh = false;
+volatile bool generatorFaultPending = false;
+uint32_t generatorLastKeepaliveMs = 0;
+volatile uint8_t *generatorOutputRegister = nullptr;
+uint8_t generatorBitMask = 0;
 
 uint8_t rxPayload[MAX_PAYLOAD];
 
@@ -184,11 +227,80 @@ void setStepLevelDirect(bool high) {
   }
 }
 
+constexpr uint16_t generatorChunkTicks(uint32_t remainingTicks) {
+  return remainingTicks > 256UL ? 256U : static_cast<uint16_t>(remainingTicks);
+}
+
+constexpr uint8_t generatorCompareForChunk(uint16_t chunkTicks) {
+  return static_cast<uint8_t>(chunkTicks - 1U);
+}
+
+static_assert(generatorChunkTicks(1) == 1, "Timer2 one-tick chunk");
+static_assert(generatorCompareForChunk(1) == 0, "Timer2 OCR2A one tick");
+static_assert(generatorChunkTicks(125) == 125, "Timer2 125-tick chunk");
+static_assert(generatorCompareForChunk(125) == 124, "Timer2 OCR2A 125 ticks");
+static_assert(generatorChunkTicks(256) == 256, "Timer2 256-tick chunk");
+static_assert(generatorCompareForChunk(256) == 255, "Timer2 OCR2A 256 ticks");
+static_assert(generatorChunkTicks(257) == 256, "Timer2 extended chunk");
+
+void setGeneratorLevelDirect(bool high) {
+  if (high) {
+    *generatorOutputRegister |= generatorBitMask;
+  } else {
+    *generatorOutputRegister &= static_cast<uint8_t>(~generatorBitMask);
+  }
+  generatorLevelHigh = high;
+}
+
+void stopGeneratorFromIsr() {
+  TCCR2B = 0;
+  TIMSK2 = 0;
+  setGeneratorLevelDirect(false);
+  generatorState = GENERATOR_STOPPED;
+  generatorRemainingTicks = 0;
+  generatorActiveChunkTicks = 0;
+}
+
+void stopGenerator() {
+  const uint8_t savedSreg = SREG;
+  cli();
+  stopGeneratorFromIsr();
+  SREG = savedSreg;
+}
+
+void startGenerator() {
+  generatorLastKeepaliveMs = millis();
+  const uint8_t savedSreg = SREG;
+  cli();
+  TCCR2A = _BV(WGM21);  // CTC, TOP = OCR2A.
+  TCCR2B = 0;
+  setGeneratorLevelDirect(false);
+  TCNT2 = 0;
+  generatorRemainingTicks = generatorConfig.halfPeriodTicks;
+  generatorActiveChunkTicks = generatorChunkTicks(generatorRemainingTicks);
+  OCR2A = generatorCompareForChunk(generatorActiveChunkTicks);
+  TIFR2 = _BV(OCF2A);
+  TIMSK2 = _BV(OCIE2A);
+  // HIGH precedes the Timer2 clock start, so the first half-period is complete.
+  setGeneratorLevelDirect(true);
+  generatorState = GENERATOR_RUNNING;
+  TCCR2B = _BV(CS22);  // Prescaler 64 at 16 MHz: one tick is 4 us.
+  SREG = savedSreg;
+}
+
 void applySafeLevel() {
-  if (hasConfig) {
+  if (acquisitionUsesContinuousGenerator) {
+    if (generatorState != GENERATOR_RUNNING) {
+      setGeneratorLevelDirect(false);
+    }
+    // Timer2 owns D8, or the continuous generator has already stopped LOW.
+  } else if (generatorState == GENERATOR_RUNNING && hasConfig &&
+             activeConfig.outputPin == GENERATOR_PIN) {
+    // Acquisition configuration must not overwrite the active Timer2 output.
+  } else if (hasConfig) {
     digitalWrite(activeConfig.outputPin, lowLevelHigh() ? HIGH : LOW);
   } else {
-    digitalWrite(8, LOW);
+    digitalWrite(GENERATOR_PIN, LOW);
   }
   safeLevelApplied = true;
 }
@@ -228,6 +340,34 @@ bool chooseTimer(uint32_t requestedUs, uint32_t &actualUs,
     }
   }
   return false;
+}
+
+bool decodeAndValidateGeneratorConfig(const uint8_t *payload, uint16_t length,
+                                      GeneratorConfig &candidate) {
+  if (length != GENERATOR_CONFIG_SIZE) {
+    return false;
+  }
+  candidate.outputPin = payload[0];
+  candidate.levels = payload[1];
+  candidate.prescaler = readU16(payload + 2);
+  candidate.halfPeriodTicks = readU32(payload + 4);
+  return candidate.outputPin == GENERATOR_PIN &&
+         candidate.levels == GENERATOR_LEVELS &&
+         candidate.prescaler == GENERATOR_PRESCALER &&
+         candidate.halfPeriodTicks >= GENERATOR_MIN_HALF_PERIOD_TICKS &&
+         candidate.halfPeriodTicks <= GENERATOR_MAX_HALF_PERIOD_TICKS;
+}
+
+void encodeGeneratorConfig(const GeneratorConfig &config, uint8_t *payload) {
+  payload[0] = config.outputPin;
+  payload[1] = config.levels;
+  writeU16(payload + 2, config.prescaler);
+  writeU32(payload + 4, config.halfPeriodTicks);
+}
+
+void sendGeneratorState(uint8_t messageType) {
+  const uint8_t payload[1] = {static_cast<uint8_t>(generatorState)};
+  sendFrame(messageType, payload, sizeof(payload));
 }
 
 bool decodeAndValidateConfig(const uint8_t *payload, uint16_t length,
@@ -391,10 +531,13 @@ void resetAcquisitionCounters() {
 void startAcquisition(uint32_t newSessionId) {
   resetAcquisitionCounters();
   sessionId = newSessionId;
-  pinMode(activeConfig.outputPin, OUTPUT);
-  digitalWrite(activeConfig.outputPin, lowLevelHigh() ? HIGH : LOW);
-  stepOutputRegister = portOutputRegister(digitalPinToPort(activeConfig.outputPin));
-  stepBitMask = digitalPinToBitMask(activeConfig.outputPin);
+  acquisitionUsesContinuousGenerator = generatorState == GENERATOR_RUNNING;
+  if (!acquisitionUsesContinuousGenerator) {
+    pinMode(activeConfig.outputPin, OUTPUT);
+    digitalWrite(activeConfig.outputPin, lowLevelHigh() ? HIGH : LOW);
+    stepOutputRegister = portOutputRegister(digitalPinToPort(activeConfig.outputPin));
+    stepBitMask = digitalPinToBitMask(activeConfig.outputPin);
+  }
   safeLevelApplied = false;
 
   configureAdcAndPrime();
@@ -409,7 +552,9 @@ void startAcquisition(uint32_t newSessionId) {
   cli();
   samplingActive = true;
   state = ACQUIRING;
-  if (activeConfig.generationType == GENERATION_STEP) {
+  if (acquisitionUsesContinuousGenerator) {
+    // Timer2 already owns D8. Trigger synchronization is added in the next step.
+  } else if (activeConfig.generationType == GENERATION_STEP) {
     if (activeConfig.parameter1 == 0) {
       setStepLevelDirect(highLevelHigh());
     }
@@ -433,6 +578,7 @@ void finishWithEnd() {
   writeU32(payload + 4, sentSampleCount);
   sendFrame(END, payload, sizeof(payload));
   state = CONFIGURED;
+  acquisitionUsesContinuousGenerator = false;
   endPending = false;
 }
 
@@ -444,6 +590,7 @@ void abortActiveWithError(uint16_t code, const char *text) {
   }
   sendError(code, text);
   state = hasConfig ? CONFIGURED : IDLE;
+  acquisitionUsesContinuousGenerator = false;
   endPending = false;
   faultPending = 0;
 }
@@ -469,6 +616,76 @@ void handleFrame(uint8_t version, uint8_t type, const uint8_t *payload, uint16_t
     return;
   }
 
+  if (type == GEN_CONFIG) {
+    if (state == ACQUIRING || generatorState != GENERATOR_STOPPED) {
+      sendError(ERR_STATE, "GEN_CONFIG while active");
+      return;
+    }
+    GeneratorConfig candidate{};
+    if (!decodeAndValidateGeneratorConfig(payload, length, candidate)) {
+      sendError(ERR_CONFIGURATION, "invalid GEN_CONFIG");
+      return;
+    }
+    generatorConfig = candidate;
+    hasGeneratorConfig = true;
+    pinMode(GENERATOR_PIN, OUTPUT);
+    setGeneratorLevelDirect(false);
+    uint8_t ack[GENERATOR_CONFIG_SIZE];
+    encodeGeneratorConfig(generatorConfig, ack);
+    sendFrame(GEN_CONFIG_ACK, ack, sizeof(ack));
+    return;
+  }
+
+  if (type == GEN_START) {
+    if (length != 0) {
+      sendError(ERR_PROTOCOL, "GEN_START payload");
+      return;
+    }
+    if (state == ACQUIRING || generatorState != GENERATOR_STOPPED ||
+        !hasGeneratorConfig) {
+      sendError(ERR_STATE, "invalid GEN_START");
+      return;
+    }
+    startGenerator();
+    sendGeneratorState(GEN_START_ACK);
+    return;
+  }
+
+  if (type == GEN_STOP) {
+    if (length != 0) {
+      sendError(ERR_PROTOCOL, "GEN_STOP payload");
+      return;
+    }
+    if (generatorState == GENERATOR_RUNNING || state != ACQUIRING ||
+        acquisitionUsesContinuousGenerator) {
+      stopGenerator();
+    }
+    sendGeneratorState(GEN_STOP_ACK);
+    return;
+  }
+
+  if (type == GEN_STATUS) {
+    if (length != 0) {
+      sendError(ERR_PROTOCOL, "GEN_STATUS payload");
+      return;
+    }
+    sendGeneratorState(GEN_STATUS_ACK);
+    return;
+  }
+
+  if (type == GEN_KEEPALIVE) {
+    if (length != 0) {
+      sendError(ERR_PROTOCOL, "GEN_KEEPALIVE payload");
+      return;
+    }
+    if (generatorState != GENERATOR_RUNNING) {
+      sendError(ERR_STATE, "GEN_KEEPALIVE while stopped");
+      return;
+    }
+    generatorLastKeepaliveMs = millis();
+    return;
+  }
+
   if (type == CONFIG) {
     if (state == ACQUIRING) {
       abortActiveWithError(ERR_STATE, "CONFIG while active");
@@ -485,17 +702,24 @@ void handleFrame(uint8_t version, uint8_t type, const uint8_t *payload, uint16_t
       return;
     }
     if (hasConfig && activeConfig.outputPin != candidate.outputPin) {
-      digitalWrite(activeConfig.outputPin, lowLevelHigh() ? HIGH : LOW);
-      pinMode(activeConfig.outputPin, INPUT);
-    } else if (!hasConfig && candidate.outputPin != 8) {
-      pinMode(8, INPUT);
+      if (!(generatorState == GENERATOR_RUNNING &&
+            activeConfig.outputPin == GENERATOR_PIN)) {
+        digitalWrite(activeConfig.outputPin, lowLevelHigh() ? HIGH : LOW);
+        pinMode(activeConfig.outputPin, INPUT);
+      }
+    } else if (!hasConfig && candidate.outputPin != GENERATOR_PIN &&
+               generatorState != GENERATOR_RUNNING) {
+      pinMode(GENERATOR_PIN, INPUT);
     }
     activeConfig = candidate;
     activeConfigExtended = candidateExtended;
     timerCompare = candidateCompare;
     timerClockBits = candidateClockBits;
     hasConfig = true;
-    pinMode(activeConfig.outputPin, OUTPUT);
+    if (!(generatorState == GENERATOR_RUNNING &&
+          activeConfig.outputPin == GENERATOR_PIN)) {
+      pinMode(activeConfig.outputPin, OUTPUT);
+    }
     applySafeLevel();
     configureAdcAndPrime();
     ADCSRA &= static_cast<uint8_t>(~_BV(ADEN));
@@ -665,12 +889,53 @@ void serviceAcquisition() {
     sendError(fault, fault == ERR_OVERFLOW ? "sample overflow" : "ADC busy");
     faultPending = 0;
     state = CONFIGURED;
+    acquisitionUsesContinuousGenerator = false;
   } else if (shouldEnd) {
     finishWithEnd();
   }
 }
 
+void serviceGenerator() {
+  if (generatorFaultPending) {
+    const uint8_t savedSreg = SREG;
+    cli();
+    generatorFaultPending = false;
+    SREG = savedSreg;
+    sendError(ERR_GENERATOR, "generator scheduler fault");
+    return;
+  }
+  if (generatorState == GENERATOR_RUNNING &&
+      static_cast<uint32_t>(millis() - generatorLastKeepaliveMs) >=
+          GENERATOR_KEEPALIVE_TIMEOUT_MS) {
+    stopGenerator();
+  }
+}
+
 }  // namespace
+
+ISR(TIMER2_COMPA_vect) {
+  if (generatorState != GENERATOR_RUNNING || generatorActiveChunkTicks == 0 ||
+      generatorActiveChunkTicks > generatorRemainingTicks) {
+    stopGeneratorFromIsr();
+    generatorFaultPending = true;
+    return;
+  }
+
+  generatorRemainingTicks -= generatorActiveChunkTicks;
+  if (generatorRemainingTicks == 0) {
+    setGeneratorLevelDirect(!generatorLevelHigh);
+    generatorRemainingTicks = generatorConfig.halfPeriodTicks;
+  }
+
+  const uint16_t nextChunk = generatorChunkTicks(generatorRemainingTicks);
+  if (nextChunk != generatorActiveChunkTicks) {
+    OCR2A = generatorCompareForChunk(nextChunk);
+    // CTC has already cleared the counter. Reset explicitly only when TOP
+    // changes, so a short remainder can never be missed after ISR latency.
+    TCNT2 = 0;
+  }
+  generatorActiveChunkTicks = nextChunk;
+}
 
 ISR(TIMER1_COMPA_vect) {
   if (!samplingActive) {
@@ -683,7 +948,9 @@ ISR(TIMER1_COMPA_vect) {
     faultPending = ERR_ADC_BUSY;
     return;
   }
-  if (activeConfig.generationType == GENERATION_STEP) {
+  if (acquisitionUsesContinuousGenerator) {
+    // Timer2 owns D8; DATA_GBF capture and front trigger are implemented later.
+  } else if (activeConfig.generationType == GENERATION_STEP) {
     if (acquiredCount == activeConfig.parameter1) {
       setStepLevelDirect(highLevelHigh());
     }
@@ -726,8 +993,11 @@ ISR(ADC_vect) {
 }
 
 void setup() {
-  pinMode(8, OUTPUT);
-  digitalWrite(8, LOW);
+  pinMode(GENERATOR_PIN, OUTPUT);
+  digitalWrite(GENERATOR_PIN, LOW);
+  generatorOutputRegister = portOutputRegister(digitalPinToPort(GENERATOR_PIN));
+  generatorBitMask = digitalPinToBitMask(GENERATOR_PIN);
+  stopGenerator();
   Serial.begin(BAUD_RATE);
 }
 
@@ -735,5 +1005,6 @@ void loop() {
   while (Serial.available() > 0) {
     receiver.feed(static_cast<uint8_t>(Serial.read()));
   }
+  serviceGenerator();
   serviceAcquisition();
 }

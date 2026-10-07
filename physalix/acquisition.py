@@ -186,6 +186,17 @@ def plan_continuous_square(config: ContinuousSquareConfig) -> ContinuousSquarePl
         config, timer, applied_frequency_hz, 1.0 / applied_frequency_hz)
 
 
+def timer2_ctc_chunks(total_ticks: int) -> tuple[int, ...]:
+    """Découper une durée Timer2 en chunks CTC exacts de 1 à 256 ticks."""
+    if isinstance(total_ticks, bool) or not isinstance(total_ticks, int):
+        raise AcquisitionError("Le nombre de ticks Timer2 doit être un entier.")
+    if not 1 <= total_ticks <= 0xFFFFFFFF:
+        raise AcquisitionError("Le nombre de ticks Timer2 doit tenir sur 32 bits.")
+    full_chunks, remainder = divmod(total_ticks, 256)
+    chunks = (256,) * full_chunks
+    return chunks + ((remainder,) if remainder else ())
+
+
 @dataclass(frozen=True)
 class DigitalStepConfig:
     """Échelon produit sur une broche numérique à un index d'échantillon."""

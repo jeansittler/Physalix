@@ -14,6 +14,25 @@ annoncées par `HELLO_ACK` sont définies dans `firmware_metadata.h`.
 - Plage pédagogique visée pour SQUARE_BURST : 0,1 à 100 Hz, avec un nombre de points par période adapté à l'expérience.
 - Sécurité logique : à la fin, sur STOP ou sur erreur, la sortie revient au niveau initial configuré. Cela ne remplace aucune protection électrique de l'entrée.
 
+## Moteur GBF continu interne en construction
+
+Le firmware contient un moteur carré continu encore non annoncé dans les
+capacités de `HELLO_ACK`. Il n'est donc pas encore proposé par Physalix et ne
+fait pas partie de l'artefact distribué officiel.
+
+- Timer2 est indépendant de Timer1 et commute D8 entre LOW et HIGH à 50 %.
+- La plage interne acceptée est 0,1 à 1000 Hz, avec un préscaler 64 et un tick de 4 µs.
+- Une demi-période est découpée en chunks CTC de 1 à 256 ticks ; chaque chunk
+  de `N` ticks utilise `OCR2A = N - 1`.
+- Un keepalive série renouvelle un bail de 2,5 s. À son expiration, après
+  `GEN_STOP`, au boot ou lors d'une faute interne, Timer2 est arrêté et D8
+  revient à LOW.
+- `GEN_CONFIG`, `GEN_START`, `GEN_STOP`, `GEN_STATUS` et `GEN_KEEPALIVE` sont
+  traités dans la boucle principale ; aucune opération série n'a lieu dans
+  l'ISR Timer2.
+- La synchronisation de l'acquisition sur un front et le format `DATA_GBF`
+  seront ajoutés dans une étape ultérieure.
+
 Pour flasher manuellement : ouvrir `physalix_acquisition_uno.ino` dans Arduino IDE, sélectionner **Arduino Uno** et le port série, puis cliquer sur **Téléverser**. Fermer le moniteur série avant de connecter Physalix.
 
 ## Produire l'artefact officiel
