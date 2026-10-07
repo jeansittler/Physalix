@@ -33,6 +33,7 @@ CAPABILITY_ANALOG_A0 = 0x00000001
 CAPABILITY_DIGITAL_STEP = 0x00000002
 CAPABILITY_TIMER1_ADC_IRQ = 0x00000004
 CAPABILITY_SQUARE_BURST = 0x00000008
+CAPABILITY_CONTINUOUS_SQUARE = 0x00000010
 REQUIRED_FIRMWARE_CAPABILITIES = (
     CAPABILITY_ANALOG_A0 | CAPABILITY_DIGITAL_STEP | CAPABILITY_TIMER1_ADC_IRQ
 )
@@ -42,6 +43,13 @@ MAX_SAMPLE_COUNT = 1_000_000
 SERIAL_RESOURCE_DISCONNECTED_MESSAGE = "Arduino déconnecté."
 UNO_LOGIC_LOW_VOLTS = 0.0
 UNO_LOGIC_HIGH_VOLTS = 5.0
+CONTINUOUS_SQUARE_MIN_FREQUENCY_HZ = 0.1
+CONTINUOUS_SQUARE_MAX_FREQUENCY_HZ = 1000.0
+TIMER2_CLOCK_HZ = 16_000_000
+TIMER2_PRESCALER = 64
+TIMER2_TICK_S = TIMER2_PRESCALER / TIMER2_CLOCK_HZ
+TIMER2_MIN_HALF_PERIOD_TICKS = 125
+TIMER2_MAX_HALF_PERIOD_TICKS = 1_250_000
 _HEADER = struct.Struct("<2sBBH")
 _CRC = struct.Struct("<H")
 
@@ -56,6 +64,17 @@ class MessageType(IntEnum):
     DATA = 7
     END = 8
     ERROR = 9
+    GEN_CONFIG = 10
+    GEN_CONFIG_ACK = 11
+    GEN_START = 12
+    GEN_START_ACK = 13
+    GEN_STOP = 14
+    GEN_STOP_ACK = 15
+    GEN_STATUS = 16
+    GEN_STATUS_ACK = 17
+    GEN_KEEPALIVE = 18
+    ACQ_STARTED = 19
+    DATA_GBF = 20
 
 
 class AcquisitionState(Enum):
@@ -66,6 +85,14 @@ class AcquisitionState(Enum):
     ACQUIRING = auto()
     STOPPING = auto()
     ERROR = auto()
+
+
+class GeneratorState(IntEnum):
+    """État indépendant du générateur ; UNKNOWN est réservé au suivi côté PC."""
+
+    STOPPED = 0
+    RUNNING = 1
+    UNKNOWN = 2
 
 
 class GenerationType(IntEnum):
@@ -79,6 +106,84 @@ class AcquisitionError(ValueError):
 
 class StateTransitionError(AcquisitionError):
     """Transition incohérente du contrôleur."""
+
+
+@dataclass(frozen=True)
+class ContinuousSquareConfig:
+    """Demande utilisateur V1 : carré continu 0/5 V, D8 et rapport cyclique 50 %."""
+
+    requested_frequency_hz: float
+    pin: int = 8
+    low_high: bool = False
+    high_high: bool = True
+
+    def validate(self) -> None:
+        frequency = self.requested_frequency_hz
+        if (isinstance(frequency, bool) or not isinstance(frequency, (int, float))
+                or not math.isfinite(frequency)
+                or not CONTINUOUS_SQUARE_MIN_FREQUENCY_HZ <= frequency
+                <= CONTINUOUS_SQUARE_MAX_FREQUENCY_HZ):
+            raise AcquisitionError(
+                "La fréquence du carré continu doit être comprise entre 0,1 Hz et 1000 Hz."
+            )
+        if self.pin != 8:
+            raise AcquisitionError("Le carré continu V1 utilise exclusivement la broche D8.")
+        if self.low_high is not False or self.high_high is not True:
+            raise AcquisitionError("Le carré continu V1 doit utiliser LOW puis HIGH.")
+
+    @property
+    def duty_cycle(self) -> float:
+        return 0.5
+
+
+@dataclass(frozen=True)
+class ContinuousSquareTimerConfig:
+    """Paramètres entiers suffisants pour programmer et relire Timer2."""
+
+    pin: int
+    low_high: bool
+    high_high: bool
+    prescaler: int
+    half_period_ticks: int
+
+    def validate(self) -> None:
+        if self.pin != 8 or self.low_high is not False or self.high_high is not True:
+            raise AcquisitionError("Configuration logique du carré continu invalide.")
+        if self.prescaler != TIMER2_PRESCALER:
+            raise AcquisitionError("Le carré continu V1 exige le préscaler Timer2 égal à 64.")
+        if not (TIMER2_MIN_HALF_PERIOD_TICKS <= self.half_period_ticks
+                <= TIMER2_MAX_HALF_PERIOD_TICKS):
+            raise AcquisitionError("La demi-période Timer2 est hors de la plage GBF V1.")
+
+
+@dataclass(frozen=True)
+class ContinuousSquarePlan:
+    """Demande et paramètres réellement applicables sur Timer2 à 16 MHz."""
+
+    requested: ContinuousSquareConfig
+    timer: ContinuousSquareTimerConfig
+    applied_frequency_hz: float
+    applied_period_s: float
+
+    @property
+    def requested_frequency_hz(self) -> float:
+        return self.requested.requested_frequency_hz
+
+
+def plan_continuous_square(config: ContinuousSquareConfig) -> ContinuousSquarePlan:
+    """Quantifier la fréquence sur la grille Timer2 V1 de 4 µs."""
+    config.validate()
+    timer_rate_hz = TIMER2_CLOCK_HZ // TIMER2_PRESCALER
+    half_period_ticks = math.floor(
+        timer_rate_hz / (2 * config.requested_frequency_hz) + 0.5)
+    timer = ContinuousSquareTimerConfig(
+        config.pin, config.low_high, config.high_high,
+        TIMER2_PRESCALER, half_period_ticks,
+    )
+    timer.validate()
+    applied_frequency_hz = timer_rate_hz / (2 * half_period_ticks)
+    return ContinuousSquarePlan(
+        config, timer, applied_frequency_hz, 1.0 / applied_frequency_hz)
 
 
 @dataclass(frozen=True)
@@ -208,6 +313,24 @@ class DataBatch:
 
 
 @dataclass(frozen=True)
+class GbfDataBatch:
+    """Mesures ADC et niveau E capturé au même index d'échantillonnage."""
+
+    session_id: int
+    sequence_number: int
+    first_sample_index: int
+    values: tuple[int, ...]
+    generated_high: tuple[bool, ...]
+
+
+@dataclass(frozen=True)
+class AcquisitionStarted:
+    """Le front montant de t=0 est appliqué et la conversion k=0 déclenchée."""
+
+    session_id: int
+
+
+@dataclass(frozen=True)
 class AcquisitionResult:
     session_id: int | None
     samples: tuple[int, ...]
@@ -284,12 +407,142 @@ _LEGACY_CONFIG = struct.Struct("<IIBBBI")
 _EXTENDED_CONFIG = struct.Struct("<IIBBBBII")
 _HELLO_ACK = struct.Struct("<BBBI")
 _DATA_HEADER = struct.Struct("<IIIH")
+_GENERATOR_CONFIG = struct.Struct("<BBHI")
+_GENERATOR_STATE = struct.Struct("<B")
+_ACQUISITION_STARTED = struct.Struct("<I")
 _SESSION = struct.Struct("<I")
 _END = struct.Struct("<II")
 
 
 def _encoded_levels(low_high: bool, high_high: bool) -> int:
     return int(low_high) | (int(high_high) << 1)
+
+
+def encode_gen_config(config: ContinuousSquareTimerConfig) -> bytes:
+    """Encoder uniquement les paramètres entiers nécessaires à Timer2."""
+    config.validate()
+    return _GENERATOR_CONFIG.pack(
+        config.pin, _encoded_levels(config.low_high, config.high_high),
+        config.prescaler, config.half_period_ticks)
+
+
+def decode_gen_config(payload: bytes) -> ContinuousSquareTimerConfig:
+    if len(payload) != _GENERATOR_CONFIG.size:
+        raise AcquisitionError("Payload GEN_CONFIG invalide.")
+    pin, levels, prescaler, half_period_ticks = _GENERATOR_CONFIG.unpack(payload)
+    if levels & ~0x03:
+        raise AcquisitionError("Niveaux GEN_CONFIG invalides.")
+    config = ContinuousSquareTimerConfig(
+        pin, bool(levels & 1), bool(levels & 2), prescaler, half_period_ticks)
+    config.validate()
+    return config
+
+
+def encode_gen_config_ack(config: ContinuousSquareTimerConfig) -> bytes:
+    return encode_gen_config(config)
+
+
+def decode_gen_config_ack(payload: bytes) -> ContinuousSquareTimerConfig:
+    try:
+        return decode_gen_config(payload)
+    except AcquisitionError as error:
+        raise AcquisitionError(str(error).replace("GEN_CONFIG", "GEN_CONFIG_ACK")) from None
+
+
+def _decode_empty_generator_command(payload: bytes, name: str) -> None:
+    if payload:
+        raise AcquisitionError(f"Payload {name} invalide.")
+
+
+def encode_gen_start() -> bytes:
+    return b""
+
+
+def decode_gen_start(payload: bytes) -> None:
+    _decode_empty_generator_command(payload, "GEN_START")
+
+
+def encode_gen_stop() -> bytes:
+    return b""
+
+
+def decode_gen_stop(payload: bytes) -> None:
+    _decode_empty_generator_command(payload, "GEN_STOP")
+
+
+def encode_gen_status() -> bytes:
+    return b""
+
+
+def decode_gen_status(payload: bytes) -> None:
+    _decode_empty_generator_command(payload, "GEN_STATUS")
+
+
+def encode_gen_keepalive() -> bytes:
+    return b""
+
+
+def decode_gen_keepalive(payload: bytes) -> None:
+    _decode_empty_generator_command(payload, "GEN_KEEPALIVE")
+
+
+def _encode_generator_wire_state(state: GeneratorState) -> bytes:
+    if state not in (GeneratorState.STOPPED, GeneratorState.RUNNING):
+        raise AcquisitionError("UNKNOWN est un état local et ne peut pas être transmis.")
+    return _GENERATOR_STATE.pack(state)
+
+
+def _decode_generator_wire_state(payload: bytes, name: str) -> GeneratorState:
+    if len(payload) != _GENERATOR_STATE.size:
+        raise AcquisitionError(f"Payload {name} invalide.")
+    try:
+        state = GeneratorState(_GENERATOR_STATE.unpack(payload)[0])
+    except ValueError:
+        raise AcquisitionError(f"État {name} inconnu.") from None
+    if state is GeneratorState.UNKNOWN:
+        raise AcquisitionError("UNKNOWN est un état local et ne peut pas être reçu.")
+    return state
+
+
+def encode_gen_start_ack() -> bytes:
+    return _encode_generator_wire_state(GeneratorState.RUNNING)
+
+
+def decode_gen_start_ack(payload: bytes) -> GeneratorState:
+    state = _decode_generator_wire_state(payload, "GEN_START_ACK")
+    if state is not GeneratorState.RUNNING:
+        raise AcquisitionError("GEN_START_ACK doit confirmer l'état RUNNING.")
+    return state
+
+
+def encode_gen_stop_ack() -> bytes:
+    return _encode_generator_wire_state(GeneratorState.STOPPED)
+
+
+def decode_gen_stop_ack(payload: bytes) -> GeneratorState:
+    state = _decode_generator_wire_state(payload, "GEN_STOP_ACK")
+    if state is not GeneratorState.STOPPED:
+        raise AcquisitionError("GEN_STOP_ACK doit confirmer l'état STOPPED.")
+    return state
+
+
+def encode_gen_status_ack(state: GeneratorState) -> bytes:
+    return _encode_generator_wire_state(state)
+
+
+def decode_gen_status_ack(payload: bytes) -> GeneratorState:
+    return _decode_generator_wire_state(payload, "GEN_STATUS_ACK")
+
+
+def encode_acquisition_started(started: AcquisitionStarted) -> bytes:
+    _check_uint32(started.session_id, "session_id")
+    return _ACQUISITION_STARTED.pack(started.session_id)
+
+
+def decode_acquisition_started(payload: bytes) -> AcquisitionStarted:
+    if len(payload) != _ACQUISITION_STARTED.size:
+        raise AcquisitionError("Payload ACQ_STARTED invalide.")
+    return AcquisitionStarted(_ACQUISITION_STARTED.unpack(payload)[0])
 
 
 def encode_config(config: AcquisitionConfig, *, extended: bool | None = None) -> bytes:
@@ -464,6 +717,61 @@ def decode_data(payload: bytes) -> DataBatch:
     if any(value > 1023 for value in values):
         raise AcquisitionError("Valeur ADC DATA invalide.")
     return DataBatch(session_id, sequence, first_index, values)
+
+
+def encode_gbf_data(batch: GbfDataBatch) -> bytes:
+    """Encoder ADC puis E, avec bit 0 du premier octet associé au premier point.
+
+    Le futur firmware doit capturer E_k dans l'ISR Timer1, avant de déclencher
+    la conversion ADC de l'échantillon k. Le bitmap décrit donc le niveau
+    généré exactement à t_k, et non un niveau relu plus tard dans l'ISR ADC.
+    """
+    for value, name in ((batch.session_id, "session_id"),
+                        (batch.sequence_number, "sequence_number"),
+                        (batch.first_sample_index, "first_sample_index")):
+        _check_uint32(value, name)
+    count = len(batch.values)
+    if not count:
+        raise AcquisitionError("Un lot DATA_GBF ne peut pas être vide.")
+    if len(batch.generated_high) != count:
+        raise AcquisitionError("Le bitmap E doit contenir un niveau par mesure ADC.")
+    if any(not 0 <= value <= 1023 for value in batch.values):
+        raise AcquisitionError("Une valeur ADC doit être comprise entre 0 et 1023.")
+    if any(type(level) is not bool for level in batch.generated_high):
+        raise AcquisitionError("Les niveaux E doivent être booléens.")
+    bitmap_size = (count + 7) // 8
+    payload_size = _DATA_HEADER.size + 2 * count + bitmap_size
+    if payload_size > MAX_PAYLOAD_SIZE:
+        raise AcquisitionError("Le lot DATA_GBF dépasse la taille maximale d'une trame.")
+    bitmap = bytearray(bitmap_size)
+    for index, high in enumerate(batch.generated_high):
+        if high:
+            bitmap[index // 8] |= 1 << (index % 8)
+    return (_DATA_HEADER.pack(batch.session_id, batch.sequence_number,
+                              batch.first_sample_index, count)
+            + struct.pack(f"<{count}H", *batch.values) + bitmap)
+
+
+def decode_gbf_data(payload: bytes) -> GbfDataBatch:
+    if len(payload) < _DATA_HEADER.size:
+        raise AcquisitionError("Payload DATA_GBF tronqué.")
+    session_id, sequence, first_index, count = _DATA_HEADER.unpack_from(payload)
+    bitmap_size = (count + 7) // 8
+    expected_size = _DATA_HEADER.size + 2 * count + bitmap_size
+    if not count or len(payload) != expected_size:
+        raise AcquisitionError("Nombre de valeurs DATA_GBF incohérent.")
+    values = struct.unpack_from(f"<{count}H", payload, _DATA_HEADER.size)
+    if any(value > 1023 for value in values):
+        raise AcquisitionError("Valeur ADC DATA_GBF invalide.")
+    bitmap_offset = _DATA_HEADER.size + 2 * count
+    bitmap = payload[bitmap_offset:]
+    used_bits = count % 8
+    if used_bits and bitmap[-1] & ~((1 << used_bits) - 1):
+        raise AcquisitionError("Bits réservés du bitmap E non nuls.")
+    generated_high = tuple(
+        bool(bitmap[index // 8] & (1 << (index % 8))) for index in range(count)
+    )
+    return GbfDataBatch(session_id, sequence, first_index, values, generated_high)
 
 
 _TRANSITIONS = {

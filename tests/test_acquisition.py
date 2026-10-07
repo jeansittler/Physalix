@@ -15,11 +15,19 @@ from physalix.acquisition import (
     AcquisitionController,
     AcquisitionError,
     AcquisitionState,
+    AcquisitionStarted,
+    CAPABILITY_CONTINUOUS_SQUARE,
     CAPABILITY_SQUARE_BURST,
+    CONTINUOUS_SQUARE_MAX_FREQUENCY_HZ,
+    CONTINUOUS_SQUARE_MIN_FREQUENCY_HZ,
+    ContinuousSquareConfig,
+    ContinuousSquareTimerConfig,
     DataBatch,
     DigitalStepConfig,
     FrameParser,
+    GbfDataBatch,
     GenerationType,
+    GeneratorState,
     MAGIC,
     MAX_PARSER_BUFFER,
     MAX_PAYLOAD_SIZE,
@@ -34,12 +42,36 @@ from physalix.acquisition import (
     applied_square_frequency_hz,
     applied_square_period_s,
     decode_config,
+    decode_acquisition_started,
+    decode_data,
     encode_config,
+    decode_gbf_data,
+    decode_gen_config,
+    decode_gen_config_ack,
+    decode_gen_keepalive,
+    decode_gen_start,
+    decode_gen_start_ack,
+    decode_gen_status,
+    decode_gen_status_ack,
+    decode_gen_stop,
+    decode_gen_stop_ack,
     encode_data,
+    encode_acquisition_started,
     encode_frame,
+    encode_gbf_data,
+    encode_gen_config,
+    encode_gen_config_ack,
+    encode_gen_keepalive,
+    encode_gen_start,
+    encode_gen_start_ack,
+    encode_gen_status,
+    encode_gen_status_ack,
+    encode_gen_stop,
+    encode_gen_stop_ack,
     encode_hello_ack,
     generated_level,
     generated_voltage_series,
+    plan_continuous_square,
     plan_square_burst,
 )
 
@@ -250,6 +282,182 @@ class GenerationModelTests(unittest.TestCase):
             current_firmware_capabilities & REQUIRED_FIRMWARE_CAPABILITIES,
             REQUIRED_FIRMWARE_CAPABILITIES,
         )
+
+
+class ContinuousSquareModelTests(unittest.TestCase):
+    def test_capability_and_generator_state_are_independent(self):
+        self.assertEqual(CAPABILITY_CONTINUOUS_SQUARE, 0x00000010)
+        self.assertFalse(REQUIRED_FIRMWARE_CAPABILITIES & CAPABILITY_CONTINUOUS_SQUARE)
+        self.assertEqual(
+            list(GeneratorState),
+            [GeneratorState.STOPPED, GeneratorState.RUNNING, GeneratorState.UNKNOWN],
+        )
+
+    def test_timer2_quantization_for_representative_frequencies(self):
+        expected_ticks = {
+            0.1: 1_250_000,
+            0.5: 250_000,
+            1.0: 125_000,
+            10.0: 12_500,
+            50.0: 2_500,
+            100.0: 1_250,
+            500.0: 250,
+            1000.0: 125,
+        }
+        for frequency, ticks in expected_ticks.items():
+            with self.subTest(frequency=frequency):
+                plan = plan_continuous_square(ContinuousSquareConfig(frequency))
+                self.assertEqual(plan.requested_frequency_hz, frequency)
+                self.assertEqual(plan.timer.prescaler, 64)
+                self.assertEqual(plan.timer.half_period_ticks, ticks)
+                self.assertEqual(plan.timer.pin, 8)
+                self.assertFalse(plan.timer.low_high)
+                self.assertTrue(plan.timer.high_high)
+                self.assertAlmostEqual(plan.applied_frequency_hz, frequency)
+                self.assertAlmostEqual(plan.applied_period_s, 1 / frequency)
+                self.assertEqual(plan.requested.duty_cycle, 0.5)
+
+    def test_timer2_quantization_for_non_exact_frequencies(self):
+        for frequency, ticks in ((123.0, 1016), (333.0, 375), (997.0, 125)):
+            with self.subTest(frequency=frequency):
+                plan = plan_continuous_square(ContinuousSquareConfig(frequency))
+                self.assertEqual(plan.timer.half_period_ticks, ticks)
+                self.assertEqual(plan.applied_frequency_hz, 125_000 / ticks)
+                self.assertEqual(plan.applied_period_s, 2 * ticks * 4e-6)
+
+    def test_continuous_square_rejects_frequency_pin_and_levels(self):
+        invalid_frequencies = (
+            CONTINUOUS_SQUARE_MIN_FREQUENCY_HZ - 0.001,
+            CONTINUOUS_SQUARE_MAX_FREQUENCY_HZ + 0.001,
+            float("nan"), float("inf"), -float("inf"), True,
+        )
+        for frequency in invalid_frequencies:
+            with self.subTest(frequency=frequency), self.assertRaises(AcquisitionError):
+                plan_continuous_square(ContinuousSquareConfig(frequency))
+        for config in (
+            ContinuousSquareConfig(10, pin=11),
+            ContinuousSquareConfig(10, low_high=True),
+            ContinuousSquareConfig(10, high_high=False),
+        ):
+            with self.subTest(config=config), self.assertRaises(AcquisitionError):
+                plan_continuous_square(config)
+
+
+class ContinuousSquareCodecTests(unittest.TestCase):
+    def timer_config(self):
+        return plan_continuous_square(ContinuousSquareConfig(10)).timer
+
+    def test_all_protocol_ids_are_unique_and_framing_stays_v1(self):
+        self.assertEqual(len({int(message) for message in MessageType}), len(MessageType))
+        self.assertEqual(PROTOCOL_VERSION, 1)
+        self.assertEqual(
+            {message.name: int(message) for message in MessageType},
+            {
+                "HELLO": 1, "HELLO_ACK": 2, "CONFIG": 3, "CONFIG_ACK": 4,
+                "START": 5, "STOP": 6, "DATA": 7, "END": 8, "ERROR": 9,
+                "GEN_CONFIG": 10, "GEN_CONFIG_ACK": 11,
+                "GEN_START": 12, "GEN_START_ACK": 13,
+                "GEN_STOP": 14, "GEN_STOP_ACK": 15,
+                "GEN_STATUS": 16, "GEN_STATUS_ACK": 17,
+                "GEN_KEEPALIVE": 18, "ACQ_STARTED": 19, "DATA_GBF": 20,
+            },
+        )
+
+    def test_gen_config_and_ack_round_trip_exact_integer_format(self):
+        config = self.timer_config()
+        expected = struct.pack("<BBHI", 8, 0x02, 64, 12_500)
+        self.assertEqual(encode_gen_config(config), expected)
+        self.assertEqual(decode_gen_config(expected), config)
+        self.assertEqual(encode_gen_config_ack(config), expected)
+        self.assertEqual(decode_gen_config_ack(expected), config)
+        for invalid in (
+            expected[:-1],
+            struct.pack("<BBHI", 8, 0x82, 64, 12_500),
+            struct.pack("<BBHI", 8, 0x02, 8, 12_500),
+            struct.pack("<BBHI", 9, 0x02, 64, 12_500),
+            struct.pack("<BBHI", 8, 0x02, 64, 0),
+            struct.pack("<BBHI", 8, 0x02, 64, 124),
+            struct.pack("<BBHI", 8, 0x02, 64, 1_250_001),
+        ):
+            with self.subTest(invalid=invalid), self.assertRaises(AcquisitionError):
+                decode_gen_config(invalid)
+
+    def test_empty_start_stop_status_and_keepalive_payloads(self):
+        codecs = (
+            (encode_gen_start, decode_gen_start),
+            (encode_gen_stop, decode_gen_stop),
+            (encode_gen_status, decode_gen_status),
+            (encode_gen_keepalive, decode_gen_keepalive),
+        )
+        for encode, decode in codecs:
+            with self.subTest(codec=encode.__name__):
+                self.assertEqual(encode(), b"")
+                self.assertIsNone(decode(b""))
+                with self.assertRaises(AcquisitionError):
+                    decode(b"\x00")
+
+    def test_start_stop_and_status_ack_states(self):
+        self.assertEqual(decode_gen_start_ack(encode_gen_start_ack()), GeneratorState.RUNNING)
+        self.assertEqual(decode_gen_stop_ack(encode_gen_stop_ack()), GeneratorState.STOPPED)
+        for state in (GeneratorState.STOPPED, GeneratorState.RUNNING):
+            with self.subTest(state=state):
+                self.assertEqual(decode_gen_status_ack(encode_gen_status_ack(state)), state)
+        with self.assertRaises(AcquisitionError):
+            encode_gen_status_ack(GeneratorState.UNKNOWN)
+        with self.assertRaises(AcquisitionError):
+            decode_gen_status_ack(b"\x02")
+        with self.assertRaises(AcquisitionError):
+            decode_gen_start_ack(b"\x00")
+        with self.assertRaises(AcquisitionError):
+            decode_gen_stop_ack(b"\x01")
+
+    def test_acquisition_started_explicitly_identifies_t0_and_session(self):
+        started = AcquisitionStarted(0x12345678)
+        payload = encode_acquisition_started(started)
+        self.assertEqual(payload, struct.pack("<I", 0x12345678))
+        self.assertEqual(decode_acquisition_started(payload), started)
+        for invalid in (b"", payload[:-1], payload + b"\x00"):
+            with self.subTest(invalid=invalid), self.assertRaises(AcquisitionError):
+                decode_acquisition_started(invalid)
+
+    def test_gbf_data_bitmap_round_trip_sizes_and_lsb_first_order(self):
+        for count in (1, 7, 8, 9, 48):
+            levels = tuple(index % 2 == 0 for index in range(count))
+            batch = GbfDataBatch(42, 3, 10, tuple(range(count)), levels)
+            payload = encode_gbf_data(batch)
+            bitmap_size = (count + 7) // 8
+            self.assertEqual(len(payload), 14 + 2 * count + bitmap_size)
+            self.assertEqual(decode_gbf_data(payload), batch)
+            self.assertEqual(payload[14 + 2 * count], 0x55 & ((1 << min(count, 8)) - 1))
+            if count == 9:
+                self.assertEqual(payload[-2:], b"\x55\x01")
+            if count == 48:
+                self.assertEqual(payload[-6:], b"\x55" * 6)
+
+    def test_gbf_data_rejects_truncated_incoherent_and_reserved_bits(self):
+        batch = GbfDataBatch(1, 2, 3, tuple(range(9)),
+                             (True, False, True, False, True, False, True, False, True))
+        payload = encode_gbf_data(batch)
+        invalid_payloads = [payload[:-1], payload + b"\x00"]
+        reserved = bytearray(payload)
+        reserved[-1] |= 0x80
+        invalid_payloads.append(bytes(reserved))
+        invalid_count = bytearray(payload)
+        struct.pack_into("<H", invalid_count, 12, 8)
+        invalid_payloads.append(bytes(invalid_count))
+        for invalid in invalid_payloads:
+            with self.subTest(invalid=invalid), self.assertRaises(AcquisitionError):
+                decode_gbf_data(invalid)
+        with self.assertRaises(AcquisitionError):
+            encode_gbf_data(GbfDataBatch(1, 0, 0, (1, 2), (True,)))
+        with self.assertRaises(AcquisitionError):
+            encode_gbf_data(GbfDataBatch(1, 0, 0, (1024,), (True,)))
+
+    def test_historical_data_payload_is_strictly_unchanged(self):
+        batch = DataBatch(42, 3, 10, (0, 512, 1023))
+        expected = struct.pack("<IIIH3H", 42, 3, 10, 3, 0, 512, 1023)
+        self.assertEqual(encode_data(batch), expected)
+        self.assertEqual(decode_data(expected), batch)
 
 
 class ControllerTests(unittest.TestCase):
