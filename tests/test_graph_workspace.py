@@ -61,6 +61,19 @@ class GraphWorkspaceTests(unittest.TestCase):
         self.workspace.windows[0].close()
         self.assertEqual(len(self.workspace.windows), 1)
 
+    def test_add_data_graph_series_uses_one_graph_and_left_axis(self):
+        previous_count = len(self.workspace.windows)
+
+        graph = self.workspace.add_data_graph_series(0, (1, 2), title="Deux tensions")
+
+        self.assertEqual(len(self.workspace.windows), previous_count + 1)
+        self.assertEqual([series.key() for series in graph.series], [(0, 1), (0, 2)])
+        self.assertTrue(all(series.visible.isChecked() for series in graph.series))
+        self.assertTrue(all(series.connect_points.isChecked() for series in graph.series))
+        self.assertTrue(all(series.y_axis.currentIndex() == 0 for series in graph.series))
+        window = next(window for window in self.workspace.windows if window.graph is graph)
+        self.assertEqual(window.windowTitle(), "Deux tensions")
+
     def test_right_axis_bounds_models_and_return_to_left(self):
         graph = self.workspace.active_graph
         right = graph.add_series()

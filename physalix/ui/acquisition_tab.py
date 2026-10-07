@@ -15,13 +15,17 @@ from PySide6.QtWidgets import (
 
 from physalix.acquisition import (
     AcquisitionConfig, AcquisitionController, AcquisitionResult, AcquisitionState,
-    DataBatch, DigitalStepConfig, PROTOCOL_VERSION, SERIAL_RESOURCE_DISCONNECTED_MESSAGE,
+    CAPABILITY_SQUARE_BURST, DataBatch, DigitalGenerationConfig, DigitalStepConfig,
+    GenerationType, PROTOCOL_VERSION, SERIAL_RESOURCE_DISCONNECTED_MESSAGE,
+    SquareBurstConfig, SquareBurstPlan, applied_duration_s, applied_square_frequency_hz,
+    applied_square_period_s, generated_voltage_series, plan_square_burst,
 )
 from physalix.firmware_flash import (
     FirmwareCompatibility, FirmwareFlash, FlashErrorKind, compare_firmware,
 )
 from physalix.firmware_resources import FirmwareResourceError, load_uno_resources
 from physalix.ui.components import label, page_header, panel, workspace_layout
+from physalix.ui.graph_series import PopupComboBox, configure_popup, update_popup_height
 from physalix.ui.theme import LIGHT
 
 
@@ -38,8 +42,10 @@ class AcquisitionPageResult:
     """Résultat conservé localement, sans écriture dans MeasurementsModel."""
 
     sampling_period_us: int
+    generation: DigitalGenerationConfig
     times_s: tuple[float, ...]
     voltages_v: tuple[float, ...]
+    generated_voltages_v: tuple[float, ...]
     complete: bool
     status: str
 
@@ -73,6 +79,7 @@ class AcquisitionTab(QWidget):
         self.results: list[AcquisitionPageResult] = []
         self.times_s: list[float] = []
         self.voltages_v: list[float] = []
+        self.generated_voltages_v: list[float] = []
         self._start_after_configuration = False
         self._plot_dirty = False
         self._transferred = False
@@ -102,6 +109,7 @@ class AcquisitionTab(QWidget):
         self.plot_timer.timeout.connect(self.refresh_plot)
         self.plot_timer.start()
         self.refresh_ports()
+        self._sync_generation_ui()
         self._update_requested_values()
         self._update_controls(self.controller.state)
 
@@ -162,13 +170,47 @@ class AcquisitionTab(QWidget):
         grid.addLayout(acquisition_form, 0, 1)
 
         generation_form = QFormLayout()
+        self.generation_type_combo = PopupComboBox()
+        self.generation_type_combo.addItem("Échelon", GenerationType.STEP)
+        self.generation_type_combo.addItem("Carré — N périodes", GenerationType.SQUARE_BURST)
+        self.generation_type_combo.setMinimumWidth(180)
+        self.generation_type_combo.setMaximumWidth(LIGHT.field_medium)
+        self.generation_type_combo.setMinimumContentsLength(8)
+        self.generation_type_combo.setSizeAdjustPolicy(
+            QComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon)
+        configure_popup(self.generation_type_combo, LIGHT.field_medium)
+        update_popup_height(self.generation_type_combo)
         self.output_pin = QSpinBox()
         self.output_pin.setRange(2, 13)
         self.output_pin.setValue(8)
+        generation_form.addRow("Type", self.generation_type_combo)
         generation_form.addRow("Sortie numérique", self.output_pin)
-        generation_form.addRow("Niveau initial", QLabel("0 V"))
-        generation_form.addRow("Niveau final", QLabel("5 V"))
-        generation_form.addRow("Déclenchement", QLabel("Synchronisé avec l'acquisition"))
+        self.step_initial_value = QLabel("0 V")
+        self.step_final_value = QLabel("5 V")
+        self.step_trigger_value = QLabel("Synchronisé avec l'acquisition")
+        generation_form.addRow("Niveau initial", self.step_initial_value)
+        generation_form.addRow("Niveau final", self.step_final_value)
+        generation_form.addRow("Déclenchement", self.step_trigger_value)
+        self.square_minimum_value = QLabel("0,0 V")
+        self.square_maximum_value = QLabel("5,0 V")
+        self.square_periods_spin = QSpinBox()
+        self.square_periods_spin.setRange(1, 500_000)
+        self.square_periods_spin.setValue(2)
+        self.square_requested_period_label = QLabel()
+        self.square_requested_frequency_label = QLabel()
+        generation_form.addRow("Minimum", self.square_minimum_value)
+        generation_form.addRow("Maximum", self.square_maximum_value)
+        generation_form.addRow("Nombre de périodes", self.square_periods_spin)
+        generation_form.addRow("Période calculée", self.square_requested_period_label)
+        generation_form.addRow("Fréquence calculée", self.square_requested_frequency_label)
+        self.square_requirement_label = label("", "muted")
+        generation_form.addRow(self.square_requirement_label)
+        self._step_generation_widgets = (
+            self.step_initial_value, self.step_final_value, self.step_trigger_value)
+        self._square_generation_widgets = (
+            self.square_minimum_value, self.square_maximum_value, self.square_periods_spin,
+            self.square_requested_period_label, self.square_requested_frequency_label)
+        self._generation_form = generation_form
         grid.addLayout(generation_form, 0, 2)
         settings_layout.addLayout(grid)
         self.applied_values_label = label("Valeurs réellement appliquées : en attente.", "muted")
@@ -185,12 +227,16 @@ class AcquisitionTab(QWidget):
         actions.addWidget(self.transfer_button)
         layout.addLayout(actions)
 
-        plot_panel, plot_layout = panel("Courbe temporaire — Uc(t)")
+        plot_panel, plot_layout = panel("Courbes temporaires — E(t) et uC(t)")
         self.plot = pg.PlotWidget(background=LIGHT.surface)
         self.plot.setLabel("bottom", "Temps", units="s")
-        self.plot.setLabel("left", "Uc", units="V")
+        self.plot.setLabel("left", "Tension", units="V")
         self.plot.showGrid(x=True, y=True, alpha=0.25)
-        self.curve = self.plot.plot([], [], pen=pg.mkPen(LIGHT.primary, width=2))
+        self.plot.addLegend(offset=(8, 8))
+        self.curve = self.plot.plot(
+            [], [], pen=pg.mkPen(LIGHT.primary, width=2), name="uC — signal mesuré")
+        self.generated_curve = self.plot.plot(
+            [], [], pen=pg.mkPen("#d84315", width=2), name="E — signal généré")
         plot_layout.addWidget(self.plot, 1)
         self.result_status = label("Aucune acquisition.", "muted")
         plot_layout.addWidget(self.result_status)
@@ -202,6 +248,8 @@ class AcquisitionTab(QWidget):
         self.firmware_button.clicked.connect(self.request_firmware_installation)
         self.duration_spin.valueChanged.connect(self._update_requested_values)
         self.points_spin.valueChanged.connect(self._update_requested_values)
+        self.generation_type_combo.currentIndexChanged.connect(self._generation_type_changed)
+        self.square_periods_spin.valueChanged.connect(self._update_requested_values)
         self.start_button.clicked.connect(self.start_acquisition)
         self.stop_button.clicked.connect(self.controller.stop)
         self.transfer_button.clicked.connect(self.transfer_result)
@@ -410,11 +458,59 @@ class AcquisitionTab(QWidget):
         self.reconnect_retry_timer.stop()
         self.reconnect_timeout_timer.stop()
 
+    def generation_type(self) -> GenerationType:
+        return GenerationType(self.generation_type_combo.currentData())
+
+    def _square_supported(self) -> bool:
+        return (self._detected_firmware_info is not None
+                and bool(self._detected_firmware_info.capabilities
+                         & CAPABILITY_SQUARE_BURST))
+
+    def _generation_available(self) -> bool:
+        return self.generation_type() is GenerationType.STEP or self._square_supported()
+
+    def _set_generation_field_visible(self, widget: QWidget, visible: bool):
+        widget.setVisible(visible)
+        field_label = self._generation_form.labelForField(widget)
+        if field_label is not None:
+            field_label.setVisible(visible)
+
+    def _generation_type_changed(self, *args):
+        self._sync_generation_ui()
+        self._update_requested_values()
+        self._update_controls(self.controller.state)
+
+    def _sync_generation_ui(self):
+        square = self.generation_type() is GenerationType.SQUARE_BURST
+        for widget in self._step_generation_widgets:
+            self._set_generation_field_visible(widget, not square)
+        for widget in self._square_generation_widgets:
+            self._set_generation_field_visible(widget, square)
+        if square and not self._square_supported():
+            if self._detected_firmware_info is None:
+                message = "Connectez un firmware Physalix compatible pour utiliser le mode carré."
+            else:
+                message = "Le mode carré nécessite le firmware Physalix 1.1.0 ou supérieur."
+            self.square_requirement_label.setText(message)
+            self.square_requirement_label.show()
+        else:
+            self.square_requirement_label.hide()
+
     def requested_period_us(self) -> int:
+        if self.generation_type() is GenerationType.SQUARE_BURST:
+            return self.requested_square_plan().requested_sampling_period_us
         intervals = self.points_spin.value() - 1
         return max(1, round(self.duration_spin.value() * 1_000_000 / intervals))
 
+    def requested_square_plan(self) -> SquareBurstPlan:
+        return plan_square_burst(
+            self.duration_spin.value(), self.points_spin.value(),
+            self.square_periods_spin.value(), pin=self.output_pin.value(),
+            analog_channel=self.channel_combo.currentData())
+
     def requested_config(self) -> AcquisitionConfig:
+        if self.generation_type() is GenerationType.SQUARE_BURST:
+            return self.requested_square_plan().config
         return AcquisitionConfig(
             self.requested_period_us(), self.points_spin.value(),
             self.channel_combo.currentData(),
@@ -425,6 +521,12 @@ class AcquisitionTab(QWidget):
         period_us = self.requested_period_us()
         self.requested_te_label.setText(self._format_period(period_us))
         self.requested_fe_label.setText(self._format_frequency(period_us))
+        if self.generation_type() is GenerationType.SQUARE_BURST:
+            config = self.requested_square_plan().config
+            self.square_requested_period_label.setText(
+                self._format_seconds(applied_square_period_s(config)))
+            self.square_requested_frequency_label.setText(
+                self._format_hertz(applied_square_frequency_hz(config)))
 
     @staticmethod
     def _format_period(period_us: int) -> str:
@@ -439,12 +541,26 @@ class AcquisitionTab(QWidget):
         frequency = 1_000_000 / period_us
         return f"{frequency / 1000:g} kHz" if frequency >= 1000 else f"{frequency:g} Hz"
 
+    @classmethod
+    def _format_seconds(cls, seconds: float) -> str:
+        return cls._format_period(round(seconds * 1_000_000))
+
+    @staticmethod
+    def _format_hertz(frequency: float) -> str:
+        return f"{frequency / 1000:g} kHz" if frequency >= 1000 else f"{frequency:g} Hz"
+
     def start_acquisition(self):
         if self.controller.state not in (AcquisitionState.READY, AcquisitionState.CONFIGURED):
             return
+        if not self._generation_available():
+            self.result_status.setText(
+                "Le mode carré nécessite le firmware Physalix 1.1.0 ou supérieur.")
+            return
         self.times_s.clear()
         self.voltages_v.clear()
+        self.generated_voltages_v.clear()
         self.curve.setData([], [])
+        self.generated_curve.setData([], [])
         self.result_status.setText("Configuration de l'acquisition…")
         self._transferred = False
         self._transfer_columns = None
@@ -453,6 +569,7 @@ class AcquisitionTab(QWidget):
         self._update_controls(self.controller.state)
 
     def _controller_ready(self, firmware_info):
+        self._detected_firmware_info = firmware_info
         version = ".".join(map(str, firmware_info.version))
         self.connection_status.setText(f"Arduino détecté / Prêt — firmware {version}")
         if self._flash_workflow_active:
@@ -463,12 +580,22 @@ class AcquisitionTab(QWidget):
                 firmware_info.version, PROTOCOL_VERSION, firmware_info.capabilities)
         elif self.firmware_resources is not None:
             self._display_detected_firmware(firmware_info)
+        self._generation_type_changed()
 
     def _configuration_accepted(self, config: AcquisitionConfig):
-        duration_s = (config.sample_count - 1) * config.sampling_period_us / 1_000_000
+        parts = (
+            f"points appliqués = {config.sample_count}",
+            f"Te = {self._format_period(config.sampling_period_us)}",
+            f"Fe = {self._format_frequency(config.sampling_period_us)}",
+            f"durée = {applied_duration_s(config):g} s",
+        )
+        if isinstance(config.generation, SquareBurstConfig):
+            parts += (
+                f"période = {self._format_seconds(applied_square_period_s(config))}",
+                f"fréquence = {self._format_hertz(applied_square_frequency_hz(config))}",
+            )
         self.applied_values_label.setText(
-            f"Valeurs réellement appliquées : Te = {self._format_period(config.sampling_period_us)}, "
-            f"Fe = {self._format_frequency(config.sampling_period_us)}, durée = {duration_s:g} s.")
+            "Valeurs réellement appliquées : " + ", ".join(parts) + ".")
         if self._start_after_configuration:
             self._start_after_configuration = False
             self.controller.start()
@@ -481,11 +608,27 @@ class AcquisitionTab(QWidget):
         self.times_s.extend((batch.first_sample_index + offset) * period_s
                             for offset in range(len(batch.values)))
         self.voltages_v.extend(adc_to_volts(value) for value in batch.values)
+        self.generated_voltages_v[:] = generated_voltage_series(
+            config, len(self.voltages_v))
         self._plot_dirty = True
+
+    @staticmethod
+    def _step_plot_data(times_s, values_v):
+        if not times_s:
+            return (), ()
+        plot_times = [times_s[0]]
+        plot_values = [values_v[0]]
+        for index in range(1, len(times_s)):
+            plot_times.extend((times_s[index], times_s[index]))
+            plot_values.extend((values_v[index - 1], values_v[index]))
+        return tuple(plot_times), tuple(plot_values)
 
     def refresh_plot(self):
         if self._plot_dirty:
             self.curve.setData(self.times_s, self.voltages_v)
+            generated_times, generated_values = self._step_plot_data(
+                self.times_s, self.generated_voltages_v)
+            self.generated_curve.setData(generated_times, generated_values)
             self._plot_dirty = False
 
     def _acquisition_finished(self, result: AcquisitionResult):
@@ -503,10 +646,12 @@ class AcquisitionTab(QWidget):
             return
         samples = tuple(self.controller.samples)
         period_s = config.sampling_period_us / 1_000_000
+        generated_voltages = generated_voltage_series(config, len(samples))
         stored = AcquisitionPageResult(
-            config.sampling_period_us,
+            config.sampling_period_us, config.generation,
             tuple(index * period_s for index in range(len(samples))),
-            tuple(adc_to_volts(value) for value in samples), complete, status,
+            tuple(adc_to_volts(value) for value in samples), generated_voltages,
+            complete, status,
         )
         self.results.append(stored)
         self._transferred = False
@@ -516,6 +661,7 @@ class AcquisitionTab(QWidget):
             f"Acquisition {qualifier} — {len(samples)} point(s) reçus. {status}")
         self.times_s[:] = stored.times_s
         self.voltages_v[:] = stored.voltages_v
+        self.generated_voltages_v[:] = stored.generated_voltages_v
         self._plot_dirty = True
         self._update_controls(self.controller.state)
 
@@ -535,13 +681,21 @@ class AcquisitionTab(QWidget):
         result = self.results[-1]
         try:
             if self._transfer_columns is None:
-                period_s = result.sampling_period_us / 1_000_000
-                rows = [[self._numeric_text(index * period_s), self._numeric_text(voltage)]
-                        for index, voltage in enumerate(result.voltages_v)]
+                if not (len(result.times_s) == len(result.voltages_v)
+                        == len(result.generated_voltages_v)):
+                    raise ValueError("Les séries Temps, Uc et E ne sont pas alignées.")
+                rows = [
+                    [self._numeric_text(time_s), self._numeric_text(voltage),
+                     self._numeric_text(generated_voltage)]
+                    for time_s, voltage, generated_voltage in zip(
+                        result.times_s, result.voltages_v, result.generated_voltages_v)
+                ]
                 self._transfer_columns = self.data_tab.append_measurements(
-                    ["Temps", "Uc"], ["s", "V"], rows)
-            graph = self.graph_workspace.add_data_graph(
-                *self._transfer_columns, title="Uc en fonction de Temps")
+                    ["Temps", "Uc", "E"], ["s", "V", "V"], rows)
+            time_column, uc_column, generated_column = self._transfer_columns
+            graph = self.graph_workspace.add_data_graph_series(
+                time_column, (uc_column, generated_column),
+                title="Uc et E en fonction de Temps")
         except Exception as error:
             QMessageBox.warning(
                 self, "Transfert impossible",
@@ -610,17 +764,22 @@ class AcquisitionTab(QWidget):
         self.connect_button.setEnabled(not flash_active)
         self.port_combo.setEnabled(disconnected and not flash_active)
         self.refresh_button.setEnabled(disconnected and not flash_active)
-        self.start_button.setEnabled(state in (AcquisitionState.READY, AcquisitionState.CONFIGURED)
-                                     and not self._start_after_configuration and not flash_active)
+        self.start_button.setEnabled(
+            state in (AcquisitionState.READY, AcquisitionState.CONFIGURED)
+            and self._generation_available()
+            and not self._start_after_configuration and not flash_active)
         self.stop_button.setEnabled(active and not flash_active)
         transferable = (not active and not self._start_after_configuration and
                         bool(self.results) and bool(self.results[-1].voltages_v) and
                         not self._transferred and self.data_tab is not None and
                         self.graph_workspace is not None and not flash_active)
         self.transfer_button.setEnabled(transferable)
-        for widget in (self.duration_spin, self.points_spin, self.channel_combo, self.output_pin):
+        for widget in (self.duration_spin, self.points_spin, self.channel_combo,
+                       self.generation_type_combo, self.output_pin,
+                       self.square_periods_spin):
             widget.setEnabled(not active and not self._start_after_configuration
                               and not flash_active)
+        self._sync_generation_ui()
         self._update_firmware_offer()
 
     def shutdown(self):

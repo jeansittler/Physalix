@@ -116,6 +116,27 @@ class GraphWorkspace(QWidget):
         graph.refresh_plot()
         return graph
 
+    def add_data_graph_series(self, x_column, y_columns, title=None):
+        """Créer un graphique neuf avec plusieurs ordonnées sur l'axe Y gauche."""
+        y_columns = tuple(y_columns)
+        columns = (x_column,) + y_columns
+        if (not y_columns
+                or any(not 0 <= column < self.model.columnCount() for column in columns)):
+            raise ValueError("Colonnes du graphique introuvables.")
+        graph = self.add_graph()
+        graph.sync_columns()
+        for index, y_column in enumerate(y_columns):
+            series = graph.series[0] if index == 0 else graph.add_series()
+            series.x_choice.setCurrentIndex(series.x_choice.findData(x_column))
+            series.y_choice.setCurrentIndex(series.y_choice.findData(y_column))
+            series.y_axis.setCurrentIndex(0)
+            series.visible.setChecked(True)
+            series.connect_points.setChecked(True)
+        if title:
+            next(window for window in self.windows if window.graph is graph).setWindowTitle(title)
+        graph.refresh_plot()
+        return graph
+
     def activated(self, window):
         if window is not None and window in self.windows:
             self.graph_activated.emit(window.graph)
