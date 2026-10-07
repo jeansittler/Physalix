@@ -259,18 +259,26 @@ class FirmwareFlashTests(unittest.TestCase):
 
     def test_optional_new_capability_keeps_older_firmware_updatable(self):
         target = create_manifest(
-            self.hex_path, FirmwareSourceMetadata("1.1.0", 1, 15), self.directory)
+            self.hex_path, FirmwareSourceMetadata("1.2.0", 1, 31), self.directory)
         self.assertEqual(
-            compare_firmware(target, (1, 0, 0), 1, 7).status,
+            compare_firmware(target, (1, 1, 0), 1, 15).status,
             FirmwareCompatibility.OLDER,
         )
         self.assertEqual(
-            compare_firmware(target, (1, 1, 0), 1, 7).status,
+            compare_firmware(target, (1, 2, 0), 1, 15).status,
             FirmwareCompatibility.MISSING_CAPABILITIES,
         )
         self.assertEqual(
-            compare_firmware(target, (1, 1, 0), 1, 15).status,
+            compare_firmware(target, (1, 2, 0), 1, 31).status,
             FirmwareCompatibility.COMPATIBLE,
+        )
+        self.assertEqual(
+            compare_firmware(target, (1, 3, 0), 1, 31).status,
+            FirmwareCompatibility.NEWER,
+        )
+        self.assertEqual(
+            compare_firmware(target, (1, 2, 0), 2, 31).status,
+            FirmwareCompatibility.PROTOCOL_INCOMPATIBLE,
         )
 
     def test_post_flash_reconnection_failure_can_close_workflow(self):

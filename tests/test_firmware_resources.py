@@ -18,6 +18,7 @@ from physalix.firmware_resources import (
     FIRMWARE_MANIFEST_SCHEMA,
     UNO_BOARD,
     UNO_HEX_FILE,
+    UNO_RESOURCE_DIRECTORY,
     FirmwareManifest,
     FirmwareResourceError,
     create_manifest,
@@ -56,12 +57,15 @@ class FirmwareResourceTests(unittest.TestCase):
         return path
 
     def test_canonical_source_matches_pc_protocol_and_capabilities(self):
-        self.assertEqual(self.metadata.firmware_version, "1.1.0")
+        self.assertEqual(self.metadata.firmware_version, "1.2.0")
         self.assertEqual(self.metadata.protocol_version, PROTOCOL_VERSION)
+        self.assertEqual(REQUIRED_FIRMWARE_CAPABILITIES, 0x00000007)
         self.assertEqual(self.metadata.required_capabilities,
-                         REQUIRED_FIRMWARE_CAPABILITIES | CAPABILITY_SQUARE_BURST)
+                         REQUIRED_FIRMWARE_CAPABILITIES | CAPABILITY_SQUARE_BURST
+                         | CAPABILITY_CONTINUOUS_SQUARE)
         self.assertFalse(REQUIRED_FIRMWARE_CAPABILITIES & CAPABILITY_SQUARE_BURST)
-        self.assertFalse(self.metadata.required_capabilities & CAPABILITY_CONTINUOUS_SQUARE)
+        self.assertTrue(self.metadata.required_capabilities & CAPABILITY_CONTINUOUS_SQUARE)
+        self.assertEqual(self.metadata.required_capabilities, 0x0000001F)
         self.assertIn('#include "firmware_metadata.h"', self.sketch)
         self.assertIn("FIRMWARE_MAJOR = PHYSALIX_FIRMWARE_VERSION_MAJOR", self.sketch)
         self.assertIn("PROTOCOL_VERSION = PHYSALIX_PROTOCOL_VERSION", self.sketch)
@@ -167,10 +171,11 @@ class FirmwareResourceTests(unittest.TestCase):
 
         self.assertEqual(loaded.schema, FIRMWARE_MANIFEST_SCHEMA)
         self.assertEqual(loaded.board, UNO_BOARD)
-        self.assertEqual(loaded.firmware_version, "1.1.0")
+        self.assertEqual(loaded.firmware_version, "1.2.0")
         self.assertEqual(loaded.protocol_version, PROTOCOL_VERSION)
         self.assertEqual(loaded.required_capabilities,
-                         REQUIRED_FIRMWARE_CAPABILITIES | CAPABILITY_SQUARE_BURST)
+                         REQUIRED_FIRMWARE_CAPABILITIES | CAPABILITY_SQUARE_BURST
+                         | CAPABILITY_CONTINUOUS_SQUARE)
         self.assertEqual(loaded.hex_file, UNO_HEX_FILE)
         self.assertEqual(loaded.verify_hex(self.directory), self.hex_path)
         self.assertEqual(loaded.uploader.name, AVRDUDE_NAME)
@@ -255,6 +260,24 @@ class FirmwareResourceTests(unittest.TestCase):
         self.assertEqual(resources.firmware, target_hex)
         self.assertEqual(resources.uploader_executable, target_executable)
         self.assertEqual(resources.uploader_config, target_config)
+
+    def test_distributed_bundle_is_application_only_firmware_1_2(self):
+        resources = load_uno_resources()
+
+        self.assertEqual(resources.firmware.parent, UNO_RESOURCE_DIRECTORY)
+        self.assertEqual(resources.firmware.name, UNO_HEX_FILE)
+        self.assertEqual(resources.manifest.firmware_version, "1.2.0")
+        self.assertEqual(resources.manifest.protocol_version, 1)
+        self.assertEqual(resources.manifest.required_capabilities, 0x0000001F)
+        self.assertEqual(
+            resources.manifest.verify_hex(UNO_RESOURCE_DIRECTORY),
+            resources.firmware,
+        )
+        self.assertEqual(
+            resources.manifest.verify_uploader(UNO_RESOURCE_DIRECTORY),
+            (resources.uploader_executable, resources.uploader_config),
+        )
+        self.assertFalse(list(UNO_RESOURCE_DIRECTORY.glob("*with_bootloader*")))
 
 
 if __name__ == "__main__":

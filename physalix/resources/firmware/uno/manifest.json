@@ -1,10 +1,10 @@
 {
   "board": "uno-r3-atmega328p",
-  "firmware_version": "1.1.0",
+  "firmware_version": "1.2.0",
   "hex_file": "physalix_acquisition_uno.hex",
-  "hex_sha256": "6b0728758686b6021dc469451d59fc912c7625e9a2330ef49c8e5261d101925d",
+  "hex_sha256": "2c2ac15843fdaaae6bc63a9ece84bc5a61740f25ad2c3d81bf9b07010901f30f",
   "protocol_version": 1,
-  "required_capabilities": 15,
+  "required_capabilities": 31,
   "schema": 2,
   "uploader": {
     "config": "tools/avrdude.conf",

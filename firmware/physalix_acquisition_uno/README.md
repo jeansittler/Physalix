@@ -4,7 +4,7 @@ La version canonique du firmware, la version du protocole et les capacités
 annoncées par `HELLO_ACK` sont définies dans `firmware_metadata.h`.
 
 - Cible : Arduino Uno R3 / ATmega328P 16 MHz, logique et référence ADC AVcc 5 V.
-- Firmware 1.1.0 : entrée A0 uniquement ; sortie D8 par défaut (D2 à D13 acceptées).
+- Firmware 1.2.0 : entrée A0 ; STEP et SQUARE_BURST sur D8 par défaut ; GBF continu exclusivement sur D8.
 - Génération : échelon historique ou carré fini `SQUARE_BURST` 0/5 V sur exactement N périodes. La capacité `0x00000008` annonce le support du carré.
 - Liaison : 115200 bauds, protocole Physalix V1 binaire avec CRC-16/CCITT-FALSE.
 - Cadencement : Timer1 en CTC ; l'ISR compare lance le CAN 10 bits à 125 kHz et l'ISR ADC range le résultat dans un anneau statique de 64 valeurs. Les paquets DATA contiennent au plus 48 valeurs.
@@ -14,14 +14,14 @@ annoncées par `HELLO_ACK` sont définies dans `firmware_metadata.h`.
 - Plage pédagogique visée pour SQUARE_BURST : 0,1 à 100 Hz, avec un nombre de points par période adapté à l'expérience.
 - Sécurité logique : à la fin, sur STOP ou sur erreur, la sortie revient au niveau initial configuré. Cela ne remplace aucune protection électrique de l'entrée.
 
-## Moteur GBF continu interne en construction
+## GBF carré continu — firmware 1.2.0
 
-Le firmware contient un moteur carré continu encore non annoncé dans les
-capacités de `HELLO_ACK`. Il n'est donc pas encore proposé par Physalix et ne
-fait pas partie de l'artefact distribué officiel.
+La capacité `0x00000010` annoncée dans `HELLO_ACK` active le GBF carré continu
+dans Physalix.
 
 - Timer2 est indépendant de Timer1 et commute D8 entre LOW et HIGH à 50 %.
-- La plage interne acceptée est 0,1 à 1000 Hz, avec un préscaler 64 et un tick de 4 µs.
+- La sortie est un carré 0/5 V sur D8, de 0,1 à 1000 Hz, à rapport cyclique 50 %.
+- Timer2 utilise un préscaler 64 et un tick de 4 µs.
 - Une demi-période est découpée en chunks CTC de 1 à 256 ticks ; chaque chunk
   de `N` ticks utilise `OCR2A = N - 1`.
 - Un keepalive série renouvelle un bail de 2,5 s. À son expiration, après
@@ -52,7 +52,9 @@ fait pas partie de l'artefact distribué officiel.
   `END` sont envoyés, mais Timer2 continue : le générateur reste `RUNNING` tant
   qu'il reçoit son keepalive.
 
-Pour flasher manuellement : ouvrir `physalix_acquisition_uno.ino` dans Arduino IDE, sélectionner **Arduino Uno** et le port série, puis cliquer sur **Téléverser**. Fermer le moniteur série avant de connecter Physalix.
+L’installation intégrée de Physalix utilise le HEX applicatif et l’AVRDUDE
+embarqués, puis valide le firmware par un nouveau handshake. Arduino IDE n’est
+pas nécessaire pour ce workflow.
 
 ## Produire l'artefact officiel
 
