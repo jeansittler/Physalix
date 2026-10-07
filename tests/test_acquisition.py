@@ -24,6 +24,7 @@ from physalix.acquisition import (
     ContinuousSquareTimerConfig,
     DataBatch,
     DigitalStepConfig,
+    ERR_TRIGGER_CANCELLED,
     FrameParser,
     GbfDataBatch,
     GenerationType,
@@ -636,6 +637,327 @@ class ControllerTests(unittest.TestCase):
         self.assertEqual(self.controller.state, AcquisitionState.ERROR)
         self.assertFalse(self.serial.isOpen())
         self.assertEqual(errors, [SERIAL_RESOURCE_DISCONNECTED_MESSAGE])
+
+
+class GeneratorControllerTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.app = QApplication.instance() or QApplication([])
+
+    def setUp(self):
+        self.serial = FakeSerial()
+        self.controller = AcquisitionController(
+            serial_port=self.serial, generator_command_timeout_ms=50,
+            generator_keepalive_interval_ms=25, trigger_margin_ms=1000)
+
+    def tearDown(self):
+        self.controller.close()
+
+    def last_frame(self):
+        frames = FrameParser().feed(self.serial.writes[-1])
+        self.assertEqual(len(frames), 1)
+        return frames[0]
+
+    def handshake_generator(self, status=GeneratorState.STOPPED):
+        self.assertTrue(self.controller.open("COM9"))
+        self.controller.process_bytes(encode_frame(
+            MessageType.HELLO_ACK,
+            encode_hello_ack((1, 2, 0),
+                             REQUIRED_FIRMWARE_CAPABILITIES | CAPABILITY_CONTINUOUS_SQUARE)))
+        self.assertEqual(self.last_frame().message_type, MessageType.GEN_STATUS)
+        self.assertEqual(self.controller.generator_state, GeneratorState.UNKNOWN)
+        self.controller.process_bytes(encode_frame(
+            MessageType.GEN_STATUS_ACK, encode_gen_status_ack(status)))
+        self.assertEqual(self.controller.generator_state, status)
+
+    def configure_generator(self, frequency=10.0, *, applied_ticks=None):
+        requested = self.controller.configure_generator(ContinuousSquareConfig(frequency))
+        frame = self.last_frame()
+        self.assertEqual(frame.message_type, MessageType.GEN_CONFIG)
+        self.assertEqual(decode_gen_config(frame.payload), requested.timer)
+        timer = requested.timer if applied_ticks is None else ContinuousSquareTimerConfig(
+            8, False, True, 64, applied_ticks)
+        self.controller.process_bytes(encode_frame(
+            MessageType.GEN_CONFIG_ACK, encode_gen_config_ack(timer)))
+        return requested, timer
+
+    def start_running_generator(self, frequency=10.0):
+        self.handshake_generator()
+        self.configure_generator(frequency)
+        self.controller.start_generator()
+        self.assertEqual(self.last_frame().message_type, MessageType.GEN_START)
+        self.assertEqual(self.controller.generator_state, GeneratorState.STOPPED)
+        self.controller.process_bytes(encode_frame(
+            MessageType.GEN_START_ACK, encode_gen_start_ack()))
+        self.assertEqual(self.controller.generator_state, GeneratorState.RUNNING)
+
+    def configure_acquisition_and_arm(self, *, frequency=10.0, count=4, session=42):
+        self.start_running_generator(frequency)
+        selected = config(count)
+        self.controller.configure(selected)
+        self.controller.process_bytes(encode_frame(
+            MessageType.CONFIG_ACK, encode_config(selected)))
+        self.assertEqual(self.controller.start(session), session)
+        self.assertEqual(self.controller.state, AcquisitionState.ARMED)
+        return selected
+
+    def trigger(self, session=42):
+        self.controller.process_bytes(encode_frame(
+            MessageType.ACQ_STARTED,
+            encode_acquisition_started(AcquisitionStarted(session))))
+
+    def test_firmware_without_generator_capability_rejects_methods_without_writing(self):
+        self.controller.open("COM9")
+        self.controller.process_bytes(encode_frame(
+            MessageType.HELLO_ACK,
+            encode_hello_ack((1, 1, 0), REQUIRED_FIRMWARE_CAPABILITIES)))
+        writes_before = len(self.serial.writes)
+        self.assertFalse(self.controller.generator_available)
+        self.assertEqual(self.controller.generator_state, GeneratorState.UNKNOWN)
+        with self.assertRaisesRegex(AcquisitionError, "ne prend pas en charge"):
+            self.controller.configure_generator(ContinuousSquareConfig(10))
+        self.assertEqual(len(self.serial.writes), writes_before)
+
+    def test_generator_config_ack_is_source_of_applied_frequency(self):
+        configured = []
+        self.controller.generator_configured.connect(configured.append)
+        self.handshake_generator()
+        requested, applied_timer = self.configure_generator(123.0, applied_ticks=1000)
+        self.assertNotEqual(requested.timer.half_period_ticks,
+                            applied_timer.half_period_ticks)
+        self.assertEqual(self.controller.generator_plan.timer, applied_timer)
+        self.assertAlmostEqual(self.controller.generator_plan.applied_frequency_hz, 125.0)
+        self.assertEqual(configured, [self.controller.generator_plan])
+
+    def test_start_keepalive_stop_and_ack_transitions(self):
+        states = []
+        self.controller.generator_state_changed.connect(states.append)
+        self.handshake_generator()
+        self.configure_generator()
+        self.controller.start_generator()
+        self.assertFalse(self.controller.generator_keepalive.isActive())
+        self.controller.process_bytes(encode_frame(
+            MessageType.GEN_START_ACK, encode_gen_start_ack()))
+        self.assertTrue(self.controller.generator_keepalive.isActive())
+        self.assertEqual(self.controller.generator_keepalive.interval(), 25)
+        self.controller._send_generator_keepalive()
+        self.assertEqual(self.last_frame().message_type, MessageType.GEN_KEEPALIVE)
+        self.assertTrue(self.controller.stop_generator())
+        self.assertEqual(self.controller.generator_state, GeneratorState.RUNNING)
+        self.controller.process_bytes(encode_frame(
+            MessageType.GEN_STOP_ACK, encode_gen_stop_ack()))
+        self.assertEqual(self.controller.generator_state, GeneratorState.STOPPED)
+        self.assertFalse(self.controller.generator_keepalive.isActive())
+        self.assertIn(GeneratorState.RUNNING, states)
+        self.assertEqual(states[-1], GeneratorState.STOPPED)
+
+    def test_status_after_reconnect_restores_stopped_or_running_and_keepalive(self):
+        self.handshake_generator(GeneratorState.STOPPED)
+        self.assertFalse(self.controller.generator_keepalive.isActive())
+        self.controller.close()
+        self.assertEqual(self.controller.generator_state, GeneratorState.UNKNOWN)
+
+        self.controller.open("COM9")
+        self.controller.process_bytes(encode_frame(
+            MessageType.HELLO_ACK,
+            encode_hello_ack((1, 2, 0),
+                             REQUIRED_FIRMWARE_CAPABILITIES | CAPABILITY_CONTINUOUS_SQUARE)))
+        self.assertEqual(self.last_frame().message_type, MessageType.GEN_STATUS)
+        self.controller.process_bytes(encode_frame(
+            MessageType.GEN_STATUS_ACK,
+            encode_gen_status_ack(GeneratorState.RUNNING)))
+        self.assertEqual(self.controller.generator_state, GeneratorState.RUNNING)
+        self.assertTrue(self.controller.generator_keepalive.isActive())
+
+    def test_generator_command_timeout_is_non_destructive_and_unknown_when_needed(self):
+        errors = []
+        self.controller.error_occurred.connect(errors.append)
+        self.controller.open("COM9")
+        self.controller.process_bytes(encode_frame(
+            MessageType.HELLO_ACK,
+            encode_hello_ack((1, 2, 0),
+                             REQUIRED_FIRMWARE_CAPABILITIES | CAPABILITY_CONTINUOUS_SQUARE)))
+        self.controller._generator_command_timed_out()
+        self.assertEqual(self.controller.state, AcquisitionState.READY)
+        self.assertEqual(self.controller.generator_state, GeneratorState.UNKNOWN)
+        self.assertTrue(self.serial.isOpen())
+        self.assertIn("GEN_STATUS_ACK", errors[0])
+
+    def test_start_with_running_generator_arms_until_acq_started(self):
+        armed = []
+        triggered = []
+        self.controller.acquisition_armed.connect(armed.append)
+        self.controller.acquisition_triggered.connect(triggered.append)
+        self.configure_acquisition_and_arm()
+        self.assertEqual(armed, [42])
+        self.assertEqual(triggered, [])
+        self.assertTrue(self.controller.armed_timeout.isActive())
+        self.trigger()
+        self.assertEqual(self.controller.state, AcquisitionState.ACQUIRING)
+        self.assertEqual(triggered, [AcquisitionStarted(42)])
+        self.assertFalse(self.controller.armed_timeout.isActive())
+
+    def test_acq_started_wrong_session_and_duplicate_are_rejected(self):
+        self.configure_acquisition_and_arm()
+        self.trigger(99)
+        self.assertEqual(self.controller.state, AcquisitionState.ERROR)
+
+        self.tearDown()
+        self.setUp()
+        self.configure_acquisition_and_arm()
+        self.trigger()
+        self.trigger()
+        self.assertEqual(self.controller.state, AcquisitionState.ERROR)
+
+    def test_low_frequency_armed_timeout_sends_acquisition_stop_only(self):
+        errors = []
+        self.controller.error_occurred.connect(errors.append)
+        self.configure_acquisition_and_arm(frequency=0.1)
+        self.assertEqual(self.controller.armed_timeout.interval(), 11_000)
+        writes_before = len(self.serial.writes)
+        self.controller._armed_timed_out()
+        self.assertEqual(self.controller.state, AcquisitionState.STOPPING)
+        self.assertEqual(len(self.serial.writes), writes_before + 1)
+        self.assertEqual(self.last_frame().message_type, MessageType.STOP)
+        self.assertEqual(self.controller.generator_state, GeneratorState.RUNNING)
+        self.controller.process_bytes(encode_frame(
+            MessageType.END, struct.pack("<II", 42, 0)))
+        self.assertEqual(self.controller.state, AcquisitionState.CONFIGURED)
+        self.assertIn("front montant", errors[0])
+
+    def test_stop_acquisition_while_armed_keeps_generator_running(self):
+        results = []
+        self.controller.acquisition_finished.connect(results.append)
+        self.configure_acquisition_and_arm()
+        self.assertTrue(self.controller.stop())
+        self.assertEqual(self.controller.state, AcquisitionState.STOPPING)
+        self.assertEqual(self.last_frame().message_type, MessageType.STOP)
+        self.controller.process_bytes(encode_frame(
+            MessageType.END, struct.pack("<II", 42, 0)))
+        self.assertEqual(self.controller.state, AcquisitionState.CONFIGURED)
+        self.assertEqual(self.controller.generator_state, GeneratorState.RUNNING)
+        self.assertEqual(results[0].samples, ())
+        self.assertFalse(results[0].complete)
+        self.assertTrue(self.controller.generator_keepalive.isActive())
+
+    def test_gbf_data_keeps_adc_e_alignment_and_end_keeps_generator_running(self):
+        results = []
+        self.controller.acquisition_finished.connect(results.append)
+        self.configure_acquisition_and_arm(count=4)
+        self.trigger()
+        batch = GbfDataBatch(42, 0, 0, (100, 200, 300, 400),
+                             (True, True, False, False))
+        self.controller.process_bytes(encode_frame(
+            MessageType.DATA_GBF, encode_gbf_data(batch)))
+        self.controller.process_bytes(encode_frame(
+            MessageType.END, struct.pack("<II", 42, 4)))
+        result = results[0]
+        self.assertEqual(result.samples, batch.values)
+        self.assertEqual(result.generated_high, batch.generated_high)
+        self.assertEqual(result.times_s, (0.0, 0.001, 0.002, 0.003))
+        self.assertEqual(result.generated_voltages_v, (5.0, 5.0, 0.0, 0.0))
+        self.assertEqual(self.controller.generator_state, GeneratorState.RUNNING)
+        self.assertTrue(self.controller.generator_keepalive.isActive())
+
+    def test_gbf_data_invalid_sequence_or_index_preserves_partial(self):
+        for sequence, first_index in ((2, 2), (1, 3)):
+            with self.subTest(sequence=sequence, first_index=first_index):
+                self.tearDown()
+                self.setUp()
+                self.configure_acquisition_and_arm(count=4)
+                self.trigger()
+                first = GbfDataBatch(42, 0, 0, (10, 20), (True, False))
+                self.controller.process_bytes(encode_frame(
+                    MessageType.DATA_GBF, encode_gbf_data(first)))
+                invalid = GbfDataBatch(42, sequence, first_index, (30, 40), (False, False))
+                self.controller.process_bytes(encode_frame(
+                    MessageType.DATA_GBF, encode_gbf_data(invalid)))
+                self.assertEqual(self.controller.state, AcquisitionState.ERROR)
+                self.assertEqual(self.controller.partial_result().samples, (10, 20))
+                self.assertEqual(self.controller.partial_result().generated_high, (True, False))
+
+    def test_generator_stop_during_acquisition_keeps_accepting_gbf_data(self):
+        self.configure_acquisition_and_arm(count=2)
+        self.trigger()
+        self.assertTrue(self.controller.stop_generator())
+        self.controller.process_bytes(encode_frame(
+            MessageType.GEN_STOP_ACK, encode_gen_stop_ack()))
+        self.assertEqual(self.controller.generator_state, GeneratorState.STOPPED)
+        self.assertEqual(self.controller.state, AcquisitionState.ACQUIRING)
+        batch = GbfDataBatch(42, 0, 0, (100, 200), (True, False))
+        self.controller.process_bytes(encode_frame(
+            MessageType.DATA_GBF, encode_gbf_data(batch)))
+        self.controller.process_bytes(encode_frame(
+            MessageType.END, struct.pack("<II", 42, 2)))
+        self.assertEqual(self.controller.samples, [100, 200])
+        self.assertEqual(self.controller.generated_high, [True, False])
+        self.assertEqual(self.controller.generator_state, GeneratorState.STOPPED)
+
+    def test_historical_session_rejects_gbf_data_and_historical_path_stays_unchanged(self):
+        self.controller.open("COM9")
+        self.controller.process_bytes(encode_frame(
+            MessageType.HELLO_ACK,
+            encode_hello_ack((1, 1, 0), REQUIRED_FIRMWARE_CAPABILITIES)))
+        selected = config(count=2)
+        self.controller.configure(selected)
+        self.controller.process_bytes(encode_frame(
+            MessageType.CONFIG_ACK, encode_config(selected)))
+        self.controller.start(42)
+        self.assertEqual(self.controller.state, AcquisitionState.ACQUIRING)
+        batch = GbfDataBatch(42, 0, 0, (100, 200), (True, False))
+        self.controller.process_bytes(encode_frame(
+            MessageType.DATA_GBF, encode_gbf_data(batch)))
+        self.assertEqual(self.controller.state, AcquisitionState.ERROR)
+
+    def test_trigger_cancelled_is_specific_non_destructive_error(self):
+        errors = []
+        self.controller.error_occurred.connect(errors.append)
+        self.configure_acquisition_and_arm()
+        self.assertTrue(self.controller.stop_generator())
+        self.controller.process_bytes(encode_frame(
+            MessageType.GEN_STOP_ACK, encode_gen_stop_ack())
+            + encode_frame(MessageType.ERROR,
+                           struct.pack("<H", ERR_TRIGGER_CANCELLED) + b"trigger cancelled"))
+        self.assertEqual(self.controller.state, AcquisitionState.CONFIGURED)
+        self.assertEqual(self.controller.generator_state, GeneratorState.STOPPED)
+        self.assertTrue(self.serial.isOpen())
+        self.assertIn("annulé", errors[0])
+
+    def test_resource_error_preserves_gbf_partial_and_stops_all_timers(self):
+        self.configure_acquisition_and_arm(count=4)
+        self.trigger()
+        batch = GbfDataBatch(42, 0, 0, (10, 20), (True, False))
+        self.controller.process_bytes(encode_frame(
+            MessageType.DATA_GBF, encode_gbf_data(batch)))
+        self.serial.errorOccurred.emit(QSerialPort.SerialPortError.ResourceError)
+        self.assertEqual(self.controller.state, AcquisitionState.ERROR)
+        self.assertEqual(self.controller.generator_state, GeneratorState.UNKNOWN)
+        self.assertEqual(self.controller.partial_result().samples, (10, 20))
+        self.assertEqual(self.controller.partial_result().generated_high, (True, False))
+        for timer in (self.controller.handshake_timeout, self.controller.hello_timer,
+                      self.controller.generator_command_timeout,
+                      self.controller.generator_keepalive, self.controller.armed_timeout):
+            self.assertFalse(timer.isActive())
+
+    def test_close_stops_timers_and_exposes_safe_shutdown_state(self):
+        self.start_running_generator()
+        self.assertFalse(self.controller.generator_ready_for_flash)
+        self.assertFalse(self.controller.request_generator_shutdown())
+        self.controller.process_bytes(encode_frame(
+            MessageType.GEN_STOP_ACK, encode_gen_stop_ack()))
+        self.assertTrue(self.controller.generator_ready_for_flash)
+        self.controller.start_generator()
+        self.controller.process_bytes(encode_frame(
+            MessageType.GEN_START_ACK, encode_gen_start_ack()))
+        self.assertFalse(self.controller.request_generator_shutdown())
+        self.assertTrue(self.controller.generator_command_timeout.isActive())
+        self.assertTrue(self.controller.generator_keepalive.isActive())
+        self.controller.close()
+        self.assertEqual(self.controller.generator_state, GeneratorState.UNKNOWN)
+        for timer in (self.controller.handshake_timeout, self.controller.hello_timer,
+                      self.controller.generator_command_timeout,
+                      self.controller.generator_keepalive, self.controller.armed_timeout):
+            self.assertFalse(timer.isActive())
 
 
 if __name__ == "__main__":

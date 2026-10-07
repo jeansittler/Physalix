@@ -50,6 +50,10 @@ TIMER2_PRESCALER = 64
 TIMER2_TICK_S = TIMER2_PRESCALER / TIMER2_CLOCK_HZ
 TIMER2_MIN_HALF_PERIOD_TICKS = 125
 TIMER2_MAX_HALF_PERIOD_TICKS = 1_250_000
+GENERATOR_KEEPALIVE_INTERVAL_MS = 750
+GENERATOR_COMMAND_TIMEOUT_MS = 2000
+ACQUISITION_TRIGGER_MARGIN_MS = 1000
+ERR_TRIGGER_CANCELLED = 7
 _HEADER = struct.Struct("<2sBBH")
 _CRC = struct.Struct("<H")
 
@@ -82,6 +86,7 @@ class AcquisitionState(Enum):
     WAITING_HANDSHAKE = auto()
     READY = auto()
     CONFIGURED = auto()
+    ARMED = auto()
     ACQUIRING = auto()
     STOPPING = auto()
     ERROR = auto()
@@ -347,6 +352,24 @@ class AcquisitionResult:
     samples: tuple[int, ...]
     complete: bool
     reason: str = ""
+    generated_high: tuple[bool, ...] = ()
+    sampling_period_us: int | None = None
+
+    @property
+    def times_s(self) -> tuple[float, ...]:
+        if self.sampling_period_us is None:
+            return ()
+        return tuple(index * self.sampling_period_us / 1_000_000
+                     for index in range(len(self.samples)))
+
+    @property
+    def voltages_v(self) -> tuple[float, ...]:
+        return tuple(value * UNO_LOGIC_HIGH_VOLTS / 1023 for value in self.samples)
+
+    @property
+    def generated_voltages_v(self) -> tuple[float, ...]:
+        return tuple(UNO_LOGIC_HIGH_VOLTS if high else UNO_LOGIC_LOW_VOLTS
+                     for high in self.generated_high)
 
 
 def _check_uint32(value: int, name: str) -> None:
@@ -791,8 +814,12 @@ _TRANSITIONS = {
                                          AcquisitionState.DISCONNECTED},
     AcquisitionState.READY: {AcquisitionState.CONFIGURED, AcquisitionState.ERROR,
                              AcquisitionState.DISCONNECTED},
-    AcquisitionState.CONFIGURED: {AcquisitionState.ACQUIRING, AcquisitionState.READY,
-                                  AcquisitionState.ERROR, AcquisitionState.DISCONNECTED},
+    AcquisitionState.CONFIGURED: {AcquisitionState.ARMED, AcquisitionState.ACQUIRING,
+                                  AcquisitionState.READY, AcquisitionState.ERROR,
+                                  AcquisitionState.DISCONNECTED},
+    AcquisitionState.ARMED: {AcquisitionState.ACQUIRING, AcquisitionState.STOPPING,
+                             AcquisitionState.CONFIGURED, AcquisitionState.ERROR,
+                             AcquisitionState.DISCONNECTED},
     AcquisitionState.ACQUIRING: {AcquisitionState.STOPPING, AcquisitionState.CONFIGURED,
                                  AcquisitionState.ERROR, AcquisitionState.DISCONNECTED},
     AcquisitionState.STOPPING: {AcquisitionState.CONFIGURED, AcquisitionState.ERROR,
@@ -809,20 +836,35 @@ class AcquisitionController(QObject):
     configuration_accepted = Signal(object)
     data_batch_received = Signal(object)
     acquisition_finished = Signal(object)
+    acquisition_armed = Signal(object)
+    acquisition_triggered = Signal(object)
+    generator_state_changed = Signal(object)
+    generator_configured = Signal(object)
     error_occurred = Signal(str)
 
     def __init__(self, parent: QObject | None = None, *, serial_port=None,
-                 handshake_timeout_ms: int = 4000, hello_interval_ms: int = 250) -> None:
+                 handshake_timeout_ms: int = 4000, hello_interval_ms: int = 250,
+                 generator_command_timeout_ms: int = GENERATOR_COMMAND_TIMEOUT_MS,
+                 generator_keepalive_interval_ms: int = GENERATOR_KEEPALIVE_INTERVAL_MS,
+                 trigger_margin_ms: int = ACQUISITION_TRIGGER_MARGIN_MS) -> None:
         super().__init__(parent)
         self.serial = serial_port or QSerialPort(self)
         self.parser = FrameParser()
         self.state = AcquisitionState.DISCONNECTED
         self.config: AcquisitionConfig | None = None
         self.firmware_info: FirmwareInfo | None = None
+        self.generator_state = GeneratorState.UNKNOWN
+        self.generator_plan: ContinuousSquarePlan | None = None
         self.session_id: int | None = None
         self.samples: list[int] = []
+        self.generated_high: list[bool] = []
         self._expected_sequence = 0
         self._expected_sample_index = 0
+        self._session_uses_gbf = False
+        self._acquisition_started_received = False
+        self._pending_generator_ack: MessageType | None = None
+        self._pending_generator_requested_plan: ContinuousSquarePlan | None = None
+        self._trigger_margin_ms = trigger_margin_ms
         self.handshake_timeout = QTimer(self)
         self.handshake_timeout.setSingleShot(True)
         self.handshake_timeout.setInterval(handshake_timeout_ms)
@@ -830,6 +872,16 @@ class AcquisitionController(QObject):
         self.hello_timer = QTimer(self)
         self.hello_timer.setInterval(hello_interval_ms)
         self.hello_timer.timeout.connect(self._send_hello)
+        self.generator_command_timeout = QTimer(self)
+        self.generator_command_timeout.setSingleShot(True)
+        self.generator_command_timeout.setInterval(generator_command_timeout_ms)
+        self.generator_command_timeout.timeout.connect(self._generator_command_timed_out)
+        self.generator_keepalive = QTimer(self)
+        self.generator_keepalive.setInterval(generator_keepalive_interval_ms)
+        self.generator_keepalive.timeout.connect(self._send_generator_keepalive)
+        self.armed_timeout = QTimer(self)
+        self.armed_timeout.setSingleShot(True)
+        self.armed_timeout.timeout.connect(self._armed_timed_out)
         self.serial.readyRead.connect(self._on_ready_read)
         self.serial.errorOccurred.connect(self._on_serial_error)
 
@@ -841,6 +893,55 @@ class AcquisitionController(QObject):
         self.state = state
         self.state_changed.emit(state)
 
+    def _set_generator_state(self, state: GeneratorState) -> None:
+        if state is GeneratorState.RUNNING:
+            self.generator_keepalive.start()
+        else:
+            self.generator_keepalive.stop()
+        if state == self.generator_state:
+            return
+        self.generator_state = state
+        self.generator_state_changed.emit(state)
+
+    @property
+    def generator_available(self) -> bool:
+        return bool(self.firmware_info and
+                    self.firmware_info.capabilities & CAPABILITY_CONTINUOUS_SQUARE)
+
+    @property
+    def generator_ready_for_flash(self) -> bool:
+        """Vrai lorsque le futur workflow AVRDUDE peut fermer le port sûrement."""
+        return (self.generator_state is GeneratorState.STOPPED
+                and self._pending_generator_ack is None)
+
+    @property
+    def sample_times_s(self) -> tuple[float, ...]:
+        if self.config is None:
+            return ()
+        return tuple(index * self.config.sampling_period_us / 1_000_000
+                     for index in range(len(self.samples)))
+
+    @property
+    def sample_voltages_v(self) -> tuple[float, ...]:
+        return tuple(value * UNO_LOGIC_HIGH_VOLTS / 1023 for value in self.samples)
+
+    @property
+    def generated_voltages_v(self) -> tuple[float, ...]:
+        return tuple(UNO_LOGIC_HIGH_VOLTS if high else UNO_LOGIC_LOW_VOLTS
+                     for high in self.generated_high)
+
+    def _stop_runtime_timers(self) -> None:
+        self.handshake_timeout.stop()
+        self.hello_timer.stop()
+        self.generator_command_timeout.stop()
+        self.generator_keepalive.stop()
+        self.armed_timeout.stop()
+
+    def _clear_pending_generator_command(self) -> None:
+        self.generator_command_timeout.stop()
+        self._pending_generator_ack = None
+        self._pending_generator_requested_plan = None
+
     def open(self, port_name: str, baud_rate: int = 115200) -> bool:
         if self.state not in (AcquisitionState.DISCONNECTED, AcquisitionState.ERROR):
             raise StateTransitionError("Le port doit être fermé avant son ouverture.")
@@ -851,11 +952,18 @@ class AcquisitionController(QObject):
         if not self.serial.open(QIODeviceBase.OpenModeFlag.ReadWrite):
             self._fail(f"Impossible d'ouvrir {port_name} : {self.serial.errorString()}")
             return False
+        self._stop_runtime_timers()
+        self._clear_pending_generator_command()
         self.parser.clear()
         self.config = None
         self.firmware_info = None
+        self.generator_plan = None
+        self._set_generator_state(GeneratorState.UNKNOWN)
         self.session_id = None
         self.samples.clear()
+        self.generated_high.clear()
+        self._session_uses_gbf = False
+        self._acquisition_started_received = False
         self._set_state(AcquisitionState.WAITING_HANDSHAKE)
         # L'ouverture peut réinitialiser l'Uno via DTR : HELLO est répété sans blocage.
         self._send_hello()
@@ -864,12 +972,130 @@ class AcquisitionController(QObject):
         return True
 
     def close(self) -> None:
-        self.handshake_timeout.stop()
-        self.hello_timer.stop()
+        self._stop_runtime_timers()
+        self._clear_pending_generator_command()
+        self._set_generator_state(GeneratorState.UNKNOWN)
         if self.serial.isOpen():
             self.serial.close()
         if self.state is not AcquisitionState.DISCONNECTED:
             self._set_state(AcquisitionState.DISCONNECTED)
+
+    def _require_generator(self) -> None:
+        if not self.serial.isOpen() or self.state in (
+                AcquisitionState.DISCONNECTED, AcquisitionState.WAITING_HANDSHAKE,
+                AcquisitionState.ERROR):
+            raise StateTransitionError("Le générateur exige une connexion prête.")
+        if not self.generator_available:
+            raise AcquisitionError("Le firmware connecté ne prend pas en charge le GBF continu.")
+
+    def _begin_generator_command(self, message_type: MessageType,
+                                 expected_ack: MessageType, payload: bytes = b"") -> None:
+        self._require_generator()
+        if self._pending_generator_ack is not None:
+            raise StateTransitionError(
+                f"Une commande générateur attend déjà {self._pending_generator_ack.name}.")
+        self._pending_generator_ack = expected_ack
+        try:
+            self._write(message_type, payload)
+        except AcquisitionError:
+            self._clear_pending_generator_command()
+            raise
+        self.generator_command_timeout.start()
+
+    def configure_generator(self, config: ContinuousSquareConfig) -> ContinuousSquarePlan:
+        """Envoyer GEN_CONFIG ; ``generator_configured`` livre ensuite le plan appliqué."""
+        self._require_generator()
+        if self.state in (AcquisitionState.ARMED, AcquisitionState.ACQUIRING,
+                          AcquisitionState.STOPPING):
+            raise StateTransitionError("GEN_CONFIG est interdit pendant une acquisition active.")
+        if self.generator_state is not GeneratorState.STOPPED:
+            raise StateTransitionError("GEN_CONFIG exige un générateur arrêté.")
+        if self._pending_generator_ack is not None:
+            raise StateTransitionError(
+                f"Une commande générateur attend déjà {self._pending_generator_ack.name}.")
+        requested_plan = plan_continuous_square(config)
+        self._pending_generator_requested_plan = requested_plan
+        try:
+            self._begin_generator_command(
+                MessageType.GEN_CONFIG, MessageType.GEN_CONFIG_ACK,
+                encode_gen_config(requested_plan.timer))
+        except (AcquisitionError, StateTransitionError):
+            self._pending_generator_requested_plan = None
+            raise
+        return requested_plan
+
+    def start_generator(self) -> None:
+        self._require_generator()
+        if self.state in (AcquisitionState.ARMED, AcquisitionState.ACQUIRING,
+                          AcquisitionState.STOPPING):
+            raise StateTransitionError("GEN_START est interdit pendant une acquisition active.")
+        if self.generator_plan is None:
+            raise StateTransitionError("GEN_START exige une configuration générateur acceptée.")
+        if self.generator_state is not GeneratorState.STOPPED:
+            raise StateTransitionError("GEN_START exige un générateur arrêté.")
+        self._begin_generator_command(
+            MessageType.GEN_START, MessageType.GEN_START_ACK, encode_gen_start())
+
+    def stop_generator(self) -> bool:
+        """Demander un arrêt asynchrone, y compris pendant une acquisition."""
+        self._require_generator()
+        if self.generator_state is GeneratorState.STOPPED:
+            return False
+        self._begin_generator_command(
+            MessageType.GEN_STOP, MessageType.GEN_STOP_ACK, encode_gen_stop())
+        return True
+
+    def request_generator_status(self) -> None:
+        self._begin_generator_command(
+            MessageType.GEN_STATUS, MessageType.GEN_STATUS_ACK, encode_gen_status())
+
+    def request_generator_shutdown(self) -> bool:
+        """Préparer une fermeture future sans bloquer la GUI.
+
+        Retourne ``True`` si le port peut déjà être fermé. Sinon GEN_STOP est
+        envoyé et l'appelant attend ``generator_state_changed(STOPPED)`` avant
+        d'appeler :meth:`close`.
+        """
+        if self.generator_ready_for_flash:
+            return True
+        self.stop_generator()
+        return False
+
+    def _generator_command_timed_out(self) -> None:
+        expected = self._pending_generator_ack
+        if expected is None:
+            return
+        self._clear_pending_generator_command()
+        if expected in (MessageType.GEN_START_ACK, MessageType.GEN_STOP_ACK,
+                        MessageType.GEN_STATUS_ACK):
+            self._set_generator_state(GeneratorState.UNKNOWN)
+        self.error_occurred.emit(f"Délai expiré en attente de {expected.name}.")
+
+    def _send_generator_keepalive(self) -> None:
+        if self.generator_state is not GeneratorState.RUNNING:
+            self.generator_keepalive.stop()
+            return
+        try:
+            self._write(MessageType.GEN_KEEPALIVE, encode_gen_keepalive())
+        except AcquisitionError as error:
+            self._fail(str(error))
+
+    def _armed_wait_timeout_ms(self) -> int:
+        period_s = (self.generator_plan.applied_period_s if self.generator_plan is not None
+                    else 1.0 / CONTINUOUS_SQUARE_MIN_FREQUENCY_HZ)
+        return max(1, math.ceil(period_s * 1000 + self._trigger_margin_ms))
+
+    def _armed_timed_out(self) -> None:
+        if self.state is not AcquisitionState.ARMED:
+            return
+        try:
+            self._write(MessageType.STOP, _SESSION.pack(self.session_id))
+        except AcquisitionError as error:
+            self._fail(str(error))
+            return
+        self._set_state(AcquisitionState.STOPPING)
+        self.error_occurred.emit(
+            "Délai expiré en attente du front montant du générateur ; acquisition annulée.")
 
     def configure(self, config: AcquisitionConfig) -> None:
         if self.state not in (AcquisitionState.READY, AcquisitionState.CONFIGURED):
@@ -882,23 +1108,39 @@ class AcquisitionController(QObject):
     def start(self, session_id: int | None = None) -> int:
         if self.state is not AcquisitionState.CONFIGURED:
             raise StateTransitionError("START exige une configuration acceptée.")
+        if self.generator_available and self.generator_state is GeneratorState.UNKNOWN:
+            raise StateTransitionError(
+                "START exige que l'état du générateur ait été confirmé par GEN_STATUS_ACK.")
+        if self.generator_available and self._pending_generator_ack is not None:
+            raise StateTransitionError(
+                "START attend la fin de la commande générateur en cours.")
         session_id = secrets.randbits(32) if session_id is None else session_id
         _check_uint32(session_id, "session_id")
         self._write(MessageType.START, _SESSION.pack(session_id))
         self.session_id = session_id
         self.samples.clear()
+        self.generated_high.clear()
         self._expected_sequence = 0
         self._expected_sample_index = 0
-        self._set_state(AcquisitionState.ACQUIRING)
+        self._session_uses_gbf = self.generator_state is GeneratorState.RUNNING
+        self._acquisition_started_received = False
+        if self._session_uses_gbf:
+            self._set_state(AcquisitionState.ARMED)
+            self.armed_timeout.setInterval(self._armed_wait_timeout_ms())
+            self.armed_timeout.start()
+            self.acquisition_armed.emit(session_id)
+        else:
+            self._set_state(AcquisitionState.ACQUIRING)
         return session_id
 
     def stop(self) -> bool:
         """Demander l'arrêt une seule fois ; les appels suivants sont sans effet."""
         if self.state is AcquisitionState.STOPPING:
             return False
-        if self.state is not AcquisitionState.ACQUIRING:
+        if self.state not in (AcquisitionState.ARMED, AcquisitionState.ACQUIRING):
             return False
         self._write(MessageType.STOP, _SESSION.pack(self.session_id))
+        self.armed_timeout.stop()
         self._set_state(AcquisitionState.STOPPING)
         return True
 
@@ -912,7 +1154,11 @@ class AcquisitionController(QObject):
                 break
 
     def partial_result(self, reason: str = "") -> AcquisitionResult:
-        return AcquisitionResult(self.session_id, tuple(self.samples), False, reason)
+        return AcquisitionResult(
+            self.session_id, tuple(self.samples), False, reason,
+            tuple(self.generated_high),
+            self.config.sampling_period_us if self.config is not None else None,
+        )
 
     def _write(self, message_type: MessageType, payload: bytes = b"") -> None:
         frame = encode_frame(message_type, payload)
@@ -938,8 +1184,9 @@ class AcquisitionController(QObject):
             self._fail(SERIAL_RESOURCE_DISCONNECTED_MESSAGE)
 
     def _fail(self, message: str) -> None:
-        self.handshake_timeout.stop()
-        self.hello_timer.stop()
+        self._stop_runtime_timers()
+        self._clear_pending_generator_command()
+        self._set_generator_state(GeneratorState.UNKNOWN)
         if self.serial.isOpen():
             self.serial.close()
         if self.state is not AcquisitionState.ERROR:
@@ -961,6 +1208,9 @@ class AcquisitionController(QObject):
             self.handshake_timeout.stop()
             self.hello_timer.stop()
             self._set_state(AcquisitionState.READY)
+            self._set_generator_state(GeneratorState.UNKNOWN)
+            if self.generator_available:
+                self.request_generator_status()
             self.ready.emit(self.firmware_info)
         elif message_type is MessageType.CONFIG_ACK:
             if self.state is not AcquisitionState.READY or self.config is None:
@@ -972,6 +1222,18 @@ class AcquisitionController(QObject):
             self.configuration_accepted.emit(self.config)
         elif message_type is MessageType.DATA:
             self._handle_data(decode_data(frame.payload))
+        elif message_type is MessageType.GEN_CONFIG_ACK:
+            self._handle_generator_config_ack(frame.payload)
+        elif message_type is MessageType.GEN_START_ACK:
+            self._handle_generator_state_ack(message_type, frame.payload)
+        elif message_type is MessageType.GEN_STOP_ACK:
+            self._handle_generator_state_ack(message_type, frame.payload)
+        elif message_type is MessageType.GEN_STATUS_ACK:
+            self._handle_generator_state_ack(message_type, frame.payload)
+        elif message_type is MessageType.ACQ_STARTED:
+            self._handle_acquisition_started(decode_acquisition_started(frame.payload))
+        elif message_type is MessageType.DATA_GBF:
+            self._handle_gbf_data(decode_gbf_data(frame.payload))
         elif message_type is MessageType.END:
             self._handle_end(frame.payload)
         elif message_type is MessageType.ERROR:
@@ -979,24 +1241,90 @@ class AcquisitionController(QObject):
         else:
             raise StateTransitionError(f"{message_type.name} inattendu côté PC.")
 
+    def _expect_generator_ack(self, message_type: MessageType) -> None:
+        if self._pending_generator_ack is not message_type:
+            expected = (self._pending_generator_ack.name
+                        if self._pending_generator_ack is not None else "aucun ACK")
+            raise StateTransitionError(
+                f"{message_type.name} inattendu (attente : {expected}).")
+        self.generator_command_timeout.stop()
+
+    def _handle_generator_config_ack(self, payload: bytes) -> None:
+        self._expect_generator_ack(MessageType.GEN_CONFIG_ACK)
+        requested_plan = self._pending_generator_requested_plan
+        if requested_plan is None:
+            raise StateTransitionError("GEN_CONFIG_ACK reçu sans plan demandé.")
+        timer = decode_gen_config_ack(payload)
+        applied_frequency_hz = TIMER2_CLOCK_HZ / (
+            2 * timer.prescaler * timer.half_period_ticks)
+        applied_plan = ContinuousSquarePlan(
+            requested_plan.requested, timer, applied_frequency_hz,
+            1.0 / applied_frequency_hz,
+        )
+        self._clear_pending_generator_command()
+        self.generator_plan = applied_plan
+        self.generator_configured.emit(applied_plan)
+
+    def _handle_generator_state_ack(self, message_type: MessageType, payload: bytes) -> None:
+        self._expect_generator_ack(message_type)
+        if message_type is MessageType.GEN_START_ACK:
+            state = decode_gen_start_ack(payload)
+        elif message_type is MessageType.GEN_STOP_ACK:
+            state = decode_gen_stop_ack(payload)
+        else:
+            state = decode_gen_status_ack(payload)
+        self._clear_pending_generator_command()
+        self._set_generator_state(state)
+
+    def _handle_acquisition_started(self, started: AcquisitionStarted) -> None:
+        if self._acquisition_started_received:
+            raise AcquisitionError("ACQ_STARTED dupliqué.")
+        if self.state is not AcquisitionState.ARMED:
+            raise StateTransitionError("ACQ_STARTED reçu hors état ARMED.")
+        if not self._session_uses_gbf:
+            raise AcquisitionError("ACQ_STARTED reçu pour une session historique.")
+        if started.session_id != self.session_id:
+            raise AcquisitionError("ACQ_STARTED appartient à une autre session.")
+        self._acquisition_started_received = True
+        self.armed_timeout.stop()
+        self._set_state(AcquisitionState.ACQUIRING)
+        self.acquisition_triggered.emit(started)
+
     def _handle_data(self, batch: DataBatch) -> None:
-        if self.state not in (AcquisitionState.ACQUIRING, AcquisitionState.STOPPING):
-            raise StateTransitionError("DATA reçu hors acquisition.")
-        if batch.session_id != self.session_id:
-            raise AcquisitionError("DATA appartient à une autre session.")
-        if batch.sequence_number != self._expected_sequence:
-            qualifier = "dupliqué" if batch.sequence_number < self._expected_sequence else "manquant"
-            raise AcquisitionError(f"Lot DATA {qualifier} ou incohérent (attendu {self._expected_sequence}, "
-                                   f"reçu {batch.sequence_number}).")
-        if batch.first_sample_index != self._expected_sample_index:
-            raise AcquisitionError(f"Index DATA incohérent (attendu {self._expected_sample_index}, "
-                                   f"reçu {batch.first_sample_index}).")
-        if self.config is None or len(self.samples) + len(batch.values) > self.config.sample_count:
-            raise AcquisitionError("DATA dépasse le nombre de points configuré.")
+        if self._session_uses_gbf:
+            raise AcquisitionError("DATA historique reçu pour une session DATA_GBF.")
+        self._validate_data_batch(batch, "DATA")
         self.samples.extend(batch.values)
         self._expected_sequence += 1
         self._expected_sample_index += len(batch.values)
         self.data_batch_received.emit(batch)
+
+    def _handle_gbf_data(self, batch: GbfDataBatch) -> None:
+        if not self._session_uses_gbf:
+            raise AcquisitionError("DATA_GBF reçu pour une session historique.")
+        self._validate_data_batch(batch, "DATA_GBF")
+        if len(batch.generated_high) != len(batch.values):
+            raise AcquisitionError("DATA_GBF désaligne ADC et E.")
+        self.samples.extend(batch.values)
+        self.generated_high.extend(batch.generated_high)
+        self._expected_sequence += 1
+        self._expected_sample_index += len(batch.values)
+        self.data_batch_received.emit(batch)
+
+    def _validate_data_batch(self, batch: DataBatch | GbfDataBatch, name: str) -> None:
+        if self.state not in (AcquisitionState.ACQUIRING, AcquisitionState.STOPPING):
+            raise StateTransitionError(f"{name} reçu hors acquisition.")
+        if batch.session_id != self.session_id:
+            raise AcquisitionError(f"{name} appartient à une autre session.")
+        if batch.sequence_number != self._expected_sequence:
+            qualifier = "dupliqué" if batch.sequence_number < self._expected_sequence else "manquant"
+            raise AcquisitionError(f"Lot {name} {qualifier} ou incohérent (attendu {self._expected_sequence}, "
+                                   f"reçu {batch.sequence_number}).")
+        if batch.first_sample_index != self._expected_sample_index:
+            raise AcquisitionError(f"Index {name} incohérent (attendu {self._expected_sample_index}, "
+                                   f"reçu {batch.first_sample_index}).")
+        if self.config is None or len(self.samples) + len(batch.values) > self.config.sample_count:
+            raise AcquisitionError(f"{name} dépasse le nombre de points configuré.")
 
     def _handle_end(self, payload: bytes) -> None:
         if self.state not in (AcquisitionState.ACQUIRING, AcquisitionState.STOPPING):
@@ -1006,11 +1334,20 @@ class AcquisitionController(QObject):
         session_id, total = _END.unpack(payload)
         if session_id != self.session_id or total != len(self.samples):
             raise AcquisitionError("Bilan END incohérent avec les données reçues.")
+        if self._session_uses_gbf and len(self.generated_high) != len(self.samples):
+            raise AcquisitionError("Bilan END incohérent : ADC et E sont désalignés.")
         complete = self.config is not None and total == self.config.sample_count
-        result = AcquisitionResult(session_id, tuple(self.samples), complete,
-                                   "" if complete else "Acquisition arrêtée avant le nombre demandé.")
+        result = AcquisitionResult(
+            session_id, tuple(self.samples), complete,
+            "" if complete else "Acquisition arrêtée avant le nombre demandé.",
+            tuple(self.generated_high),
+            self.config.sampling_period_us if self.config is not None else None,
+        )
+        self.armed_timeout.stop()
         self._set_state(AcquisitionState.CONFIGURED)
         self.acquisition_finished.emit(result)
+        self._session_uses_gbf = False
+        self._acquisition_started_received = False
 
     def _handle_device_error(self, payload: bytes) -> None:
         if len(payload) < 2:
@@ -1020,4 +1357,17 @@ class AcquisitionController(QObject):
             detail = payload[2:].decode("utf-8")
         except UnicodeDecodeError:
             detail = "message illisible"
+        if (code == ERR_TRIGGER_CANCELLED and self._session_uses_gbf
+                and not self._acquisition_started_received
+                and self.state in (AcquisitionState.ARMED, AcquisitionState.STOPPING)):
+            self.armed_timeout.stop()
+            if self._pending_generator_ack is MessageType.GEN_STOP_ACK:
+                self._clear_pending_generator_command()
+            self._set_generator_state(GeneratorState.STOPPED)
+            self._set_state(AcquisitionState.CONFIGURED)
+            self._session_uses_gbf = False
+            self._acquisition_started_received = False
+            self.error_occurred.emit(
+                f"Déclenchement de l'acquisition annulé : {detail}".rstrip())
+            return
         raise AcquisitionError(f"Erreur firmware {code} : {detail}".rstrip())
