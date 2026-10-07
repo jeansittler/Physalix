@@ -30,8 +30,27 @@ fait pas partie de l'artefact distribué officiel.
 - `GEN_CONFIG`, `GEN_START`, `GEN_STOP`, `GEN_STATUS` et `GEN_KEEPALIVE` sont
   traités dans la boucle principale ; aucune opération série n'a lieu dans
   l'ISR Timer2.
-- La synchronisation de l'acquisition sur un front et le format `DATA_GBF`
-  seront ajoutés dans une étape ultérieure.
+- Un `START` reçu pendant que le GBF tourne arme l'acquisition sans démarrer
+  Timer1 ni lancer de conversion. Le prochain front physique LOW→HIGH de D8
+  devient `t = 0` : l'ISR Timer2 capture `E_0`, déclenche l'ADC pour `k = 0`,
+  réinitialise Timer1 puis le démarre en dernier afin que `k = 1` arrive un
+  `Te` complet plus tard.
+- `ACQ_STARTED(session)` est émis une seule fois depuis `loop()`, avant tout
+  `DATA_GBF`, après que le front réel a eu lieu et que la conversion de `k = 0`
+  a été déclenchée. Aucune trame ni aucun CRC n'est construit dans une ISR.
+- Pour chaque `k >= 1`, l'ISR Timer1 lit le niveau physique de D8 immédiatement
+  avant de lancer la conversion. L'ISR ADC range ensuite la mesure et ce niveau
+  au même index dans deux anneaux statiques. `loop()` compacte les niveaux en
+  bitmap LSB-first dans `DATA_GBF`; le `DATA` historique reste inchangé.
+- La décision `DATA_GBF` est attachée à la session. Un `GEN_STOP` ou une
+  expiration de keepalive après le déclenchement force D8 à LOW, mais laisse
+  Timer1 terminer l'acquisition avec des bits E suivants à zéro. Avant le
+  front, ces événements annulent l'armement et produisent une erreur explicite
+  de déclenchement annulé. Un `STOP` acquisition pendant l'armement renvoie un
+  `END` avec zéro mesure sans arrêter le GBF.
+- À la fin normale, Timer1 et l'ADC s'arrêtent, les derniers `DATA_GBF` puis
+  `END` sont envoyés, mais Timer2 continue : le générateur reste `RUNNING` tant
+  qu'il reçoit son keepalive.
 
 Pour flasher manuellement : ouvrir `physalix_acquisition_uno.ino` dans Arduino IDE, sélectionner **Arduino Uno** et le port série, puis cliquer sur **Téléverser**. Fermer le moniteur série avant de connecter Physalix.
 
