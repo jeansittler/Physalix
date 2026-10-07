@@ -14,11 +14,14 @@ from PySide6.QtWidgets import (
 )
 
 from physalix.acquisition import (
-    AcquisitionConfig, AcquisitionController, AcquisitionResult, AcquisitionState,
-    CAPABILITY_SQUARE_BURST, DataBatch, DigitalGenerationConfig, DigitalStepConfig,
-    GenerationType, PROTOCOL_VERSION, SERIAL_RESOURCE_DISCONNECTED_MESSAGE,
-    SquareBurstConfig, SquareBurstPlan, applied_duration_s, applied_square_frequency_hz,
-    applied_square_period_s, generated_voltage_series, plan_square_burst,
+    AcquisitionConfig, AcquisitionController, AcquisitionError, AcquisitionResult,
+    AcquisitionState,
+    CAPABILITY_CONTINUOUS_SQUARE, CAPABILITY_SQUARE_BURST, ContinuousSquareConfig,
+    ContinuousSquarePlan, DataBatch, DigitalGenerationConfig, DigitalStepConfig,
+    GbfDataBatch, GenerationType, GeneratorState, PROTOCOL_VERSION,
+    SERIAL_RESOURCE_DISCONNECTED_MESSAGE, SquareBurstConfig, SquareBurstPlan,
+    applied_duration_s, applied_square_frequency_hz, applied_square_period_s,
+    generated_voltage_series, plan_square_burst,
 )
 from physalix.firmware_flash import (
     FirmwareCompatibility, FirmwareFlash, FlashErrorKind, compare_firmware,
@@ -35,6 +38,7 @@ PLOT_REFRESH_MS = 40
 PORT_RELEASE_DELAY_MS = 300
 RECONNECT_RETRY_MS = 600
 RECONNECT_TIMEOUT_MS = 20_000
+CONTINUOUS_SQUARE_MODE = "continuous_square"
 
 
 @dataclass(frozen=True)
@@ -48,6 +52,7 @@ class AcquisitionPageResult:
     generated_voltages_v: tuple[float, ...]
     complete: bool
     status: str
+    generator_plan: ContinuousSquarePlan | None = None
 
 
 def adc_to_volts(code: int, reference_v: float = ADC_REFERENCE_V) -> float:
@@ -84,6 +89,11 @@ class AcquisitionTab(QWidget):
         self._plot_dirty = False
         self._transferred = False
         self._transfer_columns = None
+        self._session_uses_gbf = False
+        self._generator_start_pending = False
+        self._generator_stop_pending = False
+        self._disconnect_after_generator_stop = False
+        self._applied_generator_plan: ContinuousSquarePlan | None = None
         self._firmware_mode = "absent"
         self._detected_firmware_info = None
         self._flash_workflow_active = False
@@ -173,6 +183,7 @@ class AcquisitionTab(QWidget):
         self.generation_type_combo = PopupComboBox()
         self.generation_type_combo.addItem("Échelon", GenerationType.STEP)
         self.generation_type_combo.addItem("Carré — N périodes", GenerationType.SQUARE_BURST)
+        self.generation_type_combo.addItem("GBF continu", CONTINUOUS_SQUARE_MODE)
         self.generation_type_combo.setMinimumWidth(180)
         self.generation_type_combo.setMaximumWidth(LIGHT.field_medium)
         self.generation_type_combo.setMinimumContentsLength(8)
@@ -183,7 +194,7 @@ class AcquisitionTab(QWidget):
         self.output_pin = QSpinBox()
         self.output_pin.setRange(2, 13)
         self.output_pin.setValue(8)
-        generation_form.addRow("Type", self.generation_type_combo)
+        generation_form.addRow("Mode de génération", self.generation_type_combo)
         generation_form.addRow("Sortie numérique", self.output_pin)
         self.step_initial_value = QLabel("0 V")
         self.step_final_value = QLabel("5 V")
@@ -205,11 +216,49 @@ class AcquisitionTab(QWidget):
         generation_form.addRow("Fréquence calculée", self.square_requested_frequency_label)
         self.square_requirement_label = label("", "muted")
         generation_form.addRow(self.square_requirement_label)
+        self.gbf_shape_value = QLabel("Carré")
+        self.gbf_output_value = QLabel("D8")
+        self.gbf_minimum_value = QLabel("0,0 V")
+        self.gbf_maximum_value = QLabel("5,0 V")
+        self.gbf_frequency_spin = QDoubleSpinBox()
+        self.gbf_frequency_spin.setRange(0.1, 1000.0)
+        self.gbf_frequency_spin.setDecimals(3)
+        self.gbf_frequency_spin.setSingleStep(0.1)
+        self.gbf_frequency_spin.setValue(10.0)
+        self.gbf_frequency_spin.setSuffix(" Hz")
+        self.gbf_applied_frequency_label = QLabel("En attente de configuration")
+        self.gbf_applied_period_label = QLabel("En attente de configuration")
+        self.gbf_duty_value = QLabel("50 %")
+        self.gbf_state_label = QLabel("État inconnu")
+        self.gbf_start_button = QPushButton("Démarrer le générateur")
+        self.gbf_stop_button = QPushButton("Arrêter le générateur")
+        gbf_actions_widget = QWidget()
+        gbf_actions = QHBoxLayout(gbf_actions_widget)
+        gbf_actions.setContentsMargins(0, 0, 0, 0)
+        gbf_actions.addWidget(self.gbf_start_button)
+        gbf_actions.addWidget(self.gbf_stop_button)
+        generation_form.addRow("Forme", self.gbf_shape_value)
+        generation_form.addRow("Sortie", self.gbf_output_value)
+        generation_form.addRow("Minimum", self.gbf_minimum_value)
+        generation_form.addRow("Maximum", self.gbf_maximum_value)
+        generation_form.addRow("Fréquence demandée", self.gbf_frequency_spin)
+        generation_form.addRow("Fréquence appliquée", self.gbf_applied_frequency_label)
+        generation_form.addRow("Période appliquée", self.gbf_applied_period_label)
+        generation_form.addRow("Rapport cyclique", self.gbf_duty_value)
+        generation_form.addRow("État du générateur", self.gbf_state_label)
+        generation_form.addRow(gbf_actions_widget)
+        self.gbf_requirement_label = label("", "muted")
+        generation_form.addRow(self.gbf_requirement_label)
         self._step_generation_widgets = (
             self.step_initial_value, self.step_final_value, self.step_trigger_value)
         self._square_generation_widgets = (
             self.square_minimum_value, self.square_maximum_value, self.square_periods_spin,
             self.square_requested_period_label, self.square_requested_frequency_label)
+        self._gbf_generation_widgets = (
+            self.gbf_shape_value, self.gbf_output_value, self.gbf_minimum_value,
+            self.gbf_maximum_value, self.gbf_frequency_spin,
+            self.gbf_applied_frequency_label, self.gbf_applied_period_label,
+            self.gbf_duty_value, self.gbf_state_label, gbf_actions_widget)
         self._generation_form = generation_form
         grid.addLayout(generation_form, 0, 2)
         settings_layout.addLayout(grid)
@@ -250,6 +299,8 @@ class AcquisitionTab(QWidget):
         self.points_spin.valueChanged.connect(self._update_requested_values)
         self.generation_type_combo.currentIndexChanged.connect(self._generation_type_changed)
         self.square_periods_spin.valueChanged.connect(self._update_requested_values)
+        self.gbf_start_button.clicked.connect(self.start_generator)
+        self.gbf_stop_button.clicked.connect(self.stop_generator)
         self.start_button.clicked.connect(self.start_acquisition)
         self.stop_button.clicked.connect(self.controller.stop)
         self.transfer_button.clicked.connect(self.transfer_result)
@@ -260,6 +311,10 @@ class AcquisitionTab(QWidget):
         self.controller.configuration_accepted.connect(self._configuration_accepted)
         self.controller.data_batch_received.connect(self._data_received)
         self.controller.acquisition_finished.connect(self._acquisition_finished)
+        self.controller.generator_state_changed.connect(self._generator_state_changed)
+        self.controller.generator_configured.connect(self._generator_configured)
+        self.controller.acquisition_armed.connect(self._acquisition_armed)
+        self.controller.acquisition_triggered.connect(self._acquisition_triggered)
         self.controller.error_occurred.connect(self._controller_error)
 
     def _connect_firmware_flash(self):
@@ -295,10 +350,22 @@ class AcquisitionTab(QWidget):
             self.disconnect()
 
     def disconnect(self, reason="Acquisition interrompue par la déconnexion."):
-        if self.controller.state in (AcquisitionState.ACQUIRING, AcquisitionState.STOPPING):
+        if self.controller.state in (AcquisitionState.ARMED, AcquisitionState.ACQUIRING,
+                                     AcquisitionState.STOPPING):
             self.controller.stop()
             self._preserve_partial(reason)
         self._start_after_configuration = False
+        if self.controller.generator_state is GeneratorState.RUNNING:
+            self._disconnect_after_generator_stop = True
+            try:
+                if not self.controller.request_generator_shutdown():
+                    self.connection_status.setText("Arrêt du générateur avant déconnexion…")
+                    self._update_controls(self.controller.state)
+                    return
+            except Exception:
+                # La fermeture immédiate reste sûre grâce au bail firmware de 2,5 s.
+                pass
+        self._disconnect_after_generator_stop = False
         self.controller.close()
 
     def _update_firmware_offer(self, *args):
@@ -315,14 +382,19 @@ class AcquisitionTab(QWidget):
         self.firmware_button.setText(labels.get(self._firmware_mode, ""))
         self.firmware_button.setVisible(visible)
         controller_busy = self.controller.state in {
-            AcquisitionState.WAITING_HANDSHAKE, AcquisitionState.ACQUIRING,
-            AcquisitionState.STOPPING,
+            AcquisitionState.WAITING_HANDSHAKE, AcquisitionState.ARMED,
+            AcquisitionState.ACQUIRING, AcquisitionState.STOPPING,
         }
+        generator_blocks_flash = (self._gbf_supported()
+                                  and not self.controller.generator_ready_for_flash)
         enabled = (visible and bool(self.port_combo.currentData())
                    and not controller_busy and not self._start_after_configuration
                    and not self._flash_workflow_active
-                   and not self.firmware_flash.active)
+                   and not self.firmware_flash.active and not generator_blocks_flash)
         self.firmware_button.setEnabled(enabled)
+        self.firmware_button.setToolTip(
+            "Arrêtez le générateur avant de mettre à jour le firmware."
+            if generator_blocks_flash else "")
 
     def _display_detected_firmware(self, firmware_info):
         self._detected_firmware_info = firmware_info
@@ -347,6 +419,10 @@ class AcquisitionTab(QWidget):
 
     def request_firmware_installation(self):
         if not self.firmware_button.isEnabled():
+            if (self._gbf_supported()
+                    and not self.controller.generator_ready_for_flash):
+                self.result_status.setText(
+                    "Arrêtez le générateur avant de mettre à jour le firmware.")
             return
         port = self.port_combo.currentData()
         if not port or not self._confirm_firmware_installation(port):
@@ -458,16 +534,28 @@ class AcquisitionTab(QWidget):
         self.reconnect_retry_timer.stop()
         self.reconnect_timeout_timer.stop()
 
-    def generation_type(self) -> GenerationType:
-        return GenerationType(self.generation_type_combo.currentData())
+    def generation_type(self) -> GenerationType | str:
+        value = self.generation_type_combo.currentData()
+        return value if value == CONTINUOUS_SQUARE_MODE else GenerationType(value)
 
     def _square_supported(self) -> bool:
         return (self._detected_firmware_info is not None
                 and bool(self._detected_firmware_info.capabilities
                          & CAPABILITY_SQUARE_BURST))
 
+    def _gbf_supported(self) -> bool:
+        return (self._detected_firmware_info is not None
+                and bool(self._detected_firmware_info.capabilities
+                         & CAPABILITY_CONTINUOUS_SQUARE))
+
     def _generation_available(self) -> bool:
-        return self.generation_type() is GenerationType.STEP or self._square_supported()
+        mode = self.generation_type()
+        if mode is GenerationType.STEP:
+            return True
+        if mode is GenerationType.SQUARE_BURST:
+            return self._square_supported()
+        return (self._gbf_supported()
+                and self.controller.generator_state is GeneratorState.RUNNING)
 
     def _set_generation_field_visible(self, widget: QWidget, visible: bool):
         widget.setVisible(visible)
@@ -481,11 +569,16 @@ class AcquisitionTab(QWidget):
         self._update_controls(self.controller.state)
 
     def _sync_generation_ui(self):
-        square = self.generation_type() is GenerationType.SQUARE_BURST
+        mode = self.generation_type()
+        square = mode is GenerationType.SQUARE_BURST
+        gbf = mode == CONTINUOUS_SQUARE_MODE
         for widget in self._step_generation_widgets:
-            self._set_generation_field_visible(widget, not square)
+            self._set_generation_field_visible(widget, not square and not gbf)
         for widget in self._square_generation_widgets:
             self._set_generation_field_visible(widget, square)
+        for widget in self._gbf_generation_widgets:
+            self._set_generation_field_visible(widget, gbf)
+        self._set_generation_field_visible(self.output_pin, not gbf)
         if square and not self._square_supported():
             if self._detected_firmware_info is None:
                 message = "Connectez un firmware Physalix compatible pour utiliser le mode carré."
@@ -495,6 +588,12 @@ class AcquisitionTab(QWidget):
             self.square_requirement_label.show()
         else:
             self.square_requirement_label.hide()
+        if gbf and not self._gbf_supported():
+            self.gbf_requirement_label.setText(
+                "Le mode GBF continu nécessite un firmware Physalix compatible GBF.")
+            self.gbf_requirement_label.show()
+        else:
+            self.gbf_requirement_label.hide()
 
     def requested_period_us(self) -> int:
         if self.generation_type() is GenerationType.SQUARE_BURST:
@@ -511,10 +610,12 @@ class AcquisitionTab(QWidget):
     def requested_config(self) -> AcquisitionConfig:
         if self.generation_type() is GenerationType.SQUARE_BURST:
             return self.requested_square_plan().config
+        output_pin = (8 if self.generation_type() == CONTINUOUS_SQUARE_MODE
+                      else self.output_pin.value())
         return AcquisitionConfig(
             self.requested_period_us(), self.points_spin.value(),
             self.channel_combo.currentData(),
-            DigitalStepConfig(self.output_pin.value(), False, True, 0),
+            DigitalStepConfig(output_pin, False, True, 0),
         )
 
     def _update_requested_values(self, *args):
@@ -527,6 +628,88 @@ class AcquisitionTab(QWidget):
                 self._format_seconds(applied_square_period_s(config)))
             self.square_requested_frequency_label.setText(
                 self._format_hertz(applied_square_frequency_hz(config)))
+
+    def start_generator(self):
+        if self.generation_type() != CONTINUOUS_SQUARE_MODE:
+            return
+        if not self._gbf_supported():
+            self.result_status.setText(
+                "Le mode GBF continu nécessite un firmware Physalix compatible GBF.")
+            return
+        if self.controller.generator_state is not GeneratorState.STOPPED:
+            return
+        try:
+            config = ContinuousSquareConfig(self.gbf_frequency_spin.value())
+            self._generator_start_pending = True
+            self.gbf_applied_frequency_label.setText("En attente de configuration")
+            self.gbf_applied_period_label.setText("En attente de configuration")
+            self.gbf_state_label.setText("Configuration…")
+            self.result_status.setText("Configuration du générateur…")
+            self.controller.configure_generator(config)
+        except (AcquisitionError, ValueError) as error:
+            self._generator_start_pending = False
+            self.result_status.setText(str(error))
+        self._update_controls(self.controller.state)
+
+    def _generator_configured(self, plan: ContinuousSquarePlan):
+        self._applied_generator_plan = plan
+        self.gbf_applied_frequency_label.setText(
+            self._format_hertz(plan.applied_frequency_hz))
+        self.gbf_applied_period_label.setText(
+            self._format_seconds(plan.applied_period_s))
+        if self._generator_start_pending:
+            self.gbf_state_label.setText("Démarrage…")
+            try:
+                self.controller.start_generator()
+            except (AcquisitionError, ValueError) as error:
+                self._generator_start_pending = False
+                self.result_status.setText(str(error))
+        self._update_controls(self.controller.state)
+
+    def stop_generator(self):
+        try:
+            if self.controller.stop_generator():
+                self._generator_stop_pending = True
+                self.gbf_state_label.setText("Arrêt…")
+        except (AcquisitionError, ValueError) as error:
+            self.result_status.setText(str(error))
+        self._update_controls(self.controller.state)
+
+    def _generator_state_changed(self, state: GeneratorState):
+        labels = {
+            GeneratorState.STOPPED: "Arrêté",
+            GeneratorState.RUNNING: "En fonctionnement",
+            GeneratorState.UNKNOWN: "État inconnu",
+        }
+        self.gbf_state_label.setText(labels[state])
+        if state in (GeneratorState.STOPPED, GeneratorState.RUNNING):
+            self._generator_start_pending = False
+            self._generator_stop_pending = False
+        if state is GeneratorState.RUNNING:
+            if self.controller.state not in (
+                    AcquisitionState.ARMED, AcquisitionState.ACQUIRING,
+                    AcquisitionState.STOPPING):
+                self.result_status.setText("Générateur en fonctionnement.")
+        elif state is GeneratorState.STOPPED:
+            if self.controller.state is AcquisitionState.ACQUIRING:
+                self.result_status.setText(
+                    "Acquisition en cours — générateur arrêté, E reste à 0 V.")
+            elif self.controller.state is not AcquisitionState.STOPPING:
+                self.result_status.setText("Générateur arrêté.")
+            if self._disconnect_after_generator_stop:
+                self._disconnect_after_generator_stop = False
+                self.controller.close()
+                return
+        self._update_controls(self.controller.state)
+
+    def _acquisition_armed(self, session_id):
+        self.result_status.setText(
+            "Acquisition armée — attente du prochain front montant…")
+        self._update_controls(AcquisitionState.ARMED)
+
+    def _acquisition_triggered(self, started):
+        self.result_status.setText("Acquisition en cours — front montant reçu à t = 0.")
+        self._update_controls(AcquisitionState.ACQUIRING)
 
     @staticmethod
     def _format_period(period_us: int) -> str:
@@ -553,8 +736,14 @@ class AcquisitionTab(QWidget):
         if self.controller.state not in (AcquisitionState.READY, AcquisitionState.CONFIGURED):
             return
         if not self._generation_available():
-            self.result_status.setText(
-                "Le mode carré nécessite le firmware Physalix 1.1.0 ou supérieur.")
+            if self.generation_type() == CONTINUOUS_SQUARE_MODE:
+                self.result_status.setText(
+                    "Démarrez le générateur GBF avant de lancer l’acquisition."
+                    if self._gbf_supported() else
+                    "Le mode GBF continu nécessite un firmware Physalix compatible GBF.")
+            else:
+                self.result_status.setText(
+                    "Le mode carré nécessite le firmware Physalix 1.1.0 ou supérieur.")
             return
         self.times_s.clear()
         self.voltages_v.clear()
@@ -564,6 +753,7 @@ class AcquisitionTab(QWidget):
         self.result_status.setText("Configuration de l'acquisition…")
         self._transferred = False
         self._transfer_columns = None
+        self._session_uses_gbf = self.generation_type() == CONTINUOUS_SQUARE_MODE
         self._start_after_configuration = True
         self.controller.configure(self.requested_config())
         self._update_controls(self.controller.state)
@@ -580,6 +770,7 @@ class AcquisitionTab(QWidget):
                 firmware_info.version, PROTOCOL_VERSION, firmware_info.capabilities)
         elif self.firmware_resources is not None:
             self._display_detected_firmware(firmware_info)
+        self._generator_state_changed(self.controller.generator_state)
         self._generation_type_changed()
 
     def _configuration_accepted(self, config: AcquisitionConfig):
@@ -600,7 +791,7 @@ class AcquisitionTab(QWidget):
             self._start_after_configuration = False
             self.controller.start()
 
-    def _data_received(self, batch: DataBatch):
+    def _data_received(self, batch: DataBatch | GbfDataBatch):
         config = self.controller.config
         if config is None:
             return
@@ -608,8 +799,12 @@ class AcquisitionTab(QWidget):
         self.times_s.extend((batch.first_sample_index + offset) * period_s
                             for offset in range(len(batch.values)))
         self.voltages_v.extend(adc_to_volts(value) for value in batch.values)
-        self.generated_voltages_v[:] = generated_voltage_series(
-            config, len(self.voltages_v))
+        if isinstance(batch, GbfDataBatch):
+            self.generated_voltages_v.extend(
+                5.0 if high else 0.0 for high in batch.generated_high)
+        else:
+            self.generated_voltages_v[:] = generated_voltage_series(
+                config, len(self.voltages_v))
         self._plot_dirty = True
 
     @staticmethod
@@ -632,26 +827,43 @@ class AcquisitionTab(QWidget):
             self._plot_dirty = False
 
     def _acquisition_finished(self, result: AcquisitionResult):
-        self._store_result(result.complete, result.reason or "Acquisition terminée.")
+        self._store_result(
+            result.complete, result.reason or "Acquisition terminée.",
+            result.generated_high)
 
     def _preserve_partial(self, reason: str):
         if self.controller.samples and not (
                 self.results and len(self.results[-1].voltages_v) == len(self.controller.samples)
                 and not self.results[-1].complete):
-            self._store_result(False, reason)
+            self._store_result(False, reason, self.controller.generated_high)
 
-    def _store_result(self, complete: bool, status: str):
+    def _store_result(self, complete: bool, status: str,
+                      generated_high: tuple[bool, ...] = ()):
         config = self.controller.config
         if config is None:
             return
         samples = tuple(self.controller.samples)
+        if not samples:
+            self._session_uses_gbf = False
+            self.result_status.setText(status)
+            self._update_controls(self.controller.state)
+            return
         period_s = config.sampling_period_us / 1_000_000
-        generated_voltages = generated_voltage_series(config, len(samples))
+        uses_gbf = self._session_uses_gbf or bool(generated_high)
+        if uses_gbf:
+            levels = tuple(generated_high or self.controller.generated_high)
+            if len(levels) != len(samples):
+                self.result_status.setText(
+                    "Acquisition conservée, mais les séries Uc et E ne sont pas alignées.")
+                return
+            generated_voltages = tuple(5.0 if high else 0.0 for high in levels)
+        else:
+            generated_voltages = generated_voltage_series(config, len(samples))
         stored = AcquisitionPageResult(
             config.sampling_period_us, config.generation,
             tuple(index * period_s for index in range(len(samples))),
             tuple(adc_to_volts(value) for value in samples), generated_voltages,
-            complete, status,
+            complete, status, self._applied_generator_plan if uses_gbf else None,
         )
         self.results.append(stored)
         self._transferred = False
@@ -662,6 +874,7 @@ class AcquisitionTab(QWidget):
         self.times_s[:] = stored.times_s
         self.voltages_v[:] = stored.voltages_v
         self.generated_voltages_v[:] = stored.generated_voltages_v
+        self._session_uses_gbf = False
         self._plot_dirty = True
         self._update_controls(self.controller.state)
 
@@ -714,7 +927,25 @@ class AcquisitionTab(QWidget):
 
     def _controller_error(self, message: str):
         self._start_after_configuration = False
+        self._generator_start_pending = False
+        self._generator_stop_pending = False
         protocol_incompatible = "protocole incompatible" in message.lower()
+        if "déclenchement de l'acquisition annulé" in message.lower():
+            self._session_uses_gbf = False
+            self.result_status.setText(
+                "Le déclenchement de l’acquisition a été annulé avant le front montant. "
+                "Aucune donnée n’a été créée.")
+            self._update_controls(self.controller.state)
+            return
+        if "délai expiré en attente de gen_" in message.lower():
+            self.result_status.setText(
+                "Le générateur ne répond plus ; son état est inconnu.")
+            if self._disconnect_after_generator_stop:
+                self._disconnect_after_generator_stop = False
+                self.controller.close()
+                return
+            self._update_controls(self.controller.state)
+            return
         if self._flash_workflow_active and self.reconnect_timeout_timer.isActive():
             if protocol_incompatible:
                 self.controller.close()
@@ -744,6 +975,7 @@ class AcquisitionTab(QWidget):
             AcquisitionState.WAITING_HANDSHAKE: "Connexion…",
             AcquisitionState.READY: "Arduino détecté / Prêt",
             AcquisitionState.CONFIGURED: "Arduino détecté / Prêt",
+            AcquisitionState.ARMED: "Acquisition armée — attente du front montant",
             AcquisitionState.ACQUIRING: "Acquisition en cours",
             AcquisitionState.STOPPING: "Arrêt…",
             AcquisitionState.ERROR: "Erreur",
@@ -759,7 +991,10 @@ class AcquisitionTab(QWidget):
                     self.firmware_status.setText("Firmware non détecté")
         flash_active = self._flash_workflow_active or self.firmware_flash.active
         disconnected = state in (AcquisitionState.DISCONNECTED, AcquisitionState.ERROR)
-        active = state in (AcquisitionState.ACQUIRING, AcquisitionState.STOPPING)
+        active = state in (AcquisitionState.ARMED, AcquisitionState.ACQUIRING,
+                           AcquisitionState.STOPPING)
+        generator_running = self.controller.generator_state is GeneratorState.RUNNING
+        generator_pending = self._generator_start_pending or self._generator_stop_pending
         self.connect_button.setText("Connecter" if disconnected else "Déconnecter")
         self.connect_button.setEnabled(not flash_active)
         self.port_combo.setEnabled(disconnected and not flash_active)
@@ -775,10 +1010,23 @@ class AcquisitionTab(QWidget):
                         self.graph_workspace is not None and not flash_active)
         self.transfer_button.setEnabled(transferable)
         for widget in (self.duration_spin, self.points_spin, self.channel_combo,
-                       self.generation_type_combo, self.output_pin,
-                       self.square_periods_spin):
+                       self.output_pin, self.square_periods_spin):
             widget.setEnabled(not active and not self._start_after_configuration
                               and not flash_active)
+        self.generation_type_combo.setEnabled(
+            not active and not self._start_after_configuration and not flash_active
+            and not generator_running and not generator_pending)
+        self.gbf_frequency_spin.setEnabled(
+            not active and not flash_active and not generator_running
+            and not generator_pending)
+        gbf_selected = self.generation_type() == CONTINUOUS_SQUARE_MODE
+        self.gbf_start_button.setEnabled(
+            gbf_selected and self._gbf_supported()
+            and self.controller.generator_state is GeneratorState.STOPPED
+            and not active and not flash_active and not generator_pending)
+        self.gbf_stop_button.setEnabled(
+            self._gbf_supported() and generator_running
+            and not flash_active and not generator_pending)
         self._sync_generation_ui()
         self._update_firmware_offer()
 
@@ -787,7 +1035,13 @@ class AcquisitionTab(QWidget):
         self.plot_timer.stop()
         self._stop_flash_timers()
         self.firmware_flash.shutdown()
-        if self.controller.state in (AcquisitionState.ACQUIRING, AcquisitionState.STOPPING):
+        if self.controller.state in (AcquisitionState.ARMED, AcquisitionState.ACQUIRING,
+                                     AcquisitionState.STOPPING):
             self.controller.stop()
             self._preserve_partial("Acquisition interrompue à la fermeture.")
+        if self.controller.generator_state is GeneratorState.RUNNING:
+            try:
+                self.controller.request_generator_shutdown()
+            except (AcquisitionError, ValueError):
+                pass
         self.controller.close()

@@ -10,11 +10,15 @@ from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication, QLabel
 
 from physalix.acquisition import (
-    AcquisitionConfig, AcquisitionResult, AcquisitionState, CAPABILITY_SQUARE_BURST,
-    DataBatch, DigitalStepConfig, FirmwareInfo, GenerationType,
-    SERIAL_RESOURCE_DISCONNECTED_MESSAGE, SquareBurstConfig,
+    AcquisitionConfig, AcquisitionResult, AcquisitionStarted, AcquisitionState,
+    CAPABILITY_CONTINUOUS_SQUARE, CAPABILITY_SQUARE_BURST, ContinuousSquareConfig,
+    DataBatch, DigitalStepConfig, FirmwareInfo, GbfDataBatch, GenerationType,
+    GeneratorState, SERIAL_RESOURCE_DISCONNECTED_MESSAGE, SquareBurstConfig,
+    plan_continuous_square,
 )
-from physalix.ui.acquisition_tab import AcquisitionTab, adc_to_volts
+from physalix.ui.acquisition_tab import (
+    CONTINUOUS_SQUARE_MODE, AcquisitionTab, adc_to_volts,
+)
 from physalix.ui.graph_series import PopupComboBox
 from physalix.ui.main_window import MainWindow
 from physalix.ui.theme import LIGHT
@@ -26,6 +30,10 @@ class FakeController(QObject):
     configuration_accepted = Signal(object)
     data_batch_received = Signal(object)
     acquisition_finished = Signal(object)
+    generator_state_changed = Signal(object)
+    generator_configured = Signal(object)
+    acquisition_armed = Signal(object)
+    acquisition_triggered = Signal(object)
     error_occurred = Signal(str)
 
     def __init__(self):
@@ -33,8 +41,15 @@ class FakeController(QObject):
         self.state = AcquisitionState.DISCONNECTED
         self.config = None
         self.samples = []
+        self.generated_high = []
+        self.generator_state = GeneratorState.UNKNOWN
+        self.generator_plan = None
         self.opened_port = None
         self.stop_calls = 0
+        self.configure_generator_calls = []
+        self.start_generator_calls = 0
+        self.stop_generator_calls = 0
+        self.shutdown_generator_calls = 0
 
     def set_state(self, state):
         self.state = state
@@ -46,21 +61,51 @@ class FakeController(QObject):
         return True
 
     def close(self):
+        self.generator_state = GeneratorState.UNKNOWN
+        self.generator_state_changed.emit(self.generator_state)
         self.set_state(AcquisitionState.DISCONNECTED)
 
     def configure(self, config):
         self.config = config
 
     def start(self):
-        self.set_state(AcquisitionState.ACQUIRING)
+        if self.generator_state is GeneratorState.RUNNING:
+            self.set_state(AcquisitionState.ARMED)
+            self.acquisition_armed.emit(42)
+        else:
+            self.set_state(AcquisitionState.ACQUIRING)
         return 42
 
     def stop(self):
-        if self.state is not AcquisitionState.ACQUIRING:
+        if self.state not in (AcquisitionState.ARMED, AcquisitionState.ACQUIRING):
             return False
         self.stop_calls += 1
         self.set_state(AcquisitionState.STOPPING)
         return True
+
+    @property
+    def generator_ready_for_flash(self):
+        return self.generator_state is GeneratorState.STOPPED
+
+    def set_generator_state(self, state):
+        self.generator_state = state
+        self.generator_state_changed.emit(state)
+
+    def configure_generator(self, config):
+        self.configure_generator_calls.append(config)
+
+    def start_generator(self):
+        self.start_generator_calls += 1
+
+    def stop_generator(self):
+        if self.generator_state is not GeneratorState.RUNNING:
+            return False
+        self.stop_generator_calls += 1
+        return True
+
+    def request_generator_shutdown(self):
+        self.shutdown_generator_calls += 1
+        return self.generator_state is GeneratorState.STOPPED
 
 
 class AcquisitionTabTests(unittest.TestCase):
@@ -245,7 +290,7 @@ class SquareBurstUiTests(unittest.TestCase):
         row_height = combo.view().sizeHintForRow(0)
         self.assertEqual(
             combo.view().height(),
-            2 * row_height + 2 * (LIGHT.small + combo.view().frameWidth()),
+            3 * row_height + 2 * (LIGHT.small + combo.view().frameWidth()),
         )
 
         combo.setFocus()
@@ -396,6 +441,207 @@ class SquareBurstUiTests(unittest.TestCase):
         self.assertEqual(self.tab.results[-1].generated_voltages_v, (5.0, 5.0))
 
 
+class ContinuousSquareUiTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.app = QApplication.instance() or QApplication([])
+
+    def setUp(self):
+        self.controller = FakeController()
+        self.tab = AcquisitionTab(self.controller)
+
+    def tearDown(self):
+        self.tab.shutdown()
+        self.tab.deleteLater()
+        self.app.processEvents()
+
+    def ready(self, capabilities=0x0F | CAPABILITY_CONTINUOUS_SQUARE):
+        self.controller.set_state(AcquisitionState.READY)
+        self.controller.ready.emit(FirmwareInfo((1, 1, 0), capabilities))
+        if capabilities & CAPABILITY_CONTINUOUS_SQUARE:
+            self.controller.set_generator_state(GeneratorState.STOPPED)
+
+    def select_gbf(self):
+        self.tab.generation_type_combo.setCurrentIndex(2)
+        self.assertEqual(self.tab.generation_type(), CONTINUOUS_SQUARE_MODE)
+
+    def start_generator(self, frequency=12.345):
+        self.ready()
+        self.select_gbf()
+        self.tab.gbf_frequency_spin.setValue(frequency)
+        self.tab.gbf_start_button.click()
+        plan = plan_continuous_square(ContinuousSquareConfig(frequency))
+        self.controller.generator_plan = plan
+        self.controller.generator_configured.emit(plan)
+        self.controller.set_generator_state(GeneratorState.RUNNING)
+        return plan
+
+    def arm_acquisition(self, count=4, period_us=1000):
+        self.tab.points_spin.setValue(count)
+        self.tab.start_button.click()
+        config = AcquisitionConfig(
+            period_us, count, 0, DigitalStepConfig(8, False, True, 0))
+        self.controller.config = config
+        self.controller.set_state(AcquisitionState.CONFIGURED)
+        self.controller.configuration_accepted.emit(config)
+        return config
+
+    def test_mode_is_gated_by_capability_and_uses_fixed_v1_parameters(self):
+        self.ready(0x0F)
+        self.select_gbf()
+        self.assertFalse(self.tab.start_button.isEnabled())
+        self.assertFalse(self.tab.gbf_start_button.isEnabled())
+        self.assertIn("firmware Physalix compatible GBF",
+                      self.tab.gbf_requirement_label.text())
+        self.assertEqual(self.tab.gbf_shape_value.text(), "Carré")
+        self.assertEqual(self.tab.gbf_output_value.text(), "D8")
+        self.assertEqual(self.tab.gbf_minimum_value.text(), "0,0 V")
+        self.assertEqual(self.tab.gbf_maximum_value.text(), "5,0 V")
+        self.assertEqual(self.tab.gbf_duty_value.text(), "50 %")
+
+    def test_generator_config_then_start_uses_only_ack_for_applied_values(self):
+        self.ready()
+        self.select_gbf()
+        self.tab.gbf_frequency_spin.setValue(12.345)
+        self.tab.gbf_start_button.click()
+        self.assertEqual(len(self.controller.configure_generator_calls), 1)
+        self.assertEqual(self.controller.start_generator_calls, 0)
+        self.assertEqual(self.tab.gbf_applied_frequency_label.text(),
+                         "En attente de configuration")
+
+        plan = plan_continuous_square(ContinuousSquareConfig(12.345))
+        self.controller.generator_configured.emit(plan)
+        self.assertEqual(self.controller.start_generator_calls, 1)
+        self.assertEqual(self.tab.gbf_applied_frequency_label.text(),
+                         self.tab._format_hertz(plan.applied_frequency_hz))
+        self.assertEqual(self.tab.gbf_applied_period_label.text(),
+                         self.tab._format_seconds(plan.applied_period_s))
+
+        self.controller.set_generator_state(GeneratorState.RUNNING)
+        self.assertFalse(self.tab.generation_type_combo.isEnabled())
+        self.assertFalse(self.tab.gbf_frequency_spin.isEnabled())
+        self.assertTrue(self.tab.gbf_stop_button.isEnabled())
+        self.assertTrue(self.tab.start_button.isEnabled())
+
+        self.tab.gbf_stop_button.click()
+        self.controller.set_generator_state(GeneratorState.STOPPED)
+        self.assertTrue(self.tab.generation_type_combo.isEnabled())
+        self.assertTrue(self.tab.gbf_frequency_spin.isEnabled())
+        self.assertTrue(self.tab.gbf_start_button.isEnabled())
+
+    def test_supported_frequency_range_is_forwarded_without_fake_applied_value(self):
+        self.ready()
+        self.select_gbf()
+        for frequency in (0.1, 0.5, 1, 10, 50, 100, 500, 1000):
+            with self.subTest(frequency=frequency):
+                self.tab.gbf_frequency_spin.setValue(frequency)
+                self.tab.gbf_start_button.click()
+                self.assertEqual(
+                    self.controller.configure_generator_calls[-1].requested_frequency_hz,
+                    frequency)
+                self.assertEqual(self.tab.gbf_applied_frequency_label.text(),
+                                 "En attente de configuration")
+                self.tab._generator_start_pending = False
+                self.tab._update_controls(self.controller.state)
+
+    def test_gbf_acquisition_cannot_start_while_generator_is_stopped(self):
+        self.ready()
+        self.select_gbf()
+        self.assertFalse(self.tab.start_button.isEnabled())
+        self.tab.start_acquisition()
+        self.assertIsNone(self.controller.config)
+        self.assertIn("Démarrez le générateur GBF", self.tab.result_status.text())
+
+    def test_armed_trigger_and_raw_data_gbf_drive_live_step_curve(self):
+        self.start_generator()
+        self.arm_acquisition(4)
+        self.assertEqual(self.controller.state, AcquisitionState.ARMED)
+        self.assertIn("attente du prochain front montant", self.tab.result_status.text())
+        self.assertTrue(self.tab.stop_button.isEnabled())
+
+        self.controller.set_state(AcquisitionState.ACQUIRING)
+        self.controller.acquisition_triggered.emit(AcquisitionStarted(42))
+        self.controller.samples.extend((0, 100, 200, 300))
+        self.controller.generated_high.extend((True, False, True, False))
+        self.controller.data_batch_received.emit(
+            GbfDataBatch(42, 0, 0, (0, 100, 200, 300),
+                         (True, False, True, False)))
+        self.tab.refresh_plot()
+        self.assertEqual(self.tab.generated_voltages_v, [5.0, 0.0, 5.0, 0.0])
+        plot_x, _ = self.tab.generated_curve.getData()
+        self.assertEqual(len(plot_x), 7)
+
+    def test_generator_can_stop_during_acquisition_without_changing_session_type(self):
+        plan = self.start_generator()
+        self.arm_acquisition(3)
+        self.controller.set_state(AcquisitionState.ACQUIRING)
+        self.tab.gbf_stop_button.click()
+        self.assertEqual(self.controller.stop_generator_calls, 1)
+        self.controller.set_generator_state(GeneratorState.STOPPED)
+        self.assertEqual(self.controller.state, AcquisitionState.ACQUIRING)
+
+        self.controller.samples[:] = [100, 200, 300]
+        self.controller.generated_high[:] = [True, False, False]
+        self.controller.data_batch_received.emit(
+            GbfDataBatch(42, 0, 0, (100, 200, 300), (True, False, False)))
+        self.controller.set_state(AcquisitionState.CONFIGURED)
+        self.controller.acquisition_finished.emit(
+            AcquisitionResult(42, (100, 200, 300), True, "",
+                              (True, False, False), 1000))
+        stored = self.tab.results[-1]
+        self.assertEqual(stored.generated_voltages_v, (5.0, 0.0, 0.0))
+        self.assertEqual(stored.generator_plan, plan)
+        self.assertEqual(self.controller.generator_state, GeneratorState.STOPPED)
+
+    def test_end_does_not_stop_a_running_generator(self):
+        self.start_generator()
+        self.arm_acquisition(2)
+        self.controller.set_state(AcquisitionState.ACQUIRING)
+        self.controller.samples[:] = [100, 200]
+        self.controller.generated_high[:] = [True, False]
+        self.controller.set_state(AcquisitionState.CONFIGURED)
+        self.controller.acquisition_finished.emit(
+            AcquisitionResult(42, (100, 200), True, "", (True, False), 1000))
+        self.assertEqual(self.controller.generator_state, GeneratorState.RUNNING)
+        self.assertEqual(self.tab.gbf_state_label.text(), "En fonctionnement")
+        self.assertEqual(self.controller.stop_generator_calls, 0)
+        self.assertTrue(self.tab.transfer_button.isEnabled() is False)
+
+    def test_stop_while_armed_with_no_point_creates_no_result(self):
+        self.start_generator()
+        self.arm_acquisition(3)
+        self.tab.stop_button.click()
+        self.controller.set_state(AcquisitionState.CONFIGURED)
+        self.controller.acquisition_finished.emit(
+            AcquisitionResult(42, (), False, "Arrêt manuel", (), 1000))
+        self.assertEqual(self.tab.results, [])
+        self.assertIn("Arrêt manuel", self.tab.result_status.text())
+
+    def test_trigger_cancel_unknown_disconnect_and_flash_safety(self):
+        self.start_generator()
+        self.arm_acquisition(3)
+        self.controller.set_generator_state(GeneratorState.STOPPED)
+        self.controller.set_state(AcquisitionState.CONFIGURED)
+        self.controller.error_occurred.emit(
+            "Déclenchement de l'acquisition annulé : trigger cancelled")
+        self.assertEqual(self.tab.results, [])
+        self.assertIn("aucune donnée", self.tab.result_status.text().lower())
+
+        self.controller.set_generator_state(GeneratorState.UNKNOWN)
+        self.assertEqual(self.tab.gbf_state_label.text(), "État inconnu")
+        self.assertFalse(self.tab.gbf_start_button.isEnabled())
+
+        self.controller.set_generator_state(GeneratorState.RUNNING)
+        self.tab._firmware_mode = "older"
+        self.tab._update_firmware_offer()
+        self.assertFalse(self.tab.firmware_button.isEnabled())
+        self.tab.disconnect()
+        self.assertEqual(self.controller.shutdown_generator_calls, 1)
+        self.assertNotEqual(self.controller.state, AcquisitionState.DISCONNECTED)
+        self.controller.set_generator_state(GeneratorState.STOPPED)
+        self.assertEqual(self.controller.state, AcquisitionState.DISCONNECTED)
+
+
 class AcquisitionTransferTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
@@ -455,6 +701,23 @@ class AcquisitionTransferTests(unittest.TestCase):
         self.assertEqual(len([row for row in model.rows if row[2] != ""]), 9)
         self.assertEqual(len([row for row in model.rows if row[3] != ""]), 9)
         self.assertEqual(len([row for row in model.rows if row[4] != ""]), 9)
+        self.assertEqual([series.key() for series in graph.series], [(2, 3), (2, 4)])
+
+    def test_gbf_transfer_uses_raw_captured_e_values(self):
+        plan = plan_continuous_square(ContinuousSquareConfig(10.0))
+        self.controller.config = AcquisitionConfig(
+            1000, 4, 0, DigitalStepConfig(8, False, True, 0))
+        self.controller.samples[:] = [100, 200, 300, 400]
+        self.tab._session_uses_gbf = True
+        self.tab._applied_generator_plan = plan
+        self.tab._store_result(True, "Fin normale", (True, False, False, True))
+
+        columns, graph = self.tab.transfer_result()
+
+        model = self.window.data_tab.model
+        self.assertEqual(columns, (2, 3, 4))
+        self.assertEqual([row[4] for row in model.rows[:4]], ["5", "0", "0", "5"])
+        self.assertEqual(self.tab.results[-1].generator_plan, plan)
         self.assertEqual([series.key() for series in graph.series], [(2, 3), (2, 4)])
 
     def test_second_transfer_uses_suffixes_and_new_column_indices(self):

@@ -9,7 +9,7 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 from PySide6.QtCore import QObject, Signal
 from PySide6.QtWidgets import QApplication
 
-from physalix.acquisition import AcquisitionState, FirmwareInfo
+from physalix.acquisition import AcquisitionState, FirmwareInfo, GeneratorState
 from physalix.firmware_flash import (
     FirmwareCompatibility, FlashErrorKind, FlashFailure, compare_firmware,
 )
@@ -24,6 +24,10 @@ class FakeController(QObject):
     configuration_accepted = Signal(object)
     data_batch_received = Signal(object)
     acquisition_finished = Signal(object)
+    generator_state_changed = Signal(object)
+    generator_configured = Signal(object)
+    acquisition_armed = Signal(object)
+    acquisition_triggered = Signal(object)
     error_occurred = Signal(str)
 
     def __init__(self, events):
@@ -32,6 +36,8 @@ class FakeController(QObject):
         self.state = AcquisitionState.DISCONNECTED
         self.config = None
         self.samples = []
+        self.generated_high = []
+        self.generator_state = GeneratorState.UNKNOWN
         self.opened_port = None
 
     def set_state(self, state):
@@ -47,6 +53,13 @@ class FakeController(QObject):
     def close(self):
         self.events.append(("close", self.opened_port))
         self.set_state(AcquisitionState.DISCONNECTED)
+
+    @property
+    def generator_ready_for_flash(self):
+        return self.generator_state is GeneratorState.STOPPED
+
+    def request_generator_shutdown(self):
+        return self.generator_ready_for_flash
 
     def stop(self):
         return False
