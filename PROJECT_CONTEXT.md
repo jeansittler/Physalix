@@ -37,15 +37,13 @@ Fonctionnalités principales existantes :
 
 ### Version publique
 
-**Physalix 1.5.0**
+**Physalix 1.5.1**
 
-Commit de release :
-
-`25d63ff85f7a8307c71c3d171c40c1e2b1ee0cb3`
+Commit de release : celui pointé par le tag annoté `v1.5.1`.
 
 Tag :
 
-`v1.5.0`
+`v1.5.1`
 
 Branche stable :
 
@@ -53,37 +51,35 @@ Branche stable :
 
 État attendu :
 
-`main == origin/main == 25d63ff85f7a8307c71c3d171c40c1e2b1ee0cb3`
+`main == origin/main == v1.5.1`
 
 Working tree attendu : propre.
 
-### Release 1.5.0
+### Release 1.5.1
 
-Physalix 1.5.0 a été publiée sur GitHub comme release stable et Latest.
+Physalix 1.5.1 est la release stable et Latest sur GitHub.
 
 Assets publiés :
-- `Physalix-Setup-1.5.0.exe`
-- `Physalix-Setup-1.5.0.exe.sha256`
+- `Physalix-Setup-1.5.1.exe`
+- `Physalix-Setup-1.5.1.exe.sha256`
 - `update.json`
 
-SHA-256 de l’installateur 1.5.0 :
+SHA-256 de l’installateur 1.5.1 :
 
-`5eb1a9e8b92567ddef72914ba2532e68355d5b05567757fe38f38e05ce62e5c6`
+`bcdd5d96cd805022653068dd3b9c21159d6e209eee4034ed8747b8eeabf92d35`
 
 `update.json` public :
-- version `1.5.0`
+- version `1.5.1`
 - `mandatory = false`
 - URL de l’installateur cohérente avec la release GitHub
 - SHA identique à celui de l’installateur
 - changelog cumulatif
 
-Les ressources publiques ont été vérifiées en HTTP 200 et l’installateur public a été retéléchargé puis re-hashé avec succès.
-
 ### Validation restante
 
 La validation réelle du parcours :
 
-`1.4.1 → détection 1.5.0 → téléchargement → SHA → installation → redémarrage → test Arduino`
+`1.5.0 → détection 1.5.1 → téléchargement → SHA → installation → redémarrage → test Arduino`
 
 reste à effectuer manuellement si elle n’a pas encore été confirmée dans le chat courant.
 
@@ -713,7 +709,7 @@ Après stabilisation définitive, la branche pourra éventuellement être suppri
 
 Version applicative actuelle :
 
-`1.5.0`
+`1.5.1`
 
 Firmware Arduino :
 
@@ -817,10 +813,4 @@ Message recommandé :
 
 ## 21. Prochaine étape
 
-À définir dans le chat courant.
-
-Avant de commencer une nouvelle fonctionnalité importante :
-- créer une branche dédiée si nécessaire ;
-- choisir explicitement le niveau GPT-5.6 Sol ;
-- décrire d’abord le comportement attendu ;
-- éviter de coder avant d’avoir clarifié l’ergonomie et les invariants importants.
+Valider manuellement le parcours réel de mise à jour de Physalix 1.5.0 vers 1.5.1, puis le redémarrage et l’Acquisition Arduino.

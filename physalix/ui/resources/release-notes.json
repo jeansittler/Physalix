@@ -72,5 +72,16 @@
       "Indication de la qualité d'échantillonnage en mode GBF.",
       "Interface Acquisition optimisée pour les écrans portables."
     ]
+  },
+  {
+    "version": "1.5.1",
+    "notes": [
+      "Correction de l'affichage des listes déroulantes longues : première et dernière lignes entièrement visibles, avec un défilement adapté.",
+      "La molette ne modifie plus par inadvertance la valeur d'un sélecteur fermé, tout en conservant le défilement normal des listes ouvertes et des panneaux.",
+      "Fermeture plus fiable des graphiques en disposition par onglets, sans fenêtre flottante ni zone noire résiduelle.",
+      "Numérotation visible continue des graphiques et des séries après suppression, sans modifier leurs identifiants internes ni les projets enregistrés.",
+      "Sélection des grandeurs en abscisse et en ordonnée rendue plus claire, avec un rappel dynamique du tracé.",
+      "Création d'une grandeur par formule simplifiée dans Calculs ; l'insertion d'une grandeur existante devient une aide facultative repliée par défaut."
+    ]
   }
 ]

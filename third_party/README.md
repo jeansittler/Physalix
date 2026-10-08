@@ -1,7 +1,7 @@
 # Conformité des composants tiers
 
 Ce dossier décrit les composants réellement embarqués dans la distribution
-Windows de Physalix 1.5.0. Il ne contient pas les archives de code source, afin
+Windows de Physalix 1.5.1. Il ne contient pas les archives de code source, afin
 de ne pas alourdir le dépôt Git.
 
 - `components.json` est la source de vérité versionnée pour les versions,
