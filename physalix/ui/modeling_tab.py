@@ -9,6 +9,7 @@ from PySide6.QtWidgets import (
 from physalix.fitting import MODELS, fit_model
 from physalix.ui.fit_report import report_html, math_text, DETAILS_HTML
 from physalix.ui.graph_tab import paired_values
+from physalix.ui.graph_series import PopupComboBox, configure_popup, update_popup_height
 from physalix.ui.components import (page_header, page_layout, panel, refresh_style,
                                     role, ResponsiveActions, ResponsiveCards)
 from physalix.ui.icons import icon
@@ -70,11 +71,12 @@ class ModelingTab(QWidget):
         self.new_fit_button.setToolTip("Créer une nouvelle modélisation sans modifier les précédentes, avec le même modèle ou un autre.")
         form.addRow("Modélisation", self.fit_choice)
         form.addRow("", self.new_fit_button)
-        self.model_choice = QComboBox()
+        self.model_choice = PopupComboBox()
         self.model_choice.setMaximumWidth(LIGHT.field_medium)
+        configure_popup(self.model_choice, LIGHT.field_medium)
         for key, (title, formula) in MODELS.items():
             self.model_choice.addItem(title, key)
-        self.model_choice.setCurrentIndex(2)
+        update_popup_height(self.model_choice)
         form.addRow("Modèle", self.model_choice)
         self.formula_label = QLabel()
         self.formula_label.setTextFormat(Qt.TextFormat.RichText)

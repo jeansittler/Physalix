@@ -10,6 +10,7 @@ from PySide6.QtWidgets import QApplication
 
 from physalix.fitting import Expression, fit_model, parse_parameters
 from physalix.ui.main_window import MainWindow
+from physalix.ui.graph_series import PopupComboBox
 
 
 class FittingTests(unittest.TestCase):
@@ -89,6 +90,7 @@ class ModelingInterfaceTests(unittest.TestCase):
             model.rows = [[str(x), str(2*x+3)] for x in range(8)]
             graph.refresh_plot()
             first = graph.series[0]
+            tab.model_choice.setCurrentIndex(tab.model_choice.findData("affine"))
             tab.calculate()
             self.assertTrue(first.fits)
             curve = first.fits[0].curve
@@ -122,6 +124,22 @@ class ModelingInterfaceTests(unittest.TestCase):
             self.assertFalse(first.fits)
             graph.remove_series(first)
             self.assertIs(tab.current_series(), second)
+        finally:
+            window._discard_on_close = True
+            window.close()
+
+    def test_model_selector_starts_on_constant_and_preserves_selection(self):
+        window = MainWindow()
+        try:
+            tab = window.modeling_tab
+            self.assertIsInstance(tab.model_choice, PopupComboBox)
+            self.assertEqual(tab.model_choice.currentData(), "constant")
+            tab.model_choice.showPopup()
+            self.assertEqual(tab.model_choice.view().currentIndex().row(), 0)
+            tab.model_choice.hidePopup()
+            tab.model_choice.setCurrentIndex(tab.model_choice.findData("linear"))
+            tab.sync_series()
+            self.assertEqual(tab.model_choice.currentData(), "linear")
         finally:
             window._discard_on_close = True
             window.close()
@@ -241,6 +259,7 @@ class ModelingInterfaceTests(unittest.TestCase):
                           for x in [0, 1, 2, 3, 17, 18, 19, 20]]
             graph.refresh_plot()
             series = graph.series[0]
+            tab.model_choice.setCurrentIndex(tab.model_choice.findData("affine"))
             tab.range_check.setChecked(True)
             graph.fit_region.setRegion((0, 3))
             tab.calculate()

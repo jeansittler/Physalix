@@ -13,6 +13,8 @@ from PySide6.QtWidgets import QApplication, QLabel, QMessageBox
 from physalix.calculations import CalculationEngine, Formula, derivative_unit
 from physalix.ui.data_tab import MeasurementsModel
 from physalix.ui.main_window import MainWindow
+from physalix.ui.graph_series import PopupComboBox
+from physalix.ui.theme import LIGHT
 
 
 class FormulaTests(unittest.TestCase):
@@ -153,6 +155,29 @@ class CalculationsTests(unittest.TestCase):
             self.assertEqual(model.rows[2][-1], "5")
             self.assertEqual(tab.history.rowCount(), 3)
             self.assertEqual(window.graph_tab.series[0].x_choice.count(), 6)
+        finally:
+            window._discard_on_close = True
+            window.close()
+
+    def test_quantity_selectors_use_bounded_reference_popups(self):
+        window = MainWindow()
+        try:
+            tab = window.calculations_tab
+            model = window.data_tab.model
+            for _ in range(13):
+                model.add_quantity()
+            tab.refresh()
+            for combo in (tab.source, tab.axis, tab.quantity):
+                with self.subTest(combo=combo):
+                    self.assertIsInstance(combo, PopupComboBox)
+                    self.assertEqual(combo.maxVisibleItems(), 8)
+                    combo.showPopup()
+                    self.assertEqual(combo.view().height(),
+                                     8 * combo.view().sizeHintForRow(0) +
+                                     2 * (LIGHT.small + combo.view().frameWidth()))
+                    self.assertEqual(combo.view().verticalScrollBarPolicy(),
+                                     Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+                    combo.hidePopup()
         finally:
             window._discard_on_close = True
             window.close()

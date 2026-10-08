@@ -9,6 +9,7 @@ from PySide6.QtWidgets import (
 )
 
 from physalix.calculations import CalculationEngine, derivative_unit
+from physalix.ui.graph_series import PopupComboBox, configure_popup, update_popup_height
 from physalix.ui.math_help import math_help_button
 from physalix.ui.components import page_header, page_layout, panel, role, ResponsiveCards, label as section_label
 from physalix.ui.theme import LIGHT
@@ -91,13 +92,14 @@ class CalculationsTab(QWidget):
         form.setVerticalSpacing(LIGHT.related)
         form.setRowWrapPolicy(QFormLayout.RowWrapPolicy.WrapLongRows)
         derivative_layout.addLayout(form)
-        self.source = QComboBox()
-        self.axis = QComboBox()
+        self.source = PopupComboBox()
+        self.axis = PopupComboBox()
         self.derivative_name = QLineEdit()
         self.derivative_name.setPlaceholderText("Exemple : Vx, Vy ou ax")
         self.derivative_unit = QLineEdit()
         for control in (self.source, self.axis):
             control.setMaximumWidth(LIGHT.field_wide)
+            configure_popup(control, LIGHT.field_wide)
         for control in (self.derivative_name, self.derivative_unit):
             control.setMaximumWidth(LIGHT.field_medium)
         form.addRow("Grandeur à dériver :", self.source)
@@ -133,8 +135,9 @@ class CalculationsTab(QWidget):
         form.addRow("Unité du résultat :", self.formula_unit)
         form.addRow("Formule :", self.expression)
         insert_row = QHBoxLayout()
-        self.quantity = QComboBox()
+        self.quantity = PopupComboBox()
         self.quantity.setMaximumWidth(LIGHT.field_wide)
+        configure_popup(self.quantity, LIGHT.field_wide)
         insert_row.addWidget(self.quantity, 1)
         insert = QPushButton("Insérer la grandeur")
         insert.clicked.connect(self.insert_quantity)
@@ -198,6 +201,7 @@ class CalculationsTab(QWidget):
             combo.clear()
             for i, (name, unit) in enumerate(zip(self.model.names, self.model.units)):
                 combo.addItem(f"C{i + 1} · {name}" + (f" ({unit})" if unit else ""), i)
+            update_popup_height(combo)
             combo.setCurrentIndex(max(0, combo.findData(previous)))
             combo.blockSignals(False)
         self.history.setRowCount(len(self.engine.items))
