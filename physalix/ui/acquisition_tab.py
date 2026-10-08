@@ -6,11 +6,12 @@ from dataclasses import dataclass
 import math
 
 import pyqtgraph as pg
-from PySide6.QtCore import QTimer
+from PySide6.QtCore import Qt, QTimer
 from PySide6.QtSerialPort import QSerialPortInfo
 from PySide6.QtWidgets import (
     QComboBox, QDoubleSpinBox, QFormLayout, QGridLayout, QHBoxLayout, QLabel,
-    QMessageBox, QPushButton, QSpinBox, QVBoxLayout, QWidget,
+    QMessageBox, QPushButton, QScrollArea, QSizePolicy, QSpinBox, QSplitter,
+    QVBoxLayout, QWidget,
 )
 
 from physalix.acquisition import (
@@ -27,7 +28,7 @@ from physalix.firmware_flash import (
     FirmwareCompatibility, FirmwareFlash, FlashErrorKind, compare_firmware,
 )
 from physalix.firmware_resources import FirmwareResourceError, load_uno_resources
-from physalix.ui.components import label, page_header, panel, workspace_layout
+from physalix.ui.components import label, page_header, page_layout, panel, role
 from physalix.ui.graph_series import PopupComboBox, configure_popup, update_popup_height
 from physalix.ui.theme import LIGHT
 
@@ -124,45 +125,107 @@ class AcquisitionTab(QWidget):
         self._update_controls(self.controller.state)
 
     def _build_ui(self):
-        layout = workspace_layout(self, 760, 610)
+        layout = page_layout(QVBoxLayout(self))
         layout.addWidget(page_header(
             "Acquisition", "Mesurer la tension Uc d'un circuit RC avec un Arduino Physalix."))
 
-        connection, connection_layout = panel("Connexion")
+        connection, connection_layout = panel(kind="toolbar")
+        connection.setObjectName("acquisitionConnectionBar")
+        connection_layout.setSpacing(LIGHT.small)
         connection_row = QHBoxLayout()
+        connection_row.setSpacing(LIGHT.related)
+        connection_row.addWidget(label("Connexion", "toolbarLabel"))
         self.port_combo = QComboBox()
         self.port_combo.setMinimumWidth(260)
         self.refresh_button = QPushButton("Actualiser")
         self.connect_button = QPushButton("Connecter")
         self.connection_status = QLabel("Déconnecté")
-        connection_row.addWidget(label("Port série", "fieldLabel"))
+        self.connection_status.setWordWrap(False)
+        connection_row.addWidget(label("Port", "fieldLabel"))
         connection_row.addWidget(self.port_combo, 1)
         connection_row.addWidget(self.refresh_button)
         connection_row.addWidget(self.connect_button)
-        connection_row.addWidget(self.connection_status)
         connection_layout.addLayout(connection_row)
         firmware_row = QHBoxLayout()
+        firmware_row.setSpacing(LIGHT.related)
+        firmware_row.addWidget(self.connection_status, 1)
         firmware_row.addWidget(label("Firmware", "fieldLabel"))
         self.firmware_status = QLabel("Firmware non détecté")
-        firmware_row.addWidget(self.firmware_status, 1)
+        self.firmware_status.setWordWrap(False)
+        firmware_row.addWidget(self.firmware_status)
         self.firmware_button = QPushButton("Installer le firmware Physalix…")
         firmware_row.addWidget(self.firmware_button)
         connection_layout.addLayout(firmware_row)
         layout.addWidget(connection)
 
-        settings, settings_layout = panel("Paramètres — Acquisition V1")
-        grid = QGridLayout()
-        input_form = QFormLayout()
+        self.main_splitter = QSplitter(Qt.Orientation.Horizontal)
+        self.main_splitter.setObjectName("acquisitionMainSplitter")
+        self.main_splitter.setChildrenCollapsible(False)
+
+        plot_panel, plot_layout = panel("E(t) et uC(t)")
+        plot_panel.setObjectName("acquisitionPlotPanel")
+        plot_panel.setMinimumSize(460, 320)
+        plot_panel.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+        plot_layout.setContentsMargins(LIGHT.small, LIGHT.small,
+                                       LIGHT.small, LIGHT.small)
+        self.plot = pg.PlotWidget(background=LIGHT.surface)
+        self.plot.setLabel("bottom", "Temps", units="s")
+        self.plot.setLabel("left", "Tension", units="V")
+        self.plot.showGrid(x=True, y=True, alpha=0.25)
+        self.plot.addLegend(offset=(8, 8))
+        self.curve = self.plot.plot(
+            [], [], pen=pg.mkPen(LIGHT.primary, width=2), name="uC — signal mesuré")
+        self.generated_curve = self.plot.plot(
+            [], [], pen=pg.mkPen("#d84315", width=2), name="E — signal généré")
+        plot_layout.addWidget(self.plot, 1)
+        self.main_splitter.addWidget(plot_panel)
+
+        self.settings_column = QWidget()
+        self.settings_column.setObjectName("acquisitionSettingsColumn")
+        self.settings_column.setMinimumWidth(330)
+        self.settings_column.setMaximumWidth(460)
+        settings_column_layout = QVBoxLayout(self.settings_column)
+        settings_column_layout.setContentsMargins(0, 0, 0, 0)
+        settings_column_layout.setSpacing(LIGHT.related)
+
+        self.settings_scroll = QScrollArea()
+        self.settings_scroll.setObjectName("acquisitionSettingsScroll")
+        self.settings_scroll.setWidgetResizable(True)
+        self.settings_scroll.setHorizontalScrollBarPolicy(
+            Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        settings_content = QWidget()
+        settings_content.setMinimumWidth(0)
+        settings_content.setSizePolicy(
+            QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
+        settings_layout = QVBoxLayout(settings_content)
+        settings_layout.setContentsMargins(0, 0, LIGHT.small, 0)
+        settings_layout.setSpacing(LIGHT.related)
+        self.settings_scroll.setWidget(settings_content)
+        settings_column_layout.addWidget(self.settings_scroll, 1)
+
+        acquisition_panel, acquisition_layout = panel("Acquisition")
+        acquisition_form = QFormLayout()
+        acquisition_form.setContentsMargins(0, 0, 0, 0)
+        acquisition_form.setHorizontalSpacing(LIGHT.small)
+        acquisition_form.setVerticalSpacing(LIGHT.small)
+        acquisition_form.setFieldGrowthPolicy(
+            QFormLayout.FieldGrowthPolicy.AllNonFixedFieldsGrow)
+        acquisition_form.setLabelAlignment(
+            Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
         self.channel_combo = QComboBox()
         self.channel_combo.addItem("A0", 0)
         self.quantity_label = QLabel("Uc")
         self.unit_label = QLabel("V")
-        input_form.addRow("Voie", self.channel_combo)
-        input_form.addRow("Grandeur", self.quantity_label)
-        input_form.addRow("Unité", self.unit_label)
-        grid.addLayout(input_form, 0, 0)
-
-        acquisition_form = QFormLayout()
+        measurement_widget = QWidget()
+        measurement_row = QHBoxLayout(measurement_widget)
+        measurement_row.setContentsMargins(0, 0, 0, 0)
+        measurement_row.setSpacing(LIGHT.related)
+        measurement_row.addWidget(self.quantity_label)
+        measurement_row.addWidget(label("·", "muted"))
+        measurement_row.addWidget(self.unit_label)
+        measurement_row.addStretch(1)
+        acquisition_form.addRow("Voie", self.channel_combo)
+        acquisition_form.addRow("Mesure", measurement_widget)
         self.duration_spin = QDoubleSpinBox()
         self.duration_spin.setRange(0.001, 3600.0)
         self.duration_spin.setDecimals(3)
@@ -173,18 +236,39 @@ class AcquisitionTab(QWidget):
         self.points_spin.setValue(101)
         self.requested_te_label = QLabel()
         self.requested_fe_label = QLabel()
+        sampling_widget = QWidget()
+        sampling_row = QGridLayout(sampling_widget)
+        sampling_row.setContentsMargins(0, 0, 0, 0)
+        sampling_row.setHorizontalSpacing(LIGHT.related)
+        sampling_row.setVerticalSpacing(0)
+        sampling_row.addWidget(label("Te", "caption"), 0, 0)
+        sampling_row.addWidget(self.requested_te_label, 0, 1)
+        sampling_row.addWidget(label("Fe", "caption"), 0, 2)
+        sampling_row.addWidget(self.requested_fe_label, 0, 3)
+        sampling_row.setColumnStretch(1, 1)
+        sampling_row.setColumnStretch(3, 1)
         acquisition_form.addRow("Durée", self.duration_spin)
-        acquisition_form.addRow("Nombre de points", self.points_spin)
-        acquisition_form.addRow("Te calculé", self.requested_te_label)
-        acquisition_form.addRow("Fe calculée", self.requested_fe_label)
-        grid.addLayout(acquisition_form, 0, 1)
+        acquisition_form.addRow("Points", self.points_spin)
+        acquisition_form.addRow("Échantillonnage", sampling_widget)
+        acquisition_layout.addLayout(acquisition_form)
+        settings_layout.addWidget(acquisition_panel)
 
+        generation_panel, generation_layout = panel("Génération")
         generation_form = QFormLayout()
+        generation_form.setContentsMargins(0, 0, 0, 0)
+        generation_form.setHorizontalSpacing(LIGHT.small)
+        generation_form.setVerticalSpacing(LIGHT.small)
+        generation_form.setFieldGrowthPolicy(
+            QFormLayout.FieldGrowthPolicy.AllNonFixedFieldsGrow)
+        generation_form.setLabelAlignment(
+            Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
         self.generation_type_combo = PopupComboBox()
         self.generation_type_combo.addItem("Échelon", GenerationType.STEP)
         self.generation_type_combo.addItem("Carré — N périodes", GenerationType.SQUARE_BURST)
         self.generation_type_combo.addItem("GBF continu", CONTINUOUS_SQUARE_MODE)
-        self.generation_type_combo.setMinimumWidth(180)
+        # Le popup conserve sa largeur confortable, tandis que le champ peut
+        # se resserrer dans la colonne latérale sans rogner son libellé.
+        self.generation_type_combo.setMinimumWidth(150)
         self.generation_type_combo.setMaximumWidth(LIGHT.field_medium)
         self.generation_type_combo.setMinimumContentsLength(8)
         self.generation_type_combo.setSizeAdjustPolicy(
@@ -233,10 +317,11 @@ class AcquisitionTab(QWidget):
         self.gbf_start_button = QPushButton("Démarrer le générateur")
         self.gbf_stop_button = QPushButton("Arrêter le générateur")
         gbf_actions_widget = QWidget()
-        gbf_actions = QHBoxLayout(gbf_actions_widget)
-        gbf_actions.setContentsMargins(0, 0, 0, 0)
-        gbf_actions.addWidget(self.gbf_start_button)
-        gbf_actions.addWidget(self.gbf_stop_button)
+        self.gbf_actions_layout = QVBoxLayout(gbf_actions_widget)
+        self.gbf_actions_layout.setContentsMargins(0, 0, 0, 0)
+        self.gbf_actions_layout.setSpacing(LIGHT.small)
+        self.gbf_actions_layout.addWidget(self.gbf_start_button)
+        self.gbf_actions_layout.addWidget(self.gbf_stop_button)
         generation_form.addRow("Forme", self.gbf_shape_value)
         generation_form.addRow("Sortie", self.gbf_output_value)
         generation_form.addRow("Minimum", self.gbf_minimum_value)
@@ -260,36 +345,35 @@ class AcquisitionTab(QWidget):
             self.gbf_applied_frequency_label, self.gbf_applied_period_label,
             self.gbf_duty_value, self.gbf_state_label, gbf_actions_widget)
         self._generation_form = generation_form
-        grid.addLayout(generation_form, 0, 2)
-        settings_layout.addLayout(grid)
-        self.applied_values_label = label("Valeurs réellement appliquées : en attente.", "muted")
-        settings_layout.addWidget(self.applied_values_label)
-        layout.addWidget(settings)
+        generation_layout.addLayout(generation_form)
+        settings_layout.addWidget(generation_panel)
 
-        actions = QHBoxLayout()
-        self.start_button = QPushButton("Démarrer")
-        self.stop_button = QPushButton("Arrêter")
-        self.transfer_button = QPushButton("Envoyer vers Données et Graphique")
-        actions.addStretch(1)
-        actions.addWidget(self.start_button)
-        actions.addWidget(self.stop_button)
-        actions.addWidget(self.transfer_button)
-        layout.addLayout(actions)
+        applied_panel, applied_layout = panel("Valeurs appliquées")
+        self.applied_values_label = label("En attente de configuration.", "muted")
+        applied_layout.addWidget(self.applied_values_label)
+        settings_layout.addWidget(applied_panel)
+        settings_layout.addStretch(1)
 
-        plot_panel, plot_layout = panel("Courbes temporaires — E(t) et uC(t)")
-        self.plot = pg.PlotWidget(background=LIGHT.surface)
-        self.plot.setLabel("bottom", "Temps", units="s")
-        self.plot.setLabel("left", "Tension", units="V")
-        self.plot.showGrid(x=True, y=True, alpha=0.25)
-        self.plot.addLegend(offset=(8, 8))
-        self.curve = self.plot.plot(
-            [], [], pen=pg.mkPen(LIGHT.primary, width=2), name="uC — signal mesuré")
-        self.generated_curve = self.plot.plot(
-            [], [], pen=pg.mkPen("#d84315", width=2), name="E — signal généré")
-        plot_layout.addWidget(self.plot, 1)
+        actions_panel, actions_layout = panel("Actions")
+        actions_panel.setObjectName("acquisitionActionsPanel")
         self.result_status = label("Aucune acquisition.", "muted")
-        plot_layout.addWidget(self.result_status)
-        layout.addWidget(plot_panel, 1)
+        actions_layout.addWidget(self.result_status)
+        main_actions = QHBoxLayout()
+        main_actions.setSpacing(LIGHT.related)
+        self.start_button = role(QPushButton("Démarrer"), "primary")
+        self.stop_button = role(QPushButton("Arrêter"), "danger")
+        self.transfer_button = QPushButton("Envoyer vers Données et Graphique")
+        main_actions.addWidget(self.start_button, 1)
+        main_actions.addWidget(self.stop_button, 1)
+        actions_layout.addLayout(main_actions)
+        actions_layout.addWidget(self.transfer_button)
+        settings_column_layout.addWidget(actions_panel)
+
+        self.main_splitter.addWidget(self.settings_column)
+        self.main_splitter.setStretchFactor(0, 3)
+        self.main_splitter.setStretchFactor(1, 1)
+        self.main_splitter.setSizes([900, 360])
+        layout.addWidget(self.main_splitter, 1)
 
         self.refresh_button.clicked.connect(self.refresh_ports)
         self.connect_button.clicked.connect(self.toggle_connection)
@@ -304,6 +388,22 @@ class AcquisitionTab(QWidget):
         self.start_button.clicked.connect(self.start_acquisition)
         self.stop_button.clicked.connect(self.controller.stop)
         self.transfer_button.clicked.connect(self.transfer_result)
+
+        self.setTabOrder(self.port_combo, self.refresh_button)
+        self.setTabOrder(self.refresh_button, self.connect_button)
+        self.setTabOrder(self.connect_button, self.firmware_button)
+        self.setTabOrder(self.firmware_button, self.channel_combo)
+        self.setTabOrder(self.channel_combo, self.duration_spin)
+        self.setTabOrder(self.duration_spin, self.points_spin)
+        self.setTabOrder(self.points_spin, self.generation_type_combo)
+        self.setTabOrder(self.generation_type_combo, self.output_pin)
+        self.setTabOrder(self.output_pin, self.square_periods_spin)
+        self.setTabOrder(self.square_periods_spin, self.gbf_frequency_spin)
+        self.setTabOrder(self.gbf_frequency_spin, self.gbf_start_button)
+        self.setTabOrder(self.gbf_start_button, self.gbf_stop_button)
+        self.setTabOrder(self.gbf_stop_button, self.start_button)
+        self.setTabOrder(self.start_button, self.stop_button)
+        self.setTabOrder(self.stop_button, self.transfer_button)
 
     def _connect_controller(self):
         self.controller.state_changed.connect(self._update_controls)
@@ -775,18 +875,17 @@ class AcquisitionTab(QWidget):
 
     def _configuration_accepted(self, config: AcquisitionConfig):
         parts = (
-            f"points appliqués = {config.sample_count}",
-            f"Te = {self._format_period(config.sampling_period_us)}",
-            f"Fe = {self._format_frequency(config.sampling_period_us)}",
-            f"durée = {applied_duration_s(config):g} s",
+            f"{config.sample_count} pts",
+            f"Te {self._format_period(config.sampling_period_us)}",
+            f"Fe {self._format_frequency(config.sampling_period_us)}",
+            f"durée {applied_duration_s(config):g} s",
         )
         if isinstance(config.generation, SquareBurstConfig):
             parts += (
-                f"période = {self._format_seconds(applied_square_period_s(config))}",
-                f"fréquence = {self._format_hertz(applied_square_frequency_hz(config))}",
+                f"période {self._format_seconds(applied_square_period_s(config))}",
+                f"fréquence {self._format_hertz(applied_square_frequency_hz(config))}",
             )
-        self.applied_values_label.setText(
-            "Valeurs réellement appliquées : " + ", ".join(parts) + ".")
+        self.applied_values_label.setText(" · ".join(parts))
         if self._start_after_configuration:
             self._start_after_configuration = False
             self.controller.start()

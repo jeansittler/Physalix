@@ -7,7 +7,7 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from PySide6.QtCore import QObject, Qt, Signal
 from PySide6.QtTest import QTest
-from PySide6.QtWidgets import QApplication, QLabel
+from PySide6.QtWidgets import QApplication, QLabel, QScrollArea, QSplitter, QVBoxLayout
 
 from physalix.acquisition import (
     AcquisitionConfig, AcquisitionResult, AcquisitionStarted, AcquisitionState,
@@ -125,6 +125,29 @@ class AcquisitionTabTests(unittest.TestCase):
     def make_ready(self):
         self.controller.set_state(AcquisitionState.READY)
         self.controller.ready.emit(FirmwareInfo((1, 0, 0), 0))
+
+    def test_layout_keeps_plot_fixed_beside_locally_scrollable_settings(self):
+        self.assertIsInstance(self.tab.main_splitter, QSplitter)
+        self.assertEqual(self.tab.main_splitter.orientation(), Qt.Orientation.Horizontal)
+        self.assertEqual(self.tab.main_splitter.count(), 2)
+        self.assertIs(self.tab.main_splitter.widget(1), self.tab.settings_column)
+        self.assertIsInstance(self.tab.settings_scroll, QScrollArea)
+        self.assertTrue(self.tab.settings_scroll.widgetResizable())
+        self.assertFalse(
+            self.tab.settings_scroll.widget().isAncestorOf(self.tab.start_button))
+        self.assertEqual(self.tab.findChildren(QScrollArea), [self.tab.settings_scroll])
+
+        for width, height in ((1366, 768), (1920, 1080)):
+            with self.subTest(size=(width, height)):
+                self.tab.resize(width, height)
+                self.tab.show()
+                self.app.processEvents()
+                plot_width = self.tab.main_splitter.widget(0).width()
+                settings_width = self.tab.main_splitter.widget(1).width()
+                self.assertGreater(plot_width, settings_width)
+                self.assertGreaterEqual(self.tab.plot.height(), 300)
+                self.assertTrue(self.tab.start_button.isVisible())
+                self.assertTrue(self.tab.transfer_button.isVisible())
 
     def accept_config(self, period_us=10_000, count=101):
         config = AcquisitionConfig(period_us, count, 0, DigitalStepConfig(8, False, True, 0))
@@ -358,11 +381,11 @@ class SquareBurstUiTests(unittest.TestCase):
 
         self.assertEqual(self.controller.state, AcquisitionState.ACQUIRING)
         text = self.tab.applied_values_label.text()
-        self.assertIn("points appliqués = 201", text)
-        self.assertIn("Te = 10.004 ms", text)
-        self.assertIn("durée = 2.0008 s", text)
-        self.assertIn("période = 1.0004 s", text)
-        self.assertIn("fréquence = 0.9996", text)
+        self.assertIn("201 pts", text)
+        self.assertIn("Te 10.004 ms", text)
+        self.assertIn("durée 2.0008 s", text)
+        self.assertIn("période 1.0004 s", text)
+        self.assertIn("fréquence 0.9996", text)
 
     def test_complete_generated_signal_is_stored_and_drawn_as_steps(self):
         config = self.configure_square()
@@ -528,6 +551,33 @@ class ContinuousSquareUiTests(unittest.TestCase):
         self.assertTrue(self.tab.generation_type_combo.isEnabled())
         self.assertTrue(self.tab.gbf_frequency_spin.isEnabled())
         self.assertTrue(self.tab.gbf_start_button.isEnabled())
+
+    def test_gbf_actions_are_stacked_and_labels_fit_the_side_panel(self):
+        self.ready()
+        self.select_gbf()
+        self.tab.resize(1366, 768)
+        self.tab.show()
+        self.app.processEvents()
+
+        self.assertIsInstance(self.tab.gbf_actions_layout, QVBoxLayout)
+        self.assertIs(self.tab.gbf_actions_layout.itemAt(0).widget(),
+                      self.tab.gbf_start_button)
+        self.assertIs(self.tab.gbf_actions_layout.itemAt(1).widget(),
+                      self.tab.gbf_stop_button)
+        for button in (self.tab.gbf_start_button, self.tab.gbf_stop_button):
+            self.assertGreaterEqual(button.width(), button.minimumSizeHint().width())
+        expected_labels = {
+            self.tab.generation_type_combo: "Mode de génération",
+            self.tab.gbf_frequency_spin: "Fréquence demandée",
+            self.tab.gbf_applied_frequency_label: "Fréquence appliquée",
+            self.tab.gbf_applied_period_label: "Période appliquée",
+            self.tab.gbf_duty_value: "Rapport cyclique",
+            self.tab.gbf_state_label: "État du générateur",
+        }
+        for field, expected in expected_labels.items():
+            form_label = self.tab._generation_form.labelForField(field)
+            self.assertEqual(form_label.text(), expected)
+            self.assertTrue(form_label.isVisible())
 
     def test_supported_frequency_range_is_forwarded_without_fake_applied_value(self):
         self.ready()
