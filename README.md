@@ -25,6 +25,7 @@ L'installateur Windows est fourni dans chaque release. Physalix peut ensuite rec
 - **Calculs** — dérivées numériques et création de nouvelles grandeurs par formule.
 - **Statistiques** — indicateurs usuels, dispersion et incertitude-type A.
 - **Dosages** — méthode des tangentes pour les dosages pH-métriques et détermination graphique de l'équivalence en conductimétrie.
+- **Acquisition** — mesures avec Arduino Uno, génération d'échelon ou de signal carré et transfert direct vers Données et Graphique.
 - **Projets `.physalix`** — sauvegarde du travail pour le reprendre ou l'échanger.
 
 ## Aperçu

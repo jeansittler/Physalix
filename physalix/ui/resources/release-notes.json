@@ -58,5 +58,19 @@
       "Amélioration de l'affichage et du défilement des listes de grandeurs.",
       "Correction de la sélection initiale du modèle Constante dans Modélisation."
     ]
+  },
+  {
+    "version": "1.5.0",
+    "notes": [
+      "Nouvel onglet Acquisition pour réaliser des mesures avec une carte Arduino Uno.",
+      "Acquisition de tensions et visualisation en temps réel.",
+      "Génération d'un échelon ou d'un signal carré pour l'étude de circuits électriques.",
+      "Nouveau mode GBF continu avec acquisition synchronisée.",
+      "Installation et mise à jour du firmware Arduino directement depuis Physalix.",
+      "Transfert des mesures vers Données et Graphique.",
+      "Affichage simultané du signal généré E(t) et du signal mesuré.",
+      "Indication de la qualité d'échantillonnage en mode GBF.",
+      "Interface Acquisition optimisée pour les écrans portables."
+    ]
   }
 ]
