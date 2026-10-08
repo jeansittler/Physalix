@@ -2,6 +2,7 @@
 
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QComboBox, QCompleter
+from physalix.ui.components import WheelSafeComboBox
 
 # Cette liste aide à la saisie, sans imposer de catalogue ni de conversion.
 COMMON_UNITS = (
@@ -25,7 +26,7 @@ COMMON_UNITS = (
 
 def unit_combo(parent=None):
     """Créer le sélecteur éditable commun au tableur et aux outils d'acquisition."""
-    editor = QComboBox(parent)
+    editor = WheelSafeComboBox(parent)
     editor.setEditable(True)
     editor.setInsertPolicy(QComboBox.InsertPolicy.NoInsert)
     editor.addItems(COMMON_UNITS)

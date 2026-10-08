@@ -96,6 +96,40 @@ class ProjectTests(unittest.TestCase):
         restore(restored, read_project(self.path), self.path)
         self.assertEqual(restored.data_tab.model.names[:2], ['σ', 'λ'])
 
+    def test_series_display_numbers_are_rebuilt_without_changing_saved_ids(self):
+        graph = self.window.graph_tab.active_graph
+        removed = graph.add_series()
+        kept = graph.add_series()
+        kept.set_curve_color('#123456')
+        graph.remove_series(removed)
+        state = snapshot(self.window)
+
+        self.assertEqual([entry['number'] for entry in state['graphs'][0]['series']], [1, 3])
+        restored = MainWindow()
+        self.windows.append(restored)
+        restore(restored, state)
+        restored_graph = restored.graph_tab.active_graph
+        self.assertEqual([series.number for series in restored_graph.series], [1, 3])
+        self.assertEqual([series.display_number for series in restored_graph.series], [1, 2])
+        self.assertEqual(restored_graph.series[1].color.name(), '#123456')
+
+    def test_default_graph_titles_stay_contiguous_after_roundtrip(self):
+        workspace = self.window.graph_tab
+        second = workspace.add_graph()
+        workspace.add_graph()
+        next(window for window in workspace.windows if window.graph is second).close()
+        self.app.processEvents()
+        state = snapshot(self.window)
+        self.assertEqual([graph['title'] for graph in state['graphs']],
+                         ['Graphique 1', 'Graphique 2'])
+
+        restored = MainWindow()
+        self.windows.append(restored)
+        restore(restored, state)
+        restored.graph_tab.add_graph()
+        self.assertEqual([window.windowTitle() for window in restored.graph_tab.windows],
+                         ['Graphique 1', 'Graphique 2', 'Graphique 3'])
+
     def legacy_project(self):
         """Build an authentic version-1 legacy archive, independent of the writer."""
         path = self.path.with_suffix('.physalyx')

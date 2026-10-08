@@ -151,13 +151,12 @@ def restore(window, state, path=None):
     for index, saved in enumerate(graphs):
         graph = window.graph_tab.windows[0].graph if index == 0 else window.graph_tab.add_graph()
         graph.sync_columns()
-        window.graph_tab.windows[index].setWindowTitle(saved['title'])
+        window.graph_tab.set_graph_title(window.graph_tab.windows[index], saved['title'])
         if not 1 <= len(saved['series']) <= 100:
             raise ValueError('Nombre de séries incorrect.')
         for j, entry in enumerate(saved['series']):
             series = graph.series[0] if j == 0 else graph.add_series()
             series.number = entry['number']
-            series.visible.setText(f'Série {series.number}')
             for axis in ('x_choice', 'y_choice'):
                 if not -1 <= entry['controls'][axis] < len(names):
                     raise ValueError('Colonne du graphique introuvable.')
@@ -174,6 +173,7 @@ def restore(window, state, path=None):
                 graph.set_model(series, FitResult(**result), fit['kind'], fit['settings'])
             series.next_fit_number = entry['next_fit_number']
         graph._next_number = max(s.number for s in graph.series) + 1
+        graph.update_series_display_numbers()
         graph.refresh_plot()
         page = window.modeling_tab.pages[graph]
         page.sync_series()
@@ -197,6 +197,7 @@ def restore(window, state, path=None):
         graph.reticle_action.setChecked(saved['reticle'])
         graph.plot.getViewBox().setMouseMode(saved['mouse_mode'])
         graph._refresh_timer.stop()
+    window.graph_tab.update_graph_display_numbers()
     window.graph_tab.arrangement.setCurrentIndex(state['arrangement'])
     window.graph_tab.area.setActiveSubWindow(window.graph_tab.windows[state['active_graph']])
     restore_controls(window.calculations_tab, state.get('calculations_controls', {}))

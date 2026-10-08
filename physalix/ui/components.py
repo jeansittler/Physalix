@@ -1,9 +1,28 @@
 """Petits composants de présentation sans logique scientifique."""
 
 from PySide6.QtCore import Qt
-from PySide6.QtWidgets import QFrame, QLabel, QVBoxLayout, QHBoxLayout, QPushButton, QWidget, QBoxLayout, QScrollArea, QSizePolicy
+from PySide6.QtWidgets import (QApplication, QBoxLayout, QComboBox, QFrame,
+                               QHBoxLayout, QLabel, QPushButton, QScrollArea,
+                               QSizePolicy, QVBoxLayout, QWidget)
 
 from physalix.ui.theme import LIGHT
+
+
+class WheelSafeComboBox(QComboBox):
+    """Ignore the wheel while closed so a surrounding panel keeps scrolling."""
+
+    def wheelEvent(self, event):
+        if self.view().isVisible():
+            delta = event.pixelDelta().y()
+            if not delta:
+                row_height = max(1, self.view().sizeHintForRow(0))
+                delta = (event.angleDelta().y() / 120
+                         * QApplication.wheelScrollLines() * row_height)
+            scrollbar = self.view().verticalScrollBar()
+            scrollbar.setValue(scrollbar.value() - round(delta))
+            event.accept()
+        else:
+            event.ignore()
 
 
 def role(widget, name):

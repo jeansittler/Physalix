@@ -466,7 +466,7 @@ class GraphTab(QWidget):
         for item in self.series:
             x, y = item.key()
             hidden = " · masquée" if not item.visible.isChecked() else ""
-            title = f"S{item.number} : {self.axis_label(y)} en fonction de {self.axis_label(x)}{hidden}"
+            title = f"S{item.display_number} : {self.axis_label(y)} en fonction de {self.axis_label(x)}{hidden}"
             self.series_choice.addItem(item.color_button.icon(), title)
             self.series_choice.setItemData(self.series_choice.count() - 1, title, Qt.ItemDataRole.ToolTipRole)
         if current in self.series:
@@ -487,6 +487,7 @@ class GraphTab(QWidget):
         self._next_number += 1
         item.sync_columns(self.model, self.axis_label, x, y)
         self.series.append(item)
+        self.update_series_display_numbers()
         self.series_stack.addWidget(item)
         self.series_stack.setCurrentWidget(item)
         self.settings_button.setChecked(True)
@@ -504,6 +505,7 @@ class GraphTab(QWidget):
         if len(self.series) <= 1 or item not in self.series:
             return
         self.series.remove(item)
+        self.update_series_display_numbers()
         self.remove_plot_item(item.points)
         self.remove_plot_item(item.line)
         for fit in item.fits:
@@ -514,6 +516,11 @@ class GraphTab(QWidget):
         for entry in self.series:
             entry.remove_button.setEnabled(len(self.series) > 1)
         self.refresh_plot()
+
+    def update_series_display_numbers(self):
+        """Keep labels contiguous without changing persistent series identities."""
+        for display_number, item in enumerate(self.series, start=1):
+            item.set_display_number(display_number)
 
     def sync_columns(self):
         for item in self.series:
@@ -535,13 +542,13 @@ class GraphTab(QWidget):
             if item.visible.isChecked():
                 x, y = item.key()
                 side = " · axe droit" if item.y_axis.currentIndex() else ""
-                label = f"S{item.number} : {self.axis_label(y)} en fonction de {self.axis_label(x)}{side}"
+                label = f"S{item.display_number} : {self.axis_label(y)} en fonction de {self.axis_label(x)}{side}"
                 self.legend.addItem(item.points, escape(label))
             for fit in item.fits:
                 fit.curve.setVisible(item.visible.isChecked())
                 fit.extension.hide()
                 if item.visible.isChecked():
-                    self.legend.addItem(fit.curve, f"S{item.number} · Modélisation {fit.number}")
+                    self.legend.addItem(fit.curve, f"S{item.display_number} · Modélisation {fit.number}")
         self.legend.schedule()
         if hasattr(self, 'reticle_sources_menu'):
             self.refresh_reticle_menu()
@@ -661,7 +668,7 @@ class GraphTab(QWidget):
             item.line.setData(x=xs, y=ys)
             item.restore_style()
             if item.visible.isChecked():
-                detail = f"S{item.number} : {len(xs)} point(s)"
+                detail = f"S{item.display_number} : {len(xs)} point(s)"
                 if skipped:
                     detail += f", {skipped} ligne(s) ignorée(s)"
                 messages.append(detail)
@@ -844,7 +851,7 @@ class GraphTab(QWidget):
             if xs:
                 targets.append((
                     ("series", item),
-                    f"S{item.number} — {self.axis_label(item.key()[1])} en fonction de "
+                    f"S{item.display_number} — {self.axis_label(item.key()[1])} en fonction de "
                     f"{self.axis_label(item.key()[0])}",
                 ))
             for fit in item.fits:
@@ -856,7 +863,7 @@ class GraphTab(QWidget):
                     model_name = MODELS.get(fit.kind, ("Modèle",))[0]
                     targets.append((
                         ("fit", item, fit),
-                        f"S{item.number} · Modélisation {fit.number} — {model_name}",
+                        f"S{item.display_number} · Modélisation {fit.number} — {model_name}",
                     ))
         return targets
 
@@ -984,7 +991,7 @@ class GraphTab(QWidget):
         if kind == "series":
             xs, ys, _ = paired_values(self.model.rows, *item.key())
             y = interpolated_value(xs, ys, x)
-            label = f"S{item.number} — {self.axis_label(item.key()[1])}"
+            label = f"S{item.display_number} — {self.axis_label(item.key()[1])}"
         else:
             fit = rest[0]
             curve_x, curve_y = fit.curve.getData()
@@ -1002,7 +1009,7 @@ class GraphTab(QWidget):
             if not np.isfinite(y):
                 return None
             model_name = MODELS.get(fit.kind, ("Modèle",))[0]
-            label = f"S{item.number} · Modélisation {fit.number} — {model_name}"
+            label = f"S{item.display_number} · Modélisation {fit.number} — {model_name}"
         return None if y is None else (y, item, label)
 
     def hide_crosshair(self, *args):

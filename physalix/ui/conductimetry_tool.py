@@ -4,10 +4,11 @@ import pyqtgraph as pg
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (
-    QComboBox, QDialog, QDialogButtonBox, QDoubleSpinBox, QFormLayout, QHBoxLayout,
+    QDialog, QDialogButtonBox, QDoubleSpinBox, QFormLayout, QHBoxLayout,
     QLabel, QPushButton, QVBoxLayout, QWidget,
 )
 from physalix.conductimetry import fit_equivalence
+from physalix.ui.components import WheelSafeComboBox
 from physalix.ui.graph_tool_controls import hide_traces_button
 
 
@@ -24,7 +25,7 @@ class ConductimetryTool(QWidget):
         row = QHBoxLayout()
         title = QLabel('Conductimétrie')
         row.addWidget(title)
-        self.series = QComboBox()
+        self.series = WheelSafeComboBox()
         self.series.setAccessibleName('Série du titrage conductimétrique')
         row.addWidget(self.series, 1)
         self.bounds_button = QPushButton('Intervalles…')
@@ -116,7 +117,7 @@ class ConductimetryTool(QWidget):
         self.series.clear()
         for series in self.graph.series:
             if series.visible.isChecked():
-                self.series.addItem(f'S{series.number} · {self.graph.axis_label(series.key()[1])}', series)
+                self.series.addItem(f'S{series.display_number} · {self.graph.axis_label(series.key()[1])}', series)
         index = self.series.findData(selected)
         if index < 0:
             current = self.graph.series_stack.currentWidget()

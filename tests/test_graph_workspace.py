@@ -3,7 +3,7 @@ import os
 import unittest
 
 os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
-from PySide6.QtWidgets import QApplication
+from PySide6.QtWidgets import QApplication, QMdiArea
 from physalix.ui.main_window import MainWindow
 from physalix.fitting import fit_model
 
@@ -60,6 +60,37 @@ class GraphWorkspaceTests(unittest.TestCase):
         self.assertNotIn(second, self.window.modeling_tab.pages)
         self.workspace.windows[0].close()
         self.assertEqual(len(self.workspace.windows), 1)
+
+    def test_closing_active_tab_keeps_remaining_graph_maximized(self):
+        remaining = self.workspace.active_graph
+        closed = self.workspace.add_graph()
+        self.app.processEvents()
+        next(window for window in self.workspace.windows if window.graph is closed).close()
+        self.app.processEvents()
+
+        self.assertEqual(self.workspace.area.viewMode(), QMdiArea.ViewMode.TabbedView)
+        self.assertIs(self.workspace.active_graph, remaining)
+        self.assertEqual(len(self.workspace.windows), 1)
+        remaining_window = self.workspace.windows[0]
+        self.assertTrue(remaining_window.isMaximized())
+        self.assertEqual(remaining_window.geometry(), self.workspace.area.viewport().rect())
+
+    def test_default_graph_titles_are_contiguous_after_close_and_add(self):
+        second = self.workspace.add_graph()
+        third = self.workspace.add_graph()
+        self.assertEqual([window.windowTitle() for window in self.workspace.windows],
+                         ["Graphique 1", "Graphique 2", "Graphique 3"])
+
+        next(window for window in self.workspace.windows if window.graph is second).close()
+        self.app.processEvents()
+        self.assertEqual([window.windowTitle() for window in self.workspace.windows],
+                         ["Graphique 1", "Graphique 2"])
+        self.assertIs(self.workspace.windows[1].graph, third)
+
+        added = self.workspace.add_graph()
+        self.assertEqual([window.windowTitle() for window in self.workspace.windows],
+                         ["Graphique 1", "Graphique 2", "Graphique 3"])
+        self.assertIs(self.workspace.windows[2].graph, added)
 
     def test_add_data_graph_series_uses_one_graph_and_left_axis(self):
         previous_count = len(self.workspace.windows)

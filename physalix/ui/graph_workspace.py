@@ -1,8 +1,10 @@
 """Graphiques indépendants en onglets, comparaison ou fenêtres libres."""
+import re
+
 from PySide6.QtCore import Qt, Signal, QRect, QSize
-from PySide6.QtWidgets import (QComboBox, QHBoxLayout, QInputDialog, QLabel, QMdiArea,
+from PySide6.QtWidgets import (QHBoxLayout, QInputDialog, QLabel, QMdiArea,
                                QMdiSubWindow, QPushButton, QStackedWidget, QTabBar, QVBoxLayout, QWidget)
-from physalix.ui.components import compact_width, panel, role
+from physalix.ui.components import WheelSafeComboBox, compact_width, panel, role
 from physalix.ui.graph_tab import GraphTab
 from physalix.ui.modeling_tab import ModelingTab
 from physalix.ui.theme import LIGHT
@@ -12,6 +14,7 @@ class GraphWindow(QMdiSubWindow):
     def __init__(self, owner, graph):
         super().__init__()
         self.owner, self.graph = owner, graph
+        self.uses_default_title = True
         self.setWidget(graph)
         from physalix.ui.icons import icon
         self.setWindowIcon(icon('graph'))
@@ -24,10 +27,10 @@ class GraphWindow(QMdiSubWindow):
             event.ignore()
             return
         self.owner.windows.remove(self)
+        self.owner.update_graph_display_numbers()
         self.owner.graph_removed.emit(self.graph)
-        if self.owner.arrangement.currentIndex() in (1, 2):
-            from PySide6.QtCore import QTimer
-            QTimer.singleShot(0, self.owner.arrange)
+        from PySide6.QtCore import QTimer
+        QTimer.singleShot(0, self.owner.arrange)
         event.accept()
 
 
@@ -52,7 +55,7 @@ class GraphWorkspace(QWidget):
         self.add_button.clicked.connect(self.add_graph)
         bar.addWidget(self.add_button, 0, Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
         bar.addWidget(QLabel('Disposition'))
-        self.arrangement = QComboBox()
+        self.arrangement = WheelSafeComboBox()
         self.arrangement.addItems(['Onglets', 'Côte à côte', 'Superposés', 'Libre'])
         compact_width(self.arrangement, LIGHT.field_compact)
         self.arrangement.currentIndexChanged.connect(self.arrange)
@@ -91,8 +94,8 @@ class GraphWorkspace(QWidget):
         graph = GraphTab(self.model)
         self.number += 1
         window = GraphWindow(self, graph)
-        window.setWindowTitle(f'Graphique {self.number}')
         self.windows.append(window)
+        self.update_graph_display_numbers()
         self.area.addSubWindow(window)
         graph.settings_requested.connect(lambda: self.edit_graph(graph))
         graph.modeling_requested.connect(lambda: self.request_modeling(graph))
@@ -112,7 +115,9 @@ class GraphWorkspace(QWidget):
         series.x_choice.setCurrentIndex(series.x_choice.findData(x_column))
         series.y_choice.setCurrentIndex(series.y_choice.findData(y_column))
         if title:
-            next(window for window in self.windows if window.graph is graph).setWindowTitle(title)
+            self.set_graph_title(
+                next(window for window in self.windows if window.graph is graph), title
+            )
         graph.refresh_plot()
         return graph
 
@@ -133,7 +138,9 @@ class GraphWorkspace(QWidget):
             series.visible.setChecked(True)
             series.connect_points.setChecked(True)
         if title:
-            next(window for window in self.windows if window.graph is graph).setWindowTitle(title)
+            self.set_graph_title(
+                next(window for window in self.windows if window.graph is graph), title
+            )
         graph.refresh_plot()
         return graph
 
@@ -154,7 +161,21 @@ class GraphWorkspace(QWidget):
         window = next(w for w in self.windows if w.graph is self.active_graph)
         title, accepted = QInputDialog.getText(self, 'Nom du graphique', 'Nom :', text=window.windowTitle())
         if accepted and title.strip():
-            window.setWindowTitle(title.strip())
+            self.set_graph_title(window, title.strip())
+
+    def set_graph_title(self, window, title, default=None):
+        window.setWindowTitle(title)
+        window.uses_default_title = (
+            bool(re.fullmatch(r"Graphique \d+", title)) if default is None else default
+        )
+
+    def update_graph_display_numbers(self):
+        """Renumber generated titles without changing graph objects or custom names."""
+        number = 0
+        for window in self.windows:
+            if window.uses_default_title:
+                number += 1
+                window.setWindowTitle(f"Graphique {number}")
 
     def arrange(self, *args):
         mode = self.arrangement.currentIndex()
@@ -185,7 +206,10 @@ class GraphWorkspace(QWidget):
         elif mode == 3:
             self.area.cascadeSubWindows()
         if active is not None:
-            self.area.setActiveSubWindow(next(w for w in self.windows if w.graph is active))
+            active_window = next(w for w in self.windows if w.graph is active)
+            self.area.setActiveSubWindow(active_window)
+            if mode == 0:
+                active_window.showMaximized()
 
     def resizeEvent(self, event):
         super().resizeEvent(event)

@@ -28,7 +28,8 @@ from physalix.firmware_flash import (
     FirmwareCompatibility, FirmwareFlash, FlashErrorKind, compare_firmware,
 )
 from physalix.firmware_resources import FirmwareResourceError, load_uno_resources
-from physalix.ui.components import label, page_header, page_layout, panel, role
+from physalix.ui.components import (WheelSafeComboBox, label, page_header,
+                                    page_layout, panel, role)
 from physalix.ui.graph_series import PopupComboBox, configure_popup, update_popup_height
 from physalix.ui.theme import LIGHT
 
@@ -137,7 +138,7 @@ class AcquisitionTab(QWidget):
         connection_row = QHBoxLayout()
         connection_row.setSpacing(LIGHT.related)
         connection_row.addWidget(label("Connexion", "toolbarLabel"))
-        self.port_combo = QComboBox()
+        self.port_combo = WheelSafeComboBox()
         self.port_combo.setMinimumWidth(260)
         self.refresh_button = QPushButton("Actualiser")
         self.connect_button = QPushButton("Connecter")
@@ -214,7 +215,7 @@ class AcquisitionTab(QWidget):
             QFormLayout.FieldGrowthPolicy.AllNonFixedFieldsGrow)
         acquisition_form.setLabelAlignment(
             Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
-        self.channel_combo = QComboBox()
+        self.channel_combo = WheelSafeComboBox()
         self.channel_combo.addItem("A0", 0)
         self.quantity_label = QLabel("Uc")
         self.unit_label = QLabel("V")

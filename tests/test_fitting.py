@@ -5,7 +5,8 @@ import unittest
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 import numpy as np
-from PySide6.QtCore import Qt
+from PySide6.QtCore import QPoint, QPointF, Qt
+from PySide6.QtGui import QWheelEvent
 from PySide6.QtWidgets import QApplication
 
 from physalix.fitting import Expression, fit_model, parse_parameters
@@ -140,6 +141,35 @@ class ModelingInterfaceTests(unittest.TestCase):
             tab.model_choice.setCurrentIndex(tab.model_choice.findData("linear"))
             tab.sync_series()
             self.assertEqual(tab.model_choice.currentData(), "linear")
+        finally:
+            window._discard_on_close = True
+            window.close()
+
+    def test_model_selector_scrolls_to_last_user_model_without_selecting_it(self):
+        window = MainWindow()
+        try:
+            window.show()
+            window.tabs.setCurrentWidget(window.modeling_tab)
+            self.app.processEvents()
+            combo = window.modeling_tab.model_choice
+            self.assertEqual(combo.count(), 10)
+            self.assertEqual(combo.itemData(combo.count() - 1), "custom")
+            self.assertEqual(combo.maxVisibleItems(), 8)
+            combo.showPopup()
+            self.app.processEvents()
+            view = combo.view()
+            selected = combo.currentIndex()
+            center = combo.rect().center()
+            event = QWheelEvent(
+                QPointF(center), QPointF(combo.mapToGlobal(center)),
+                QPoint(), QPoint(0, -120), Qt.MouseButton.NoButton,
+                Qt.KeyboardModifier.NoModifier, Qt.ScrollPhase.ScrollUpdate, False,
+            )
+            combo.wheelEvent(event)
+            last_rect = view.visualRect(combo.model().index(combo.count() - 1, 0))
+            self.assertTrue(view.viewport().rect().contains(last_rect.center()))
+            self.assertEqual(combo.currentIndex(), selected)
+            combo.hidePopup()
         finally:
             window._discard_on_close = True
             window.close()

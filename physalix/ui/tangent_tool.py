@@ -2,8 +2,9 @@
 import numpy as np
 import pyqtgraph as pg
 from PySide6.QtCore import Qt
-from PySide6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QLabel, QComboBox, QSlider
+from PySide6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QLabel, QSlider
 from physalix.tangents import parallel_tangents
+from physalix.ui.components import WheelSafeComboBox
 from physalix.ui.graph_tool_controls import hide_traces_button
 
 
@@ -16,7 +17,7 @@ class TangentTool(QWidget):
         layout.setContentsMargins(4, 4, 4, 4)
         row = QHBoxLayout()
         row.addWidget(QLabel('Tangentes · pH = f(V)'))
-        self.series = QComboBox()
+        self.series = WheelSafeComboBox()
         row.addWidget(self.series)
         row.addWidget(QLabel('Inclinaison'))
         self.slope = QSlider(Qt.Orientation.Horizontal)
@@ -90,7 +91,7 @@ class TangentTool(QWidget):
         self.series.clear()
         for series in self.graph.series:
             if series.visible.isChecked():
-                self.series.addItem(f'S{series.number} · {self.graph.axis_label(series.key()[1])}', series)
+                self.series.addItem(f'S{series.display_number} · {self.graph.axis_label(series.key()[1])}', series)
         index = self.series.findData(selected)
         if index < 0:
             index = next((i for i in range(self.series.count()) if 'ph' in self.series.itemText(i).lower()), 0)

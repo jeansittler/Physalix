@@ -4,6 +4,7 @@ import pyqtgraph as pg
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QCheckBox, QComboBox, QDoubleSpinBox, QHBoxLayout, QLabel, QPushButton, QVBoxLayout, QWidget
 from physalix.curve_guides import curve_interpolator, model_plateau, tangent_at
+from physalix.ui.components import WheelSafeComboBox
 from physalix.ui.graph_tool_controls import hide_traces_button
 
 
@@ -20,7 +21,7 @@ class CurveGuidesTool(QWidget):
         layout.setContentsMargins(4, 4, 4, 4)
         row = QHBoxLayout()
         row.addWidget(QLabel('Courbe'))
-        self.source = QComboBox()
+        self.source = WheelSafeComboBox()
         self.source.setMinimumContentsLength(16)
         self.source.setSizeAdjustPolicy(QComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon)
         row.addWidget(self.source, 1)
@@ -132,10 +133,10 @@ class CurveGuidesTool(QWidget):
             if not series.visible.isChecked():
                 continue
             self.sources.append((series, None))
-            self.source.addItem(f'S{series.number} · mesures · {self.graph.axis_label(series.key()[1])}')
+            self.source.addItem(f'S{series.display_number} · mesures · {self.graph.axis_label(series.key()[1])}')
             for fit in series.fits:
                 self.sources.append((series, fit))
-                self.source.addItem(f'S{series.number} · modélisation {fit.number}')
+                self.source.addItem(f'S{series.display_number} · modélisation {fit.number}')
         index = next((i for i, (s, f) in enumerate(self.sources) if s is previous[0] and f is previous[1]), -1)
         if index < 0 and (previous[1] is not None or (self.identity is not None and self.identity[2] is not None)):
             # Une modélisation supprimée ne doit pas être remplacée silencieusement.

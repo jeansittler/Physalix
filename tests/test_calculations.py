@@ -159,10 +159,50 @@ class CalculationsTests(unittest.TestCase):
             window._discard_on_close = True
             window.close()
 
+    def test_formula_primary_action_precedes_optional_quantity_insertion(self):
+        window = MainWindow()
+        try:
+            window.resize(900, 650)
+            window.show()
+            tab = window.calculations_tab
+            window.tabs.setCurrentWidget(tab)
+            self.app.processEvents()
+
+            self.assertFalse(tab.quantity_toggle.isChecked())
+            self.assertFalse(tab.quantity_options.isVisible())
+            self.assertIn("facultatif", tab.quantity_toggle.text())
+            self.assertLess(tab.formula_button.mapTo(tab, tab.formula_button.rect().topLeft()).y(),
+                            tab.quantity_toggle.mapTo(tab, tab.quantity_toggle.rect().topLeft()).y())
+
+            tab.quantity_toggle.click()
+            self.app.processEvents()
+            self.assertTrue(tab.quantity_options.isVisible())
+            self.assertTrue(tab.quantity.isVisible())
+            self.assertTrue(tab.quantity_insert_button.isVisible())
+            self.assertTrue(tab.quantity_toggle.text().endswith("▾"))
+
+            tab.expression.setText("AB")
+            tab.expression.setCursorPosition(1)
+            tab.quantity.setCurrentIndex(1)
+            tab.quantity_insert_button.click()
+            self.assertEqual(tab.expression.text(), "AC2B")
+            self.assertEqual(tab.expression.cursorPosition(), 3)
+            self.assertTrue(tab.expression.hasFocus())
+
+            tab.quantity_toggle.click()
+            self.assertFalse(tab.quantity_options.isVisible())
+            self.assertEqual(tab.expression.text(), "AC2B")
+        finally:
+            window._discard_on_close = True
+            window.close()
+
     def test_quantity_selectors_use_bounded_reference_popups(self):
         window = MainWindow()
         try:
             tab = window.calculations_tab
+            window.show()
+            window.tabs.setCurrentWidget(tab)
+            self.app.processEvents()
             model = window.data_tab.model
             for _ in range(13):
                 model.add_quantity()
@@ -172,11 +212,21 @@ class CalculationsTests(unittest.TestCase):
                     self.assertIsInstance(combo, PopupComboBox)
                     self.assertEqual(combo.maxVisibleItems(), 8)
                     combo.showPopup()
+                    self.app.processEvents()
                     self.assertEqual(combo.view().height(),
                                      8 * combo.view().sizeHintForRow(0) +
                                      2 * (LIGHT.small + combo.view().frameWidth()))
                     self.assertEqual(combo.view().verticalScrollBarPolicy(),
                                      Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+                    scrollbar = combo.view().verticalScrollBar()
+                    scrollbar.setValue(scrollbar.maximum())
+                    self.app.processEvents()
+                    last = combo.view().visualRect(
+                        combo.model().index(combo.count() - 1, 0))
+                    self.assertTrue(combo.view().viewport().rect().contains(last))
+                    container = combo.view().parentWidget()
+                    self.assertTrue(container.rect().contains(
+                        combo.view().viewport().mapTo(container, last.bottomRight())))
                     combo.hidePopup()
         finally:
             window._discard_on_close = True

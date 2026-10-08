@@ -6,10 +6,11 @@ import zipfile
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QAction, QKeySequence
 from PySide6.QtWidgets import (QApplication, QFileDialog, QMessageBox, QDialog, QVBoxLayout,
-                               QHBoxLayout, QLabel, QComboBox, QCheckBox, QTableWidget,
+                               QHBoxLayout, QLabel, QCheckBox, QTableWidget,
                                QTableWidgetItem, QDialogButtonBox)
 from physalix.project import read_project, write_project, read_csv, write_csv
 from physalix.project import PROJECT_SUFFIX, LEGACY_SUFFIX
+from physalix.ui.components import WheelSafeComboBox
 from physalix.ui.project_state import snapshot, restore, restore_views
 
 
@@ -23,7 +24,7 @@ class CsvImportDialog(QDialog):
         layout.addWidget(QLabel('Les données seront ajoutées dans de nouvelles colonnes du tableur.'))
         row = QHBoxLayout()
         row.addWidget(QLabel('Séparateur'))
-        self.separator = QComboBox()
+        self.separator = WheelSafeComboBox()
         for label, value in [('Automatique', None), ('Point-virgule ;', ';'), ('Virgule ,', ','), ('Tabulation', '\t')]:
             self.separator.addItem(label, value)
         row.addWidget(self.separator)

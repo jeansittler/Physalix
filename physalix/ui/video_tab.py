@@ -6,7 +6,7 @@ from math import hypot
 from PySide6.QtCore import QElapsedTimer, QThread, QTimer, Qt, Signal
 from PySide6.QtGui import QKeySequence, QPixmap, QShortcut
 from PySide6.QtWidgets import (
-    QComboBox, QDialog, QFileDialog, QFrame, QHBoxLayout, QLabel, QPushButton,
+    QDialog, QFileDialog, QFrame, QHBoxLayout, QLabel, QPushButton,
     QDialogButtonBox, QSizePolicy, QSlider, QVBoxLayout, QWidget,
 )
 
@@ -15,7 +15,9 @@ from physalix.ui.data_tab import MeasurementsModel
 from physalix.ui.video_canvas import Magnifier, VideoCanvas
 from physalix.ui.video_tracking import CalibrationDialog, TrackingSession
 from physalix.ui.automatic_tracking import AutomaticTracker
-from physalix.ui.components import compact_width, page_header, workspace_layout, panel, label, role, ResponsiveCards
+from physalix.ui.components import (ResponsiveCards, WheelSafeComboBox,
+                                    compact_width, label, page_header, panel,
+                                    role, workspace_layout)
 from physalix.ui.theme import LIGHT
 
 
@@ -94,7 +96,7 @@ class VideoTab(QWidget):
         toolbar.addWidget(self.cancel_button, 0, Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
         toolbar.addStretch()
         axes_label = QLabel("Sens des axes")
-        self.axes_choice = QComboBox()
+        self.axes_choice = WheelSafeComboBox()
         axes_label.setBuddy(self.axes_choice)
         self.axes_choice.setAccessibleName("Sens des axes X et Y")
         for title, directions in (("X droite · Y haut", (1, 1)), ("X droite · Y bas", (1, -1)),
@@ -140,7 +142,7 @@ class VideoTab(QWidget):
         tracking_layout.addWidget(self.undo_button, 0, Qt.AlignmentFlag.AlignVCenter)
         self.correct_button = QPushButton("Corriger")
         self.correct_button.clicked.connect(self.toggle_correction)
-        self.point_choice = QComboBox()
+        self.point_choice = WheelSafeComboBox()
         self.point_choice.setMinimumContentsLength(25)
         self.point_choice.setMaximumWidth(LIGHT.field_compact)
         self.point_choice.setAccessibleName("Point à corriger")
@@ -148,7 +150,7 @@ class VideoTab(QWidget):
         tracking_layout.addWidget(self.correct_button, 0, Qt.AlignmentFlag.AlignVCenter)
         tracking_layout.addWidget(self.point_choice, 0, Qt.AlignmentFlag.AlignVCenter)
         self.direction_label = QLabel("Direction de l'étalon")
-        self.calibration_direction = QComboBox()
+        self.calibration_direction = WheelSafeComboBox()
         self.calibration_direction.setMaximumWidth(180)
         self.calibration_direction.setAccessibleName("Direction de l'étalon")
         self.direction_label.setBuddy(self.calibration_direction)

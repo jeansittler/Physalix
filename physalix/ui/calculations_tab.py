@@ -2,7 +2,7 @@
 
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
-    QAbstractItemView, QComboBox, QFormLayout, QHBoxLayout, QHeaderView,
+    QAbstractItemView, QFormLayout, QHBoxLayout, QHeaderView,
     QLabel, QLineEdit, QPushButton, QScrollArea, QTableWidget, QTableWidgetItem,
     QVBoxLayout, QWidget, QDialog, QDialogButtonBox, QMenu, QFrame, QSizePolicy,
     QMessageBox,
@@ -11,7 +11,9 @@ from PySide6.QtWidgets import (
 from physalix.calculations import CalculationEngine, derivative_unit
 from physalix.ui.graph_series import PopupComboBox, configure_popup, update_popup_height
 from physalix.ui.math_help import math_help_button
-from physalix.ui.components import page_header, page_layout, panel, role, ResponsiveCards, label as section_label
+from physalix.ui.components import (ResponsiveCards, WheelSafeComboBox,
+                                    label as section_label, page_header,
+                                    page_layout, panel, role)
 from physalix.ui.theme import LIGHT
 
 
@@ -33,7 +35,7 @@ class FormulaEditDialog(QDialog):
         layout.addWidget(caption)
         layout.addWidget(self.expression)
         layout.addWidget(math_help_button(self))
-        columns = QComboBox()
+        columns = WheelSafeComboBox()
         for column, name in enumerate(engine.model.names):
             columns.addItem(f"C{column + 1} · {name}", column)
         insert = QPushButton("Insérer la grandeur")
@@ -134,15 +136,9 @@ class CalculationsTab(QWidget):
         form.addRow("Nom du résultat :", self.formula_name)
         form.addRow("Unité du résultat :", self.formula_unit)
         form.addRow("Formule :", self.expression)
-        insert_row = QHBoxLayout()
         self.quantity = PopupComboBox()
         self.quantity.setMaximumWidth(LIGHT.field_wide)
         configure_popup(self.quantity, LIGHT.field_wide)
-        insert_row.addWidget(self.quantity, 1)
-        insert = QPushButton("Insérer la grandeur")
-        insert.clicked.connect(self.insert_quantity)
-        insert_row.addWidget(insert)
-        form.addRow(insert_row)
         keypad = role(QFrame(), "keypad")
         keys = QHBoxLayout(keypad)
         keys.setContentsMargins(6, 4, 6, 4)
@@ -153,10 +149,29 @@ class CalculationsTab(QWidget):
             button.clicked.connect(lambda checked=False, text=value: self.insert_text(text))
             keys.addWidget(button)
         form.addRow(keypad)
-        form.addRow(math_help_button(self))
+        self.math_help_button = math_help_button(self)
+        form.addRow(self.math_help_button)
         self.formula_button = role(QPushButton("Créer la grandeur"), "primary")
         self.formula_button.clicked.connect(self.create_formula)
         form.addRow(self.formula_button)
+        self.quantity_toggle = QPushButton(
+            "Insérer une grandeur existante (facultatif) ▸"
+        )
+        self.quantity_toggle.setCheckable(True)
+        self.quantity_toggle.setChecked(False)
+        role(self.quantity_toggle, "quiet")
+        form.addRow(self.quantity_toggle)
+        self.quantity_options = role(QFrame(), "optionArea")
+        insert_row = QHBoxLayout(self.quantity_options)
+        insert_row.setContentsMargins(LIGHT.group, LIGHT.small, 0, LIGHT.small)
+        insert_row.setSpacing(LIGHT.related)
+        insert_row.addWidget(self.quantity, 1)
+        self.quantity_insert_button = QPushButton("Insérer la grandeur")
+        self.quantity_insert_button.clicked.connect(self.insert_quantity)
+        insert_row.addWidget(self.quantity_insert_button)
+        self.quantity_options.hide()
+        form.addRow(self.quantity_options)
+        self.quantity_toggle.toggled.connect(self.toggle_quantity_options)
         self.tools = ResponsiveCards(derivative, formula)
         layout.addWidget(self.tools)
         self.feedback = QLabel("Les cellules calculées sont protégées ; renommez leur en-tête dans Données à tout moment.")
@@ -193,6 +208,12 @@ class CalculationsTab(QWidget):
         time_column = next((i for i, name in enumerate(model.names) if name == "t"), min(1, model.columnCount() - 1))
         self.axis.setCurrentIndex(time_column)
         self.suggest_derivative()
+
+    def toggle_quantity_options(self, visible):
+        self.quantity_options.setVisible(visible)
+        self.quantity_toggle.setText(
+            "Insérer une grandeur existante (facultatif) " + ("▾" if visible else "▸")
+        )
 
     def refresh(self):
         for combo in (self.source, self.axis, self.quantity):

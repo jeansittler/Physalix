@@ -2,7 +2,7 @@
 
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
-    QCheckBox, QComboBox, QFormLayout, QHBoxLayout, QLabel, QLineEdit,
+    QCheckBox, QFormLayout, QHBoxLayout, QLabel, QLineEdit,
     QPushButton, QScrollArea, QVBoxLayout, QWidget, QTextBrowser, QFrame,
 )
 
@@ -10,8 +10,9 @@ from physalix.fitting import MODELS, fit_model
 from physalix.ui.fit_report import report_html, math_text, DETAILS_HTML
 from physalix.ui.graph_tab import paired_values
 from physalix.ui.graph_series import PopupComboBox, configure_popup, update_popup_height
-from physalix.ui.components import (page_header, page_layout, panel, refresh_style,
-                                    role, ResponsiveActions, ResponsiveCards)
+from physalix.ui.components import (ResponsiveActions, ResponsiveCards,
+                                    WheelSafeComboBox, page_header, page_layout,
+                                    panel, refresh_style, role)
 from physalix.ui.icons import icon
 from physalix.ui.theme import LIGHT, report_stylesheet
 
@@ -60,10 +61,10 @@ class ModelingTab(QWidget):
         form.setRowWrapPolicy(QFormLayout.RowWrapPolicy.WrapLongRows)
         form.setLabelAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
         model_layout.addLayout(form)
-        self.series_choice = QComboBox()
+        self.series_choice = WheelSafeComboBox()
         self.series_choice.setMaximumWidth(LIGHT.field_wide)
         form.addRow("Série à modéliser", self.series_choice)
-        self.fit_choice = QComboBox()
+        self.fit_choice = WheelSafeComboBox()
         self.fit_choice.setMaximumWidth(LIGHT.field_medium)
         self.new_fit_button = QPushButton("Nouvelle modélisation")
         self.new_fit_button.setMaximumWidth(LIGHT.action_wide)
@@ -184,7 +185,7 @@ class ModelingTab(QWidget):
             if item.visible.isChecked():
                 x, y = item.key()
                 self.series_choice.addItem(
-                    f"S{item.number} : {self.graph.axis_label(y)} en fonction de {self.graph.axis_label(x)}", item.number)
+                    f"S{item.display_number} : {self.graph.axis_label(y)} en fonction de {self.graph.axis_label(x)}", item.number)
         index = self.series_choice.findData(previous)
         self.series_choice.setCurrentIndex(index if index >= 0 else 0)
         self.series_choice.blockSignals(False)
@@ -365,7 +366,7 @@ class ModelingTab(QWidget):
         self.result_text.setHtml(report_html(
             result,
             f"Modélisation {fit.number} · {MODELS.get(fit.kind, ('Modèle',))[0]} · "
-            f"S{item.number} — {self.graph.axis_label(y)} en fonction de {self.graph.axis_label(x)}",
+            f"S{item.display_number} — {self.graph.axis_label(y)} en fonction de {self.graph.axis_label(x)}",
             self.graph.model.names[x], self.graph.axis_label(x),
             self.graph.model.names[y], self.graph.model.units[y]))
 

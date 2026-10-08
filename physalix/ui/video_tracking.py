@@ -6,8 +6,9 @@ import weakref
 from PySide6.QtCore import QLocale, Qt
 from PySide6.QtGui import QValidator
 from PySide6.QtWidgets import (
-    QComboBox, QDialog, QDialogButtonBox, QDoubleSpinBox, QFormLayout,
+    QDialog, QDialogButtonBox, QDoubleSpinBox, QFormLayout,
 )
+from physalix.ui.components import WheelSafeComboBox
 
 
 class CalibrationLengthSpinBox(QDoubleSpinBox):
@@ -37,7 +38,7 @@ class CalibrationDialog(QDialog):
         self.length.setRange(.000001, 1e9)
         self.length.setValue(10)
         self.length.selectAll()
-        self.unit = QComboBox()
+        self.unit = WheelSafeComboBox()
         self.unit.addItems(["mm", "cm", "m"])
         self.unit.setCurrentText(unit)
         layout.addRow("Longueur réelle :", self.length)

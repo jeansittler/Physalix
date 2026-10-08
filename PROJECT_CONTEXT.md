@@ -226,9 +226,34 @@ Règle visuelle :
 - hauteur adaptée au contenu ;
 - environ 8 éléments visibles maximum ;
 - scroll au-delà ;
+- première et dernière lignes entièrement visibles, y compris après défilement ;
+- ouverture vers le haut lorsque l'espace manque sous le sélecteur ;
 - cohérence avec les menus de Graphique / Calculs / Modélisation.
 
+Règle d'interaction :
+- la molette ne doit jamais modifier la sélection d'un menu fermé, même s'il a le focus ;
+- un popup ouvert doit défiler normalement sans sélection involontaire ;
+- le défilement des panneaux parents doit rester disponible lorsque le popup est fermé.
+
 Lorsqu’un nouvel écran ou un nouveau sélecteur est ajouté, vérifier explicitement qu’il suit cette convention.
+
+### Graphique
+
+Conventions durables :
+- les choix essentiels restent présentés côte à côte sous les intitulés « Grandeur en abscisse » / « Axe horizontal » et « Grandeur en ordonnée » / « Axe vertical » ;
+- le rappel dynamique « Tracé : … en fonction de … » reflète les sélections réelles ;
+- les options de série secondaires restent regroupées plus discrètement afin de préserver la surface du graphique ;
+- les numéros visibles des séries et les noms génériques des graphiques sont continus et réutilisent les places libérées après suppression ;
+- cette renumérotation d'affichage ne doit jamais modifier les identifiants internes stables, les couleurs, modèles, réglages ni la sauvegarde/relecture ;
+- fermer un graphique en disposition « Onglets » doit conserver l'état maximisé du graphique restant, sans sous-fenêtre flottante, barre de titre interne ni zone noire.
+
+### Calculs
+
+Dans « Nouvelle grandeur par formule » :
+- la création directe à partir des champs Nom, Unité et Formule est le parcours principal ;
+- les outils mathématiques précèdent immédiatement l'action « Créer la grandeur » ;
+- l'insertion d'une grandeur existante est facultative et placée dans un volet secondaire replié par défaut ;
+- déplier ou utiliser ce volet ne doit pas interrompre la saisie : l'insertion se fait à la position courante du curseur.
 
 ### Responsive
 

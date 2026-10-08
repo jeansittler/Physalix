@@ -6,15 +6,15 @@ import unittest
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from PySide6.QtCore import QEvent, QPoint, QPointF, Qt
-from PySide6.QtGui import QColor, QContextMenuEvent, QImage, QPainter
+from PySide6.QtGui import QColor, QContextMenuEvent, QImage, QPainter, QWheelEvent
 from PySide6.QtTest import QTest
-from PySide6.QtWidgets import QApplication, QLabel, QPushButton
+from PySide6.QtWidgets import QApplication, QLabel, QPushButton, QWidget
 import pyqtgraph as pg
 from unittest.mock import patch
 
 from physalix.ui.main_window import MainWindow
 from physalix.ui.graph_tab import interpolated_value, paired_values
-from physalix.ui.graph_series import PopupComboBox
+from physalix.ui.graph_series import PopupComboBox, configure_popup
 from physalix.ui.theme import LIGHT
 
 
@@ -35,6 +35,20 @@ class GraphTests(unittest.TestCase):
         self.window._discard_on_close = True
         self.window.close()
         self.app.processEvents()
+
+    def test_closed_selectors_ignore_wheel_even_with_focus(self):
+        for combo in (self.graph.series[0].x_choice, self.window.graph_tab.arrangement):
+            combo.setCurrentIndex(0)
+            combo.setFocus()
+            center = combo.rect().center()
+            event = QWheelEvent(
+                QPointF(center), QPointF(combo.mapToGlobal(center)), QPoint(),
+                QPoint(0, -120), Qt.MouseButton.NoButton,
+                Qt.KeyboardModifier.NoModifier, Qt.ScrollPhase.ScrollUpdate, False,
+            )
+            self.app.sendEvent(combo, event)
+            self.assertEqual(combo.currentIndex(), 0)
+            self.assertFalse(event.isAccepted())
 
     def test_missing_values_do_not_shift_pairs(self):
         self.assertEqual(
@@ -141,23 +155,38 @@ class GraphTests(unittest.TestCase):
 
     def test_axis_choices_stay_grouped_and_have_readable_popups(self):
         series = self.graph.series[0]
-        for width, height in ((1280, 800), (1920, 1080)):
+        for width, height in ((900, 650), (1366, 768), (1600, 900), (1920, 1080)):
             self.window.resize(width, height)
             self.app.processEvents()
-            for name, combo, text in (
-                    ("x", series.x_choice, "Grandeur en abscisse (X)"),
-                    ("y", series.y_choice, "Grandeur en ordonnée (Y)")):
+            blocks = []
+            for name, combo, text, hint in (
+                    ("x", series.x_choice, "Grandeur en abscisse", "Axe horizontal"),
+                    ("y", series.y_choice, "Grandeur en ordonnée", "Axe vertical")):
                 label = series.findChild(QLabel, f"{name}ChoiceLabel")
+                axis_hint = series.findChild(QLabel, f"{name}AxisHint")
+                block = series.findChild(QWidget, f"{name}AxisBlock")
+                blocks.append(block)
                 self.assertEqual(label.text(), text)
+                self.assertEqual(axis_hint.text(), hint)
                 self.assertIs(label.buddy(), combo)
                 self.assertIs(label.parentWidget(), combo.parentWidget())
-                self.assertLessEqual(combo.x() - (label.x() + label.width()), LIGHT.related)
+                self.assertTrue(block.rect().contains(combo.geometry()))
+                self.assertGreater(combo.y(), label.y())
                 self.assertEqual(combo.maxVisibleItems(), 8)
                 self.assertGreaterEqual(combo.view().minimumWidth(), LIGHT.field_medium)
                 self.assertEqual(combo.view().verticalScrollBarPolicy(),
                                  Qt.ScrollBarPolicy.ScrollBarAsNeeded)
                 self.assertEqual(combo.view().verticalScrollMode(),
                                  combo.view().ScrollMode.ScrollPerPixel)
+            self.assertLess(blocks[0].geometry().right(), blocks[1].geometry().left())
+
+        self.assertIn("en fonction de", series.relation_label.text())
+        series.x_choice.setCurrentIndex(1)
+        series.y_choice.setCurrentIndex(0)
+        self.assertEqual(
+            series.relation_label.text(),
+            f"Tracé : {self.graph.axis_label(0)} en fonction de {self.graph.axis_label(1)}",
+        )
 
         def check_popup(combo, expected_rows, scrollbar):
             combo.showPopup()
@@ -169,12 +198,16 @@ class GraphTests(unittest.TestCase):
                 self.assertEqual(view.height(), expected_height)
                 self.assertEqual(view.verticalScrollBar().isVisible(), scrollbar)
                 container = view.parentWidget()
-                margins = container.layout().contentsMargins()
-                expected_container_height = (
-                    expected_height + 2 * container.frameWidth()
-                    + margins.top() + margins.bottom()
-                )
-                self.assertEqual(container.height(), expected_container_height)
+                self.assertGreaterEqual(container.height(), view.y() + view.height())
+                scrollbar_widget = view.verticalScrollBar()
+                scrollbar_widget.setValue(scrollbar_widget.minimum())
+                self.app.processEvents()
+                self.assertTrue(view.viewport().rect().contains(
+                    view.visualRect(combo.model().index(0, 0))))
+                scrollbar_widget.setValue(scrollbar_widget.maximum())
+                self.app.processEvents()
+                self.assertTrue(view.viewport().rect().contains(
+                    view.visualRect(combo.model().index(combo.count() - 1, 0))))
             finally:
                 combo.hidePopup()
 
@@ -249,6 +282,27 @@ class GraphTests(unittest.TestCase):
         self.assertNotIn(second.points, self.graph.plot.getPlotItem().items)
         self.assertEqual(self.model.rows[2][2], '300')
         self.assertFalse(first.remove_button.isEnabled())
+
+    def test_visible_series_numbers_are_contiguous_but_ids_stay_stable(self):
+        graph = self.graph
+        second = graph.add_series()
+        third = graph.add_series()
+        third.set_curve_color("#123456")
+        graph.remove_series(second)
+
+        self.assertEqual([item.number for item in graph.series], [1, 3])
+        self.assertEqual([item.display_number for item in graph.series], [1, 2])
+        self.assertEqual([item.visible.text() for item in graph.series], ["Série 1", "Série 2"])
+        self.assertTrue(graph.series_choice.itemText(1).startswith("S2 :"))
+        self.assertEqual(third.color.name(), "#123456")
+
+        fourth = graph.add_series()
+        self.assertEqual(fourth.number, 4)
+        self.assertEqual([item.display_number for item in graph.series], [1, 2, 3])
+
+        other_graph = self.window.graph_tab.add_graph()
+        other_graph.add_series()
+        self.assertEqual([item.display_number for item in other_graph.series], [1, 2])
 
     def test_multiple_abscissas_renaming_and_updates(self):
         for _ in range(4):
@@ -333,6 +387,55 @@ class GraphTests(unittest.TestCase):
             combo.view().horizontalScrollBarPolicy(),
             Qt.ScrollBarPolicy.ScrollBarAlwaysOff,
         )
+
+    def test_shared_popup_geometry_for_short_long_and_dynamic_lists(self):
+        screen = self.app.primaryScreen().availableGeometry()
+        host = QWidget()
+        host.setGeometry(screen.left() + 80, screen.bottom() - 190, 420, 170)
+        combo = PopupComboBox(host)
+        combo.setGeometry(20, 125, 320, 32)
+        configure_popup(combo, 320)
+        host.show()
+        self.app.processEvents()
+        try:
+            for count in (2, 3, 8, 9, 20):
+                with self.subTest(count=count):
+                    combo.clear()
+                    combo.addItems([f"Élément {index + 1}" for index in range(count)])
+                    combo.showPopup()
+                    self.app.processEvents()
+                    view = combo.view()
+                    viewport = view.viewport()
+                    scrollbar = view.verticalScrollBar()
+                    container = view.parentWidget()
+                    visible_rows = min(count, 8)
+                    self.assertGreaterEqual(viewport.height(),
+                                            visible_rows * view.sizeHintForRow(0))
+                    self.assertLess(viewport.height(),
+                                    (visible_rows + 1) * view.sizeHintForRow(0))
+                    self.assertEqual(scrollbar.maximum() > 0, count > 8)
+
+                    scrollbar.setValue(scrollbar.minimum())
+                    self.app.processEvents()
+                    first = view.visualRect(combo.model().index(0, 0))
+                    self.assertTrue(viewport.rect().contains(first))
+                    self.assertTrue(container.rect().contains(
+                        viewport.mapTo(container, first.bottomRight())))
+
+                    scrollbar.setValue(scrollbar.maximum())
+                    self.app.processEvents()
+                    last = view.visualRect(combo.model().index(count - 1, 0))
+                    self.assertTrue(viewport.rect().contains(last))
+                    self.assertTrue(container.rect().contains(
+                        viewport.mapTo(container, last.bottomRight())))
+                    if count == 20:
+                        self.assertLess(container.frameGeometry().top(),
+                                        combo.mapToGlobal(combo.rect().topLeft()).y())
+                    self.assertLessEqual(container.frameGeometry().bottom(), screen.bottom())
+                    combo.hidePopup()
+                    self.app.processEvents()
+        finally:
+            host.close()
 
     def test_context_menu_zoom_and_reticle_without_click(self):
         graph = self.graph

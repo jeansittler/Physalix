@@ -12,7 +12,8 @@ from PySide6.QtWidgets import (
 
 from physalix.statistics import METRICS, describe
 from physalix.spreadsheet import column_label
-from physalix.ui.components import label, page_header, panel, role, workspace_layout
+from physalix.ui.components import (WheelSafeComboBox, label, page_header, panel,
+                                    role, workspace_layout)
 from physalix.ui.theme import LIGHT
 
 
@@ -29,7 +30,7 @@ class StatisticsTab(QWidget):
         controls, controls_layout = panel(kind="toolbar")
         row = QHBoxLayout()
         caption = QLabel("Grandeur")
-        self.quantity = QComboBox()
+        self.quantity = WheelSafeComboBox()
         self.quantity.setMaximumWidth(LIGHT.field_wide)
         self.quantity.setMinimumContentsLength(18)
         self.quantity.setSizeAdjustPolicy(QComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon)
