@@ -122,16 +122,19 @@ Pour toute tâche Codex, ChatGPT doit indiquer explicitement le niveau recommand
 - problème particulièrement difficile, ambigu ou transversal ;
 - seulement si « élevé » n’est raisonnablement pas suffisant.
 
-### Préserver les crédits Codex
+### Préserver les crédits Codex et le temps d’exécution
 
 Principe permanent :
 - prompts précis, courts et complets ;
-- éviter les audits généraux redondants ;
+- optimiser ensemble les crédits Codex, le nombre d’interventions et le temps réel d’exécution, sans jamais sacrifier la fiabilité ;
+- éviter les audits, builds, explorations et contrôles redondants ;
 - limiter l’exploration aux fichiers nécessaires ;
 - éviter les micro-phases inutiles ;
-- tests ciblés pendant le développement ;
-- une seule suite complète aux checkpoints importants ;
-- ne pas relancer une suite complète qui vient de passer sans raison ;
+- utiliser des tests ciblés pendant le développement et une seule suite complète au checkpoint technique pertinent ;
+- prévenir l’utilisateur avant une opération potentiellement longue et estimer sa durée lorsque c’est possible ;
+- ne jamais relancer les tests complets pour un simple commit, push ou changement documentaire ;
+- réutiliser les validations réussies tant que le code testé n’a pas changé ;
+- en cas de problème de permissions ou d’environnement, diagnostiquer avant de relancer une opération longue ;
 - ne pas utiliser un niveau de modèle plus élevé que nécessaire.
 
 ### Validation avant Git
@@ -581,11 +584,16 @@ Suite complète de release 1.5.0 :
 - `405,141 s`
 - OK
 
+Checkpoint technique historique Physalix 1.5.1 :
+- `408 tests`
+- `454,254 s`
+- OK
+
 Dernière validation ciblée UI Acquisition/Firmware UI avant intégration :
 - `56 tests`
 - OK
 
-Ne pas utiliser ces nombres comme exigence absolue après de futurs ajouts : le nombre de tests augmentera.
+Ne pas utiliser ces nombres comme exigence absolue après de futurs ajouts : ils sont uniquement des repères historiques et le nombre de tests évoluera.
 
 ### Méthode
 
