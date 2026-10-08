@@ -95,6 +95,8 @@ class AcquisitionTab(QWidget):
         self._generator_stop_pending = False
         self._disconnect_after_generator_stop = False
         self._applied_generator_plan: ContinuousSquarePlan | None = None
+        self._applied_acquisition_period_us: int | None = None
+        self._configured_requested_period_us: int | None = None
         self._firmware_mode = "absent"
         self._detected_firmware_info = None
         self._flash_workflow_active = False
@@ -313,6 +315,7 @@ class AcquisitionTab(QWidget):
         self.gbf_applied_frequency_label = QLabel("En attente de configuration")
         self.gbf_applied_period_label = QLabel("En attente de configuration")
         self.gbf_duty_value = QLabel("50 %")
+        self.gbf_sampling_quality_label = label("—", "muted")
         self.gbf_state_label = QLabel("État inconnu")
         self.gbf_start_button = QPushButton("Démarrer le générateur")
         self.gbf_stop_button = QPushButton("Arrêter le générateur")
@@ -330,6 +333,7 @@ class AcquisitionTab(QWidget):
         generation_form.addRow("Fréquence appliquée", self.gbf_applied_frequency_label)
         generation_form.addRow("Période appliquée", self.gbf_applied_period_label)
         generation_form.addRow("Rapport cyclique", self.gbf_duty_value)
+        generation_form.addRow("Échantillonnage", self.gbf_sampling_quality_label)
         generation_form.addRow("État du générateur", self.gbf_state_label)
         generation_form.addRow(gbf_actions_widget)
         self.gbf_requirement_label = label("", "muted")
@@ -343,7 +347,8 @@ class AcquisitionTab(QWidget):
             self.gbf_shape_value, self.gbf_output_value, self.gbf_minimum_value,
             self.gbf_maximum_value, self.gbf_frequency_spin,
             self.gbf_applied_frequency_label, self.gbf_applied_period_label,
-            self.gbf_duty_value, self.gbf_state_label, gbf_actions_widget)
+            self.gbf_duty_value, self.gbf_sampling_quality_label,
+            self.gbf_state_label, gbf_actions_widget)
         self._generation_form = generation_form
         generation_layout.addLayout(generation_form)
         settings_layout.addWidget(generation_panel)
@@ -728,6 +733,43 @@ class AcquisitionTab(QWidget):
                 self._format_seconds(applied_square_period_s(config)))
             self.square_requested_frequency_label.setText(
                 self._format_hertz(applied_square_frequency_hz(config)))
+        self._update_gbf_sampling_quality()
+
+    @staticmethod
+    def _sampling_quality(samples_per_period: float) -> str:
+        if samples_per_period >= 100:
+            return "excellent"
+        if samples_per_period >= 50:
+            return "très bon"
+        if samples_per_period >= 20:
+            return "correct"
+        if samples_per_period >= 10:
+            return "limité"
+        return "faible"
+
+    @staticmethod
+    def _format_samples_per_period(value: float) -> str:
+        rounded = round(value, 1)
+        if rounded.is_integer():
+            return str(int(rounded))
+        return f"{rounded:.1f}".replace(".", ",")
+
+    def _update_gbf_sampling_quality(self):
+        plan = self._applied_generator_plan
+        if plan is None or plan.applied_frequency_hz <= 0:
+            self.gbf_sampling_quality_label.setText("—")
+            return
+        requested_period_us = self.requested_period_us()
+        period_us = requested_period_us
+        if (self._applied_acquisition_period_us is not None
+                and self._configured_requested_period_us == requested_period_us):
+            period_us = self._applied_acquisition_period_us
+        acquisition_frequency_hz = 1_000_000 / period_us
+        samples_per_period = acquisition_frequency_hz / plan.applied_frequency_hz
+        value = self._format_samples_per_period(samples_per_period)
+        quality = self._sampling_quality(samples_per_period)
+        self.gbf_sampling_quality_label.setText(
+            f"{value} pts/période — {quality}")
 
     def start_generator(self):
         if self.generation_type() != CONTINUOUS_SQUARE_MODE:
@@ -741,8 +783,10 @@ class AcquisitionTab(QWidget):
         try:
             config = ContinuousSquareConfig(self.gbf_frequency_spin.value())
             self._generator_start_pending = True
+            self._applied_generator_plan = None
             self.gbf_applied_frequency_label.setText("En attente de configuration")
             self.gbf_applied_period_label.setText("En attente de configuration")
+            self._update_gbf_sampling_quality()
             self.gbf_state_label.setText("Configuration…")
             self.result_status.setText("Configuration du générateur…")
             self.controller.configure_generator(config)
@@ -757,6 +801,7 @@ class AcquisitionTab(QWidget):
             self._format_hertz(plan.applied_frequency_hz))
         self.gbf_applied_period_label.setText(
             self._format_seconds(plan.applied_period_s))
+        self._update_gbf_sampling_quality()
         if self._generator_start_pending:
             self.gbf_state_label.setText("Démarrage…")
             try:
@@ -874,6 +919,8 @@ class AcquisitionTab(QWidget):
         self._generation_type_changed()
 
     def _configuration_accepted(self, config: AcquisitionConfig):
+        self._configured_requested_period_us = self.requested_period_us()
+        self._applied_acquisition_period_us = config.sampling_period_us
         parts = (
             f"{config.sample_count} pts",
             f"Te {self._format_period(config.sampling_period_us)}",
@@ -886,6 +933,7 @@ class AcquisitionTab(QWidget):
                 f"fréquence {self._format_hertz(applied_square_frequency_hz(config))}",
             )
         self.applied_values_label.setText(" · ".join(parts))
+        self._update_gbf_sampling_quality()
         if self._start_after_configuration:
             self._start_after_configuration = False
             self.controller.start()

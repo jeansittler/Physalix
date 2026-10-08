@@ -552,6 +552,78 @@ class ContinuousSquareUiTests(unittest.TestCase):
         self.assertTrue(self.tab.gbf_frequency_spin.isEnabled())
         self.assertTrue(self.tab.gbf_start_button.isEnabled())
 
+    def test_sampling_quality_is_neutral_until_generator_config_ack(self):
+        self.ready()
+        self.select_gbf()
+        self.tab.duration_spin.setValue(1.0)
+        self.tab.points_spin.setValue(101)
+        self.assertEqual(self.tab.gbf_sampling_quality_label.text(), "—")
+
+        self.tab.gbf_start_button.click()
+        self.assertEqual(self.tab.gbf_sampling_quality_label.text(), "—")
+
+    def test_sampling_quality_thresholds_follow_acquisition_settings(self):
+        self.ready()
+        self.select_gbf()
+        self.tab.duration_spin.setValue(1.0)
+        plan = plan_continuous_square(ContinuousSquareConfig(1.0))
+        self.controller.generator_configured.emit(plan)
+
+        expected_by_points = {
+            201: "200 pts/période — excellent",
+            76: "75 pts/période — très bon",
+            41: "40 pts/période — correct",
+            16: "15 pts/période — limité",
+            5: "4 pts/période — faible",
+        }
+        for points, expected in expected_by_points.items():
+            with self.subTest(points=points):
+                self.tab.points_spin.setValue(points)
+                self.assertEqual(
+                    self.tab.gbf_sampling_quality_label.text(), expected)
+
+    def test_sampling_quality_uses_applied_generator_and_acquisition_values(self):
+        self.ready()
+        self.select_gbf()
+        self.tab.duration_spin.setValue(1.0)
+        self.tab.points_spin.setValue(201)
+
+        plan = plan_continuous_square(ContinuousSquareConfig(1.0))
+        self.controller.generator_configured.emit(plan)
+        self.assertEqual(
+            self.tab.gbf_sampling_quality_label.text(),
+            "200 pts/période — excellent")
+
+        plan = plan_continuous_square(ContinuousSquareConfig(4.0))
+        self.controller.generator_configured.emit(plan)
+        self.assertEqual(
+            self.tab.gbf_sampling_quality_label.text(),
+            "50 pts/période — très bon")
+
+        config = AcquisitionConfig(
+            10_000, 201, 0, DigitalStepConfig(8, False, True, 0))
+        self.controller.config = config
+        self.controller.configuration_accepted.emit(config)
+        self.assertEqual(
+            self.tab.gbf_sampling_quality_label.text(),
+            "25 pts/période — correct")
+
+    def test_low_sampling_quality_does_not_block_acquisition(self):
+        self.ready()
+        self.select_gbf()
+        self.tab.duration_spin.setValue(1.0)
+        self.tab.points_spin.setValue(5)
+        plan = plan_continuous_square(ContinuousSquareConfig(1.0))
+        self.controller.generator_configured.emit(plan)
+        self.controller.set_generator_state(GeneratorState.RUNNING)
+
+        self.assertEqual(
+            self.tab.gbf_sampling_quality_label.text(),
+            "4 pts/période — faible")
+        self.assertTrue(self.tab.start_button.isEnabled())
+        self.tab.start_button.click()
+        self.assertIsNotNone(self.controller.config)
+
     def test_gbf_actions_are_stacked_and_labels_fit_the_side_panel(self):
         self.ready()
         self.select_gbf()
