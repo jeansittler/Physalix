@@ -32,11 +32,12 @@ class DigitizerTransferTests(unittest.TestCase):
         self.window.close()
         self.app.processEvents()
 
-    def test_main_navigation_adds_digitizer_last(self):
+    def test_main_navigation_places_digitizer_before_acquisition(self):
         self.window.resize(self.window._navigation_required_width("normal") + 100, 800)
         self.app.processEvents()
-        self.assertIs(self.window.tabs.widget(self.window.tabs.count() - 1), self.tab)
-        self.assertEqual(self.window.tabs.tabText(self.window.tabs.count() - 1), "Numérisation")
+        self.assertIs(self.window.tabs.widget(self.window.tabs.count() - 2), self.tab)
+        self.assertEqual(self.window.tabs.tabText(self.window.tabs.count() - 2), "Numérisation")
+        self.assertEqual(self.window.tabs.tabText(self.window.tabs.count() - 1), "Acquisition")
 
     def test_scientific_symbols_units_and_explicit_actions(self):
         self.window.tabs.setCurrentWidget(self.tab)

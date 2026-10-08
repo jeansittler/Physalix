@@ -13,9 +13,23 @@ import sys
 import tempfile
 
 ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
 VERSION_DATA = runpy.run_path(str(ROOT / "physalix/_version.py"))
 VERSION = VERSION_DATA["__version__"]
 VERSION_INFO = VERSION_DATA["__version_info__"]
+
+
+def avrdude_startup(executable: Path, config: Path) -> str:
+    assert executable.is_file(), f"Missing AVRDUDE executable: {executable}"
+    assert config.is_file(), f"Missing AVRDUDE configuration: {config}"
+    result = subprocess.run([str(executable), "-C", str(config), "-?"],
+                            cwd=executable.parent,
+                            timeout=15, capture_output=True, text=True)
+    output = result.stdout + result.stderr
+    assert result.returncode == 0, output
+    assert "avrdude version 8.1" in output.lower(), output
+    return output
 
 
 def environment():
@@ -55,6 +69,15 @@ def bundle(directory):
         if source.is_file():
             target = directory / "_internal" / source.relative_to(ROOT)
             assert target.read_bytes() == source.read_bytes(), target
+    firmware_source = ROOT / "physalix/resources/firmware"
+    for source in firmware_source.rglob("*"):
+        if source.is_file():
+            target = directory / "_internal" / source.relative_to(ROOT)
+            assert target.read_bytes() == source.read_bytes(), target
+    from physalix.firmware_resources import load_uno_resources
+    firmware = load_uno_resources(
+        directory / "_internal/physalix/resources/firmware/uno")
+    avrdude_startup(firmware.uploader_executable, firmware.uploader_config)
     for name in ("python312.dll", "VCRUNTIME140.dll", "VCRUNTIME140_1.dll", "MSVCP140.dll"):
         assert list(directory.rglob(name)), f"Missing runtime: {name}"
     assert list(directory.rglob("qwindows.dll")), "Windows Qt plugin missing"
@@ -63,6 +86,9 @@ def bundle(directory):
     for notice in ("README.md", "components.json"):
         target = directory / "_internal" / "third_party" / notice
         assert target.is_file(), f"Missing third-party compliance file: {target}"
+    for notice in ("AVRDUDE-8.1-GPL-2.0-or-later.txt", "AVRDUDE-8.1-AUTHORS.txt"):
+        target = directory / "_internal" / "third_party" / "licenses" / notice
+        assert target.is_file(), f"Missing AVRDUDE notice: {target}"
     assert list((directory / "_internal" / "third_party" / "licenses").glob("*.txt")), \
         "Missing third-party license texts"
     env = os.environ.copy()

@@ -164,14 +164,16 @@ class ProjectFiles:
             if state is not None:
                 restore(staging, state, path)
             if not self.confirm_save():
+                staging.acquisition_tab.shutdown()
                 staging.video_tab.shutdown()
                 return False
+            self.acquisition_tab.shutdown()
             self.video_tab.shutdown()
             old = self.takeCentralWidget()
             for name in ('main_container', 'navigation', 'navigation_layout', 'navigation_group',
                          'navigation_buttons', 'brand_cartouche', 'brand_logo', '_navigation_mode',
                          'tabs', 'data_tab', 'graph_tab', 'modeling_tab', 'video_tab', 'calculations_tab',
-                         'statistics_tab', 'digitizer_tab'):
+                         'statistics_tab', 'digitizer_tab', 'acquisition_tab'):
                 setattr(self, name, getattr(staging, name))
             staging.takeCentralWidget()
             self.setCentralWidget(self.main_container)
@@ -181,6 +183,7 @@ class ProjectFiles:
             self.graph_tab.modeling_requested.connect(lambda: self.tabs.setCurrentWidget(self.modeling_tab))
             self.modeling_tab.graph_requested.disconnect()
             self.modeling_tab.graph_requested.connect(lambda: self.tabs.setCurrentWidget(self.graph_tab))
+            self.acquisition_tab.show_graph = lambda: self.tabs.setCurrentWidget(self.graph_tab)
             old.deleteLater()
             self.project_path = Path(path) if path else None
             self.setWindowTitle(f'{self.project_path.name} — Physalix' if path else 'Physalix')
@@ -189,6 +192,7 @@ class ProjectFiles:
             self._saved_state = self.document_signature()
             return True
         except Exception:
+            staging.acquisition_tab.shutdown()
             staging.video_tab.shutdown()
             raise
         finally:

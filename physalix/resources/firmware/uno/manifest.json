@@ -1,0 +1,25 @@
+{
+  "board": "uno-r3-atmega328p",
+  "firmware_version": "1.2.0",
+  "hex_file": "physalix_acquisition_uno.hex",
+  "hex_sha256": "2c2ac15843fdaaae6bc63a9ece84bc5a61740f25ad2c3d81bf9b07010901f30f",
+  "protocol_version": 1,
+  "required_capabilities": 31,
+  "schema": 2,
+  "uploader": {
+    "config": "tools/avrdude.conf",
+    "executable": "tools/avrdude.exe",
+    "files": [
+      {
+        "path": "tools/avrdude.exe",
+        "sha256": "b08186071b0877ceed6ec3e86dd42ee6d2b7556859659b34d4e326069cafbf45"
+      },
+      {
+        "path": "tools/avrdude.conf",
+        "sha256": "690c40a8163ae845bf2b6d4635e8a3534ea75c263d8e7e59d693b182c738cf41"
+      }
+    ],
+    "name": "avrdude",
+    "version": "8.1"
+  }
+}

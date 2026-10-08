@@ -325,6 +325,14 @@ class GraphTests(unittest.TestCase):
                 LIGHT.small + combo.view().frameWidth())
             self.assertEqual(combo.view().height(), expected_height)
         self.assertGreaterEqual(combo.view().minimumWidth(), LIGHT.field_wide)
+        self.assertEqual(
+            combo.view().verticalScrollBarPolicy(),
+            Qt.ScrollBarPolicy.ScrollBarAsNeeded,
+        )
+        self.assertEqual(
+            combo.view().horizontalScrollBarPolicy(),
+            Qt.ScrollBarPolicy.ScrollBarAlwaysOff,
+        )
 
     def test_context_menu_zoom_and_reticle_without_click(self):
         graph = self.graph

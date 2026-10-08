@@ -17,6 +17,7 @@ from physalix.ui.video_tab import VideoTab
 from physalix.ui.calculations_tab import CalculationsTab
 from physalix.ui.statistics_tab import StatisticsTab
 from physalix.ui.graph_digitizer_tab import GraphDigitizerTab
+from physalix.ui.acquisition_tab import AcquisitionTab
 from physalix.ui.graph_workspace import GraphWorkspace, ModelingWorkspace
 from physalix.ui.project_files import ProjectFiles
 from physalix.ui.updates import UpdateController
@@ -25,11 +26,11 @@ from physalix import __development__, __version__
 
 NAVIGATION_LABELS = (
     "Données", "Graphique", "Modélisation", "Pointage", "Calculs",
-    "Statistiques", "Numérisation",
+    "Statistiques", "Numérisation", "Acquisition",
 )
 NAVIGATION_TOOLTIPS = (
     "Données", "Graphique", "Modélisation", "Pointage vidéo", "Calculs",
-    "Statistiques", "Numérisation",
+    "Statistiques", "Numérisation", "Acquisition",
 )
 NAVIGATION_LOGO_SIZES = {
     "normal": (100, 28), "compact": (86, 26), "icon": (70, 24),
@@ -71,6 +72,12 @@ class MainWindow(QMainWindow, ProjectFiles):
         self.tabs.addTab(self.statistics_tab, "Statistiques")
         self.digitizer_tab = GraphDigitizerTab(self.data_tab, self.graph_tab)
         self.tabs.addTab(self.digitizer_tab, "Numérisation")
+        self.acquisition_tab = AcquisitionTab(
+            data_tab=self.data_tab,
+            graph_workspace=self.graph_tab,
+            show_graph=lambda: self.tabs.setCurrentWidget(self.graph_tab),
+        )
+        self.tabs.addTab(self.acquisition_tab, "Acquisition")
         for index, tooltip in enumerate(NAVIGATION_TOOLTIPS):
             self.tabs.setTabToolTip(index, tooltip)
             self.tabs.setTabWhatsThis(index, tooltip)
@@ -135,7 +142,7 @@ class MainWindow(QMainWindow, ProjectFiles):
 
     def update_navigation(self, *args):
         current = self.tabs.currentIndex()
-        for index, name in enumerate(("data", "graph", "model", "video", "calculations", "statistics", "digitizer")):
+        for index, name in enumerate(("data", "graph", "model", "video", "calculations", "statistics", "digitizer", "acquisition")):
             active = index == current
             self.navigation_buttons[index].setChecked(active)
             self.navigation_buttons[index].setIcon(icon(name, active, navigation=True))
@@ -218,5 +225,6 @@ class MainWindow(QMainWindow, ProjectFiles):
             event.ignore()
             return
         self.updater.stop()
+        self.acquisition_tab.shutdown()
         self.video_tab.shutdown()
         super().closeEvent(event)
