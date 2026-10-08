@@ -50,5 +50,13 @@
       "ajout de notes de version consultables hors ligne depuis le menu Aide ;",
       "refonte responsive de la navigation principale, désormais plus compacte et toujours accessible sur les petites fenêtres."
     ]
+  },
+  {
+    "version": "1.4.1",
+    "notes": [
+      "Harmonisation des menus déroulants de l'onglet Calculs avec ceux de Graphique.",
+      "Amélioration de l'affichage et du défilement des listes de grandeurs.",
+      "Correction de la sélection initiale du modèle Constante dans Modélisation."
+    ]
   }
 ]
