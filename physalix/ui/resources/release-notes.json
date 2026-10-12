@@ -83,5 +83,14 @@
       "Sélection des grandeurs en abscisse et en ordonnée rendue plus claire, avec un rappel dynamique du tracé.",
       "Création d'une grandeur par formule simplifiée dans Calculs ; l'insertion d'une grandeur existante devient une aide facultative repliée par défaut."
     ]
+  },
+  {
+    "version": "1.5.2",
+    "notes": [
+      "Première distribution Windows signée numériquement avec un certificat Certum.",
+      "Signature Authenticode SHA-256 avec horodatage RFC 3161 de l'application, de l'installateur et du désinstalleur.",
+      "Fiabilisation de la chaîne de publication afin d'empêcher la préparation accidentelle d'une release non signée.",
+      "Aucune nouvelle fonctionnalité pédagogique ; la signature améliore l'identification de l'éditeur sans garantir la disparition immédiate de toutes les analyses de réputation antivirus."
+    ]
   }
 ]

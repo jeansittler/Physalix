@@ -37,13 +37,13 @@ Fonctionnalités principales existantes :
 
 ### Version publique
 
-**Physalix 1.5.1**
+**Physalix 1.5.2**
 
-Commit de release : celui pointé par le tag annoté `v1.5.1`.
+Commit de release : celui pointé par le tag annoté `v1.5.2`.
 
 Tag :
 
-`v1.5.1`
+`v1.5.2`
 
 Branche stable :
 
@@ -51,35 +51,43 @@ Branche stable :
 
 État attendu :
 
-`main == origin/main == v1.5.1`
+`main == origin/main == v1.5.2`
 
 Working tree attendu : propre.
 
-### Release 1.5.1
+### Release 1.5.2
 
-Physalix 1.5.1 est la release stable et Latest sur GitHub.
+Physalix 1.5.2 est la release stable et Latest sur GitHub. Il s'agit de la
+première release Windows officiellement signée avec Certum, sans nouvelle
+fonctionnalité pédagogique.
 
 Assets publiés :
-- `Physalix-Setup-1.5.1.exe`
-- `Physalix-Setup-1.5.1.exe.sha256`
+- `Physalix-Setup-1.5.2.exe`
+- `Physalix-Setup-1.5.2.exe.sha256`
 - `update.json`
 
-SHA-256 de l’installateur 1.5.1 :
+SHA-256 de l’installateur 1.5.2 :
 
-`bcdd5d96cd805022653068dd3b9c21159d6e209eee4034ed8747b8eeabf92d35`
+`6365983a09876a7a7c9d5270f5c222e8b1f3bd80f4877906d76a0314e8c54b3c`
 
 `update.json` public :
-- version `1.5.1`
+- version `1.5.2`
 - `mandatory = false`
 - URL de l’installateur cohérente avec la release GitHub
 - SHA identique à celui de l’installateur
 - changelog cumulatif
 
+Validation de release : 410 tests réussis, bundle et smoke test réussis,
+`Physalix.exe`, installateur et désinstalleur Inno signés avec le certificat
+attendu et horodatés RFC 3161, manifeste non obligatoire cohérent avec le SHA-256
+final. L'installation réelle et le lancement de la 1.5.2 ont été validés sous
+Windows 11, ainsi que la version affichée dans la fenêtre À propos.
+
 ### Validation restante
 
 La validation réelle du parcours :
 
-`1.5.0 → détection 1.5.1 → téléchargement → SHA → installation → redémarrage → test Arduino`
+`1.5.1 → détection 1.5.2 → téléchargement → SHA → installation → redémarrage → test Arduino`
 
 reste à effectuer manuellement si elle n’a pas encore été confirmée dans le chat courant.
 
@@ -585,6 +593,10 @@ Checkpoint technique historique Physalix 1.5.1 :
 - `454,254 s`
 - OK
 
+Préparation locale signée Physalix 1.5.2 :
+- `410 tests`
+- OK
+
 Dernière validation ciblée UI Acquisition/Firmware UI avant intégration :
 - `56 tests`
 - OK
@@ -636,6 +648,8 @@ par Windows. Avast peut encore soumettre le fichier temporaire de l'installateur
 environ 10 secondes au premier lancement, avant de déclarer les fichiers sûrs.
 La signature améliore l'identification de l'éditeur mais ne supprime donc pas
 immédiatement toutes les analyses de réputation antivirus.
+Une demande de reconnaissance du certificat a été envoyée à Avast ; la réponse
+est en attente.
 
 Les ressources Acquisition nécessaires au runtime doivent être incluses :
 - firmware ;
@@ -725,7 +739,9 @@ Après stabilisation définitive, la branche pourra éventuellement être suppri
 
 Version applicative actuelle :
 
-`1.5.1`
+`1.5.2`
+
+Version publique actuelle : `1.5.2`.
 
 Firmware Arduino :
 
@@ -829,4 +845,6 @@ Message recommandé :
 
 ## 21. Prochaine étape
 
-Valider manuellement le parcours réel de mise à jour de Physalix 1.5.0 vers 1.5.1, puis le redémarrage et l’Acquisition Arduino.
+Valider sur un deuxième ordinateur le parcours réel de mise à jour de Physalix
+1.5.1 vers 1.5.2, puis le redémarrage et l'Acquisition Arduino. Ne pas présenter
+ce parcours comme validé avant sa réalisation effective.
