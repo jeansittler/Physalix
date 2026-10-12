@@ -39,7 +39,9 @@ Fonctionnalités principales existantes :
 
 **Physalix 1.5.2**
 
-Commit de release : celui pointé par le tag annoté `v1.5.2`.
+Commit de release :
+
+`396257e971870f012f467434593026a0fa8981cd`
 
 Tag :
 
@@ -53,7 +55,13 @@ Branche stable :
 
 `main == origin/main == v1.5.2`
 
-Working tree attendu : propre.
+Le working tree contient actuellement quatre modifications locales ciblées liées
+au lancement UAC de l'installateur. Elles ne sont pas encore validées
+définitivement :
+- `physalix/updates.py`
+- `physalix/ui/updates.py`
+- `tests/test_updates.py`
+- `tests/test_update_ui.py`
 
 ### Release 1.5.2
 
@@ -80,79 +88,23 @@ SHA-256 de l’installateur 1.5.2 :
 Validation de release : 410 tests réussis, bundle et smoke test réussis,
 `Physalix.exe`, installateur et désinstalleur Inno signés avec le certificat
 attendu et horodatés RFC 3161, manifeste non obligatoire cohérent avec le SHA-256
-final. L'installation réelle et le lancement de la 1.5.2 ont été validés sous
+final. Les signatures et horodatages ont été validés sous Windows 10 et Windows
+11. L'installation réelle et le lancement de la 1.5.2 ont été validés sous
 Windows 11, ainsi que la version affichée dans la fenêtre À propos.
 
-### Validation restante
+### Mise à jour réelle depuis 1.5.1
 
-La validation réelle du parcours :
+La véritable mise à jour `1.5.1 → 1.5.2` a finalement réussi sur le portable
+Windows 10. Pendant ce parcours, un message indiquant que les droits
+d'administration étaient nécessaires est apparu après l'analyse CyberCapture.
+L'installation a néanmoins continué et abouti après fermeture de ce message.
+La cause exacte de ce comportement n'est pas établie.
 
-`1.5.1 → détection 1.5.2 → téléchargement → SHA → installation → redémarrage → test Arduino`
-
-reste à effectuer manuellement si elle n’a pas encore été confirmée dans le chat courant.
-
----
-
-## 3. Méthode ChatGPT / Codex
-
-### Toujours préciser le modèle Codex conseillé
-
-Pour toute tâche Codex, ChatGPT doit indiquer explicitement le niveau recommandé :
-
-**GPT-5.6 Sol — minimal**
-- changement local et mécanique ;
-- petite correction ;
-- test ciblé ;
-- commit / push ;
-- ajustement de texte ou configuration ;
-- checkpoint Git.
-
-**GPT-5.6 Sol — moyen**
-- compréhension de plusieurs fichiers ;
-- évolution fonctionnelle raisonnable ;
-- refonte UI localisée ;
-- modification nécessitant de suivre quelques interactions entre composants.
-
-**GPT-5.6 Sol — élevé**
-- intégration complexe ;
-- architecture importante ;
-- release ;
-- fusion de branches ;
-- bug multi-couches ;
-- modification firmware/PC nécessitant une compréhension globale.
-
-**GPT-5.6 Sol — très élevé**
-- exceptionnel ;
-- problème particulièrement difficile, ambigu ou transversal ;
-- seulement si « élevé » n’est raisonnablement pas suffisant.
-
-### Préserver les crédits Codex et le temps d’exécution
-
-Principe permanent :
-- prompts précis, courts et complets ;
-- optimiser ensemble les crédits Codex, le nombre d’interventions et le temps réel d’exécution, sans jamais sacrifier la fiabilité ;
-- éviter les audits, builds, explorations et contrôles redondants ;
-- limiter l’exploration aux fichiers nécessaires ;
-- éviter les micro-phases inutiles ;
-- utiliser des tests ciblés pendant le développement et une seule suite complète au checkpoint technique pertinent ;
-- prévenir l’utilisateur avant une opération potentiellement longue et estimer sa durée lorsque c’est possible ;
-- ne jamais relancer les tests complets pour un simple commit, push ou changement documentaire ;
-- réutiliser les validations réussies tant que le code testé n’a pas changé ;
-- en cas de problème de permissions ou d’environnement, diagnostiquer avant de relancer une opération longue ;
-- ne pas utiliser un niveau de modèle plus élevé que nécessaire.
-
-### Validation avant Git
-
-Par défaut :
-- ne pas commit/push avant validation technique et, si pertinent, validation visuelle manuelle ;
-- lorsque le changement est validé, faire ensuite un checkpoint Git propre ;
-- ne jamais publier une release avant validation explicite des tests/builds nécessaires.
+Les règles permanentes de travail avec Codex sont centralisées dans `AGENTS.md`.
 
 ---
 
 ## 4. Commandes et tests manuels
-
-Quand un test manuel est demandé, toujours donner **directement la commande PowerShell prête à copier**.
 
 Commande habituelle de lancement en développement :
 
