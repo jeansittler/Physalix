@@ -616,10 +616,26 @@ Physalix est distribué avec un installateur Windows.
 Workflow actuel :
 - build/bundle ;
 - smoke test ;
-- installateur ;
+- signature Authenticode SHA-256 de `Physalix.exe` avec horodatage RFC 3161 ;
+- installateur Inno avec signature native de Setup, du désinstalleur et de ses copies temporaires ;
+- vérification du certificat attendu et de l'horodatage ;
 - SHA-256 ;
 - `update.json` ;
 - release GitHub.
+
+Une release Windows est bloquée si le certificat SimplySign, sa clé privée,
+SignTool, la signature ou l'horodatage ne sont pas disponibles. L'authentification
+SimplySign reste interactive ; aucun OTP, PIN ni accès au compte n'est stocké.
+
+Le certificat Certum SimplySign est opérationnel. La chaîne automatisée a été
+validée par un build complet signé, puis par une installation réelle sur un second
+PC Windows 10 : `Physalix.exe`, l'installateur et `unins000.exe` ont une signature
+valide et horodatée, avec l'éditeur « Open Source Developer Jean SITTLER » affiché
+par Windows. Avast peut encore soumettre le fichier temporaire de l'installateur
+à CyberCapture pendant environ 50 secondes et analyser `Physalix.exe` pendant
+environ 10 secondes au premier lancement, avant de déclarer les fichiers sûrs.
+La signature améliore l'identification de l'éditeur mais ne supprime donc pas
+immédiatement toutes les analyses de réputation antivirus.
 
 Les ressources Acquisition nécessaires au runtime doivent être incluses :
 - firmware ;

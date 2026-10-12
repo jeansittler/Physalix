@@ -5,7 +5,8 @@ param(
     [switch]$PackageOnly,
     [string]$CertificateThumbprint = '',
     [string]$TimestampUrl = '',
-    [string]$SignTool = 'signtool.exe'
+    [string]$SignTool = '',
+    [switch]$AllowUnsigned
 )
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
@@ -23,14 +24,31 @@ function Invoke-Logged([string]$Tool, [string[]]$ToolArgs, [string]$Log) {
 $root = Split-Path -Parent $PSScriptRoot
 if (-not $Python) { $Python = Join-Path $root '.venv\Scripts\python.exe' }
 $Python = (Get-Command $Python -ErrorAction Stop).Source
+$signScript = Join-Path $PSScriptRoot 'sign_release.ps1'
+if (-not $CertificateThumbprint) {
+    $CertificateThumbprint = if ($env:PHYSALIX_CERTIFICATE_THUMBPRINT) { $env:PHYSALIX_CERTIFICATE_THUMBPRINT } else { '2ab2e1ce2e420168237ed606cf324ad2da45f809' }
+}
+if (-not $TimestampUrl) {
+    $TimestampUrl = if ($env:PHYSALIX_TIMESTAMP_URL) { $env:PHYSALIX_TIMESTAMP_URL } else { 'http://time.certum.pl/' }
+}
+if (-not $SignTool -and $env:PHYSALIX_SIGNTOOL) { $SignTool = $env:PHYSALIX_SIGNTOOL }
+$signingArguments = @{
+    CertificateThumbprint = $CertificateThumbprint
+    TimestampUrl = $TimestampUrl
+}
+if ($SignTool) { $signingArguments.SignTool = $SignTool }
 Push-Location $root
 try {
+    if ($AllowUnsigned) {
+        Write-Warning 'Unsigned build explicitly requested. These artifacts are not release-ready.'
+    } else {
+        & $signScript @signingArguments -CheckOnly
+    }
     New-Item -ItemType Directory -Force -Path (Join-Path $root 'artifacts') | Out-Null
     & $Python scripts/verify_distribution.py environment
     if ($LASTEXITCODE -ne 0) { throw 'Build environment check failed.' }
     $version = (& $Python -c "from physalix import __version__; print(__version__)").Trim()
     if ($LASTEXITCODE -ne 0) { throw 'Cannot read version.' }
-    if ($CertificateThumbprint -and -not $TimestampUrl) { throw 'Supply -TimestampUrl for signing.' }
     $existingExe = Join-Path $root 'dist\Physalix\Physalix.exe'
     if (Test-Path -LiteralPath $existingExe) {
         try {
@@ -53,8 +71,8 @@ try {
     Write-Host 'Tests passed. Building Physalix...'
     Invoke-Logged $Python @('-m', 'PyInstaller', '--clean', '--noconfirm', 'Physalix.spec') 'artifacts/release-build.log'
     $bundle = Join-Path $root 'dist\Physalix'
-    if ($CertificateThumbprint) {
-        & "$PSScriptRoot\sign_release.ps1" -FilePath "$bundle\Physalix.exe" -CertificateThumbprint $CertificateThumbprint -TimestampUrl $TimestampUrl -SignTool $SignTool
+    if (-not $AllowUnsigned) {
+        & $signScript @signingArguments -FilePath "$bundle\Physalix.exe"
     }
     & $Python scripts/verify_distribution.py bundle $bundle
     if ($LASTEXITCODE -ne 0) { throw 'Frozen executable validation failed.' }
@@ -75,15 +93,29 @@ try {
     $artifactDir = Join-Path $root 'artifacts'
     $installer = Join-Path $artifactDir "Physalix-Setup-$version.exe"
     if (Test-Path -LiteralPath $installer) { Remove-Item -LiteralPath $installer -Force }
-    Invoke-Logged $Iscc @("/DAppVersion=$version", "/DSourceDir=$bundle", "/DArtifactDir=$artifactDir", 'packaging/installer/Physalix.iss') 'artifacts/release-installer.log'
+    $isccArguments = @("/DAppVersion=$version", "/DSourceDir=$bundle", "/DArtifactDir=$artifactDir")
+    if (-not $AllowUnsigned) {
+        # Inno invokes the same checked signer for Setup, the uninstaller and its temporary self-copies.
+        $innoSignCommand = 'powershell.exe -NoProfile -ExecutionPolicy Bypass -File $q{0}$q -FilePath $f -CertificateThumbprint {1} -TimestampUrl $q{2}$q' -f $signScript, $CertificateThumbprint, $TimestampUrl
+        if ($SignTool) { $innoSignCommand += ' -SignTool $q{0}$q' -f $SignTool }
+        $isccArguments += '/DSignToolName=physalix'
+        $isccArguments += "/Sphysalix=$innoSignCommand"
+    }
+    $isccArguments += 'packaging/installer/Physalix.iss'
+    Invoke-Logged $Iscc $isccArguments 'artifacts/release-installer.log'
     if (-not (Test-Path -LiteralPath $installer)) { throw 'Inno Setup did not produce the installer.' }
-    if ($CertificateThumbprint) {
-        & "$PSScriptRoot\sign_release.ps1" -FilePath $installer -CertificateThumbprint $CertificateThumbprint -TimestampUrl $TimestampUrl -SignTool $SignTool
+    if (-not $AllowUnsigned) {
+        # Inno signed it natively; verify it once more before any final digest is calculated.
+        & $signScript @signingArguments -FilePath $installer -VerifyOnly
     }
     $hash = (Get-FileHash -LiteralPath $installer -Algorithm SHA256).Hash.ToLowerInvariant()
     "$hash  Physalix-Setup-$version.exe" | Set-Content -LiteralPath "$installer.sha256" -Encoding ascii
     & $Python scripts/prepare_release.py
     if ($LASTEXITCODE -ne 0) { throw 'Update manifest generation failed.' }
     Get-Item -LiteralPath $installer | Select-Object FullName, Length
-    Write-Host "Release $version ready. No publication performed."
+    if ($AllowUnsigned) {
+        Write-Warning "Unsigned build $version ready for testing only. Do not publish these artifacts."
+    } else {
+        Write-Host "Signed release $version ready. No publication performed."
+    }
 } finally { Pop-Location }

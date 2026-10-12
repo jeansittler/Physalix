@@ -2,6 +2,7 @@ import hashlib
 import io
 import json
 from pathlib import Path
+import subprocess
 import tempfile
 import threading
 import unittest
@@ -297,6 +298,46 @@ class ReleaseTests(unittest.TestCase):
                      "PrivilegesRequired=admin", "ArchitecturesInstallIn64BitMode=x64compatible",
                      "DefaultDirName={autopf}\\Physalix", "AppVersion={#AppVersion}"):
             self.assertIn(line, iss)
+        self.assertIn("SignTool={#SignToolName}", iss)
+        self.assertIn("SignedUninstaller=yes", iss)
+
+    def test_release_signing_is_fail_closed_and_precedes_hashing(self):
+        root = Path(__file__).resolve().parents[1]
+        build = (root / "scripts/build_release.ps1").read_text(encoding="utf-8")
+        signer = (root / "scripts/sign_release.ps1").read_text(encoding="utf-8")
+        self.assertIn("[switch]$AllowUnsigned", build)
+        self.assertIn("-CheckOnly", build)
+        self.assertIn("/DSignToolName=physalix", build)
+        self.assertIn("/Sphysalix=$innoSignCommand", build)
+        self.assertLess(build.index("-FilePath $installer"),
+                        build.index("Get-FileHash -LiteralPath $installer"))
+        self.assertLess(build.index("Get-FileHash -LiteralPath $installer"),
+                        build.index("scripts/prepare_release.py"))
+        for expected in ("/fd SHA256", "/tr $TimestampUrl", "/td SHA256",
+                         "verify /pa /all /v", "SignerCertificate.Thumbprint",
+                         "TimeStamperCertificate"):
+            self.assertIn(expected, signer)
+
+    def test_signing_preflight_does_not_require_lastexitcode(self):
+        root = Path(__file__).resolve().parents[1]
+        build = (root / "scripts/build_release.ps1").read_text(encoding="utf-8")
+        preflight = build.index("& $signScript @signingArguments -CheckOnly")
+        first_native_call = build.index("& $Python scripts/verify_distribution.py environment")
+        self.assertNotIn("$LASTEXITCODE", build[preflight:first_native_call])
+
+        # A successful PowerShell script does not create LASTEXITCODE. Reproduce
+        # the clean-process state that exposed the StrictMode failure.
+        command = (
+            "Set-StrictMode -Version Latest; "
+            "Remove-Variable LASTEXITCODE -ErrorAction SilentlyContinue; "
+            "& { Write-Output 'Signing prerequisites ready' } | Out-Null; "
+            "if (Test-Path Variable:LASTEXITCODE) { throw 'Unexpected LASTEXITCODE' }"
+        )
+        result = subprocess.run(
+            ["powershell.exe", "-NoProfile", "-Command", command],
+            cwd=root, capture_output=True, text=True,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
 
     def test_physalix_file_association(self):
         root = Path(__file__).resolve().parents[1]

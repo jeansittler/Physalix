@@ -39,7 +39,7 @@ jobs:
           if (-not (Test-Path -LiteralPath $iscc)) {
             throw "Inno Setup compiler not found at $iscc"
           }
-          .\scripts\build_release.ps1 -Python (Get-Command python).Source -Iscc $iscc
+          .\scripts\build_release.ps1 -Python (Get-Command python).Source -Iscc $iscc -AllowUnsigned
 
       - name: Upload unsigned build outputs
         uses: actions/upload-artifact@v6

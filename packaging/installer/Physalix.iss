@@ -37,6 +37,12 @@ CloseApplications=yes
 RestartApplications=no
 SetupLogging=yes
 ChangesAssociations=yes
+#ifdef SignToolName
+SignTool={#SignToolName}
+SignedUninstaller=yes
+#else
+SignedUninstaller=no
+#endif
 
 [Languages]
 Name: "french"; MessagesFile: "compiler:Languages\French.isl"

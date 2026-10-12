@@ -2,7 +2,7 @@
 
 Pour les versions avec mise à jour intégrée, suivre **[RELEASE.md](RELEASE.md)** :
 le build existant génère désormais aussi `artifacts/update.json`, après la signature
-éventuelle de l'installateur. Les comptes rendus 1.0.0 ci-dessous restent historiques.
+obligatoire de l'installateur. Les comptes rendus 1.0.0 ci-dessous restent historiques.
 La version de l'application, du bundle et de l'installateur vient de `_version.py`.
 
 ## Première préparation
@@ -168,22 +168,41 @@ La signature ne garantit pas non plus l'absence de faux positifs. Le build utili
 onedir sans UPX, des versions explicites et la compression standard Inno.
 Aucun éditeur légal fourni : aucun nom de société n'est inventé.
 
-Installer le Windows SDK pour `signtool.exe` et disposer d'un certificat de
-signature de code dans le magasin personnel Windows, clé privée protégée.
-Ne jamais versionner de secret ni de certificat PFX/P12.
+Installer le Windows SDK pour `signtool.exe`, démarrer SimplySign Desktop, puis
+s'authentifier normalement afin que le certificat et sa clé privée soient exposés
+dans le magasin personnel Windows de l'utilisateur. Aucun OTP, PIN, mot de passe,
+certificat PFX/P12 ou accès distant ne doit être enregistré dans le dépôt ou dans
+les scripts.
 
 ```powershell
-.\scripts\build_release.ps1 -CertificateThumbprint 'EMPREINTE_DU_CERTIFICAT' -TimestampUrl 'URL_HORODATAGE_DU_FOURNISSEUR' -SignTool 'CHEMIN\signtool.exe'
+Set-Location C:\Physalix
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\build_release.ps1 -CertificateThumbprint '2ab2e1ce2e420168237ed606cf324ad2da45f809' -TimestampUrl 'http://time.certum.pl/' -SignTool 'C:\Program Files (x86)\Windows Kits\10\bin\10.0.28000.0\x64\signtool.exe'
 ```
 
-Le script signe **Physalix.exe avant Inno**, puis l'installateur et vérifie chaque
-signature (`/pa`), avec SHA-256 et horodatage RFC 3161. Le désinstalleur interne
-n'est pas signé dans cette première intégration ; `SignTool`/`SignedUninstaller`
-d'Inno permettront de l'ajouter ultérieurement.
+Ces valeurs Certum sont les valeurs par défaut ; l'empreinte est un identifiant
+public. Elles restent configurables par paramètres ou par
+`PHYSALIX_CERTIFICATE_THUMBPRINT`, `PHYSALIX_TIMESTAMP_URL` et
+`PHYSALIX_SIGNTOOL`. Sans `-SignTool`, le script cherche d'abord dans le `PATH`,
+puis dans les SDK Windows installés, du plus récent au plus ancien.
+
+Le mode release est bloquant par défaut : certificat ou clé privée indisponible,
+échec de signature, d'horodatage ou de vérification = arrêt immédiat. Le script
+signe **Physalix.exe avant Inno**. Inno utilise ensuite le même script de signature
+via son option native `SignTool`, signe l'installateur, le désinstalleur et ses
+copies temporaires (`SignedUninstaller=yes`), puis l'installateur est revérifié
+avant son SHA-256 définitif et la génération de `update.json`. Chaque vérification
+contrôle la stratégie Authenticode Windows, l'empreinte attendue et la présence
+du contresignataire d'horodatage RFC 3161.
+
+`-AllowUnsigned` est réservé aux builds techniques explicitement non publiables
+(par exemple l'artefact temporaire de CI). Ne jamais utiliser ce commutateur pour
+préparer une release.
 
 Références : [PyInstaller](https://pyinstaller.org/en/stable/usage.html),
 [installation sans élévation](https://jrsoftware.org/ishelp/topic_setup_privilegesrequired.htm),
-[identifiant de mise à jour](https://jrsoftware.org/ishelp/topic_setup_appid.htm).
+[identifiant de mise à jour](https://jrsoftware.org/ishelp/topic_setup_appid.htm),
+[SignTool Inno](https://jrsoftware.org/ishelp/topic_setup_signtool.htm) et
+[SignedUninstaller](https://jrsoftware.org/ishelp/topic_setup_signeduninstaller.htm).
 
 Signature : [SignTool](https://learn.microsoft.com/en-us/windows/win32/seccrypto/signtool)
 et [réputation SmartScreen](https://learn.microsoft.com/en-us/windows/apps/package-and-deploy/smartscreen-reputation).

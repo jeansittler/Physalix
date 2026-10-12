@@ -184,8 +184,21 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\build_release.
 ```
 
 Le build exécute à nouveau les tests, construit l'EXE, valide le bundle et son
-lancement réel, compile Inno Setup, signe si les paramètres existants sont fournis,
-calcule le SHA-256 et génère **automatiquement** `artifacts/update.json`.
+lancement réel, signe `Physalix.exe`, compile Inno Setup en signant nativement
+l'installateur et le désinstalleur, revérifie l'installateur, calcule ensuite le
+SHA-256 définitif et génère **automatiquement** `artifacts/update.json`.
+La release échoue si le certificat SimplySign, la signature ou l'horodatage RFC
+3161 ne sont pas disponibles. Se connecter à SimplySign Desktop avant de lancer :
+
+```powershell
+Set-Location C:\Physalix
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\build_release.ps1 -CertificateThumbprint '2ab2e1ce2e420168237ed606cf324ad2da45f809' -TimestampUrl 'http://time.certum.pl/' -SignTool 'C:\Program Files (x86)\Windows Kits\10\bin\10.0.28000.0\x64\signtool.exe'
+```
+
+Le script n'enregistre et ne contourne aucune authentification Certum. Les valeurs
+sont également configurables comme décrit dans `BUILD_WINDOWS.md`. Le commutateur
+`-AllowUnsigned` est uniquement destiné aux builds techniques explicitement non
+publiables.
 La génération vérifie aussi la version PE de l'installateur pour refuser un ancien
 EXE simplement renommé. Elle utilise `pefile`, déjà dans l'environnement de build.
 Aucune nouvelle dépendance d'application ou de build.
