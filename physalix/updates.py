@@ -41,6 +41,10 @@ class Cancelled(UpdateError):
     pass
 
 
+class ElevationDenied(UpdateError):
+    """Windows refused the requested installer elevation."""
+
+
 def version_tuple(value):
     if not isinstance(value, str) or not re.fullmatch(r"(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)", value):
         raise UpdateError("Invalid version")
@@ -292,7 +296,7 @@ def download_installer(manifest, progress=lambda done, total: None, cancel=None)
         raise
 
 
-def _launch_elevated(path):
+def _launch_elevated(path, parent_window=0):
     """Request Windows consent/administrator credentials before returning success."""
     import ctypes
     from ctypes import wintypes
@@ -327,6 +331,7 @@ def _launch_elevated(path):
         info.cbSize = ctypes.sizeof(info)
         # Wait for launch before closing Physalix; suppress errors, never UAC UI.
         info.fMask = 0x00000100 | 0x00000400  # NOASYNC | FLAG_NO_UI
+        info.hwnd = parent_window
         info.lpVerb = "runas"
         info.lpFile = str(path)
         info.lpParameters = "/SP- /NORESTART"
@@ -336,13 +341,15 @@ def _launch_elevated(path):
             error = ctypes.get_last_error()
             if error == 1223:  # ERROR_CANCELLED (consent or credentials refused)
                 raise Cancelled("La mise à jour a été annulée.")
+            if error == 5:  # ERROR_ACCESS_DENIED (policy or unavailable admin rights)
+                raise ElevationDenied("Administrative elevation was denied")
             raise ctypes.WinError(error)
     finally:
         if initialized in (0, 1):
             ole.CoUninitialize()
 
 
-def launch_installer(path):
+def launch_installer(path, parent_window=0):
     """Launch verified Setup elevated, leaving Physalix itself unelevated."""
     if sys.platform != "win32":
         raise UpdateError("Windows installer required")
@@ -364,7 +371,7 @@ def launch_installer(path):
             root = Path(sys._MEIPASS).resolve()
             os.environ["PATH"] = os.pathsep.join(p for p in (original_path or "").split(os.pathsep)
                                                if p and not Path(p).resolve().is_relative_to(root))
-        _launch_elevated(path)
+        _launch_elevated(path, parent_window)
         log.info("Elevated installer launched; installation not yet confirmed")
     finally:
         if restore_dll:

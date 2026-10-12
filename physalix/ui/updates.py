@@ -265,11 +265,21 @@ class UpdateController(QObject):
             updates.remove_download(path)
             return
         try:
-            updates.launch_installer(path)
+            updates.launch_installer(path, int(self.window.winId()))
         except updates.Cancelled:
             updates.log.info("Installer elevation cancelled")
             updates.remove_download(path)
             QMessageBox.information(self.window, "Mise à jour", "La mise à jour a été annulée.")
+            return
+        except updates.ElevationDenied:
+            updates.log.warning("Installer elevation denied")
+            updates.remove_download(path)
+            QMessageBox.information(
+                self.window, "Mise à jour",
+                "L’installation nécessite les droits d’administration. "
+                "L’élévation a été refusée ou aucun compte administrateur n’est disponible. "
+                "Votre projet reste ouvert.",
+            )
             return
         except Exception as error:
             updates.log.warning("Installer launch failed (%s)", type(error).__name__)

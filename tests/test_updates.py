@@ -232,6 +232,7 @@ class UpdateTests(unittest.TestCase):
             def execute(pointer):
                 info = pointer._obj
                 self.assertEqual(info.cbSize, ctypes.sizeof(info))
+                self.assertEqual(info.hwnd, 1234)
                 self.assertEqual(info.lpVerb, "runas")
                 self.assertEqual(info.lpFile, str(path.resolve()))
                 self.assertEqual(info.lpParameters, "/SP- /NORESTART")
@@ -241,13 +242,13 @@ class UpdateTests(unittest.TestCase):
                 return True
             shell.ShellExecuteExW.side_effect = execute
             with patch.object(ctypes, "WinDLL", side_effect=[shell, ole], create=True), patch.object(u.sys, "platform", "win32"), patch.object(u.sys, "frozen", False, create=True):
-                u.launch_installer(path)
+                u.launch_installer(path, 1234)
             shell.ShellExecuteExW.assert_called_once()
             ole.CoUninitialize.assert_called_once()
 
     def test_windows_cancel_and_launch_errors(self):
         import ctypes
-        for code, expected in [(1223, u.Cancelled), (5, OSError), (2, OSError)]:
+        for code, expected in [(1223, u.Cancelled), (5, u.ElevationDenied), (2, OSError)]:
             with self.subTest(code=code), tempfile.TemporaryDirectory() as folder:
                 path = Path(folder) / "Setup.exe"
                 path.write_bytes(b"fake")
@@ -276,8 +277,9 @@ class UpdateTests(unittest.TestCase):
                 bundled = root / "_internal"
                 original = str(bundled) + u.os.pathsep + str(root)
                 set_dll = Mock(return_value=1)
-                def execute(path):
+                def execute(path, parent_window):
                     self.assertEqual(u.os.environ["PATH"], str(root))
+                    self.assertEqual(parent_window, 0)
                     if error:
                         raise error
                 with patch.object(u.sys, "platform", "win32"), patch.object(u.sys, "frozen", True, create=True), patch.object(u.sys, "_MEIPASS", str(bundled), create=True), patch.dict(u.os.environ, PATH=original), patch.object(ctypes.windll.kernel32, "SetDllDirectoryW", set_dll), patch.object(u, "_launch_elevated", side_effect=execute):

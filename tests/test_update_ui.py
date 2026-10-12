@@ -198,7 +198,7 @@ class UpdateUiTests(unittest.TestCase):
     def test_successful_handoff_saves_then_closes(self):
         sequence = []
         self.window.confirm_save.side_effect = lambda: sequence.append("save") or True
-        with patch.object(updates, "launch_installer", side_effect=lambda p: sequence.append("launch")), patch.object(self.window, "close", side_effect=lambda: sequence.append("close")):
+        with patch.object(updates, "launch_installer", side_effect=lambda p, hwnd: sequence.append("launch")), patch.object(self.window, "close", side_effect=lambda: sequence.append("close")):
             self.controller.install(Path("fake.exe"))
             self.assertEqual(sequence, ["save", "launch", "close"])
             self.assertTrue(self.window._discard_on_close)
@@ -212,6 +212,14 @@ class UpdateUiTests(unittest.TestCase):
             self.assertTrue(self.controller.check_action.isEnabled())
             cleanup.assert_called_once_with(Path("fake.exe"))
             self.assertEqual(info.call_args.args[2], "La mise à jour a été annulée.")
+
+    def test_uac_access_denied_is_explicit_and_keeps_project_open(self):
+        with patch.object(updates, "launch_installer", side_effect=updates.ElevationDenied), patch.object(updates, "remove_download") as cleanup, patch.object(self.window, "close") as close, patch("physalix.ui.updates.QMessageBox.information") as info:
+            self.controller.install(Path("fake.exe"))
+            close.assert_not_called()
+            cleanup.assert_called_once_with(Path("fake.exe"))
+            self.assertIn("droits d’administration", info.call_args.args[2])
+            self.assertIn("projet reste ouvert", info.call_args.args[2])
 
     def test_download_hash_failure_blocks_complete_handoff(self):
         import io
