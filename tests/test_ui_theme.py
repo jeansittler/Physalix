@@ -123,9 +123,9 @@ class ThemeLayoutTests(unittest.TestCase):
         navigation = self.window.navigation
         buttons = self.window.navigation_buttons
         labels = ["Données", "Graphique", "Modélisation", "Pointage", "Calculs",
-                  "Statistiques", "Numérisation", "Acquisition"]
+                  "Statistiques", "Numérisation", "Acquisition", "Spectrophotométrie"]
         tooltips = ["Données", "Graphique", "Modélisation", "Pointage vidéo", "Calculs",
-                    "Statistiques", "Numérisation", "Acquisition"]
+                    "Statistiques", "Numérisation", "Acquisition", "Spectrophotométrie"]
         self.window.resize(self.window._navigation_required_width("normal") + 100, 800)
         QTest.qWait(20)
         self.assertEqual([button.text() for button in buttons], labels)
@@ -135,11 +135,19 @@ class ThemeLayoutTests(unittest.TestCase):
 
         for width in (1280, 1366, 1600, 1920):
             with self.subTest(width=width):
+                self.window._set_navigation_mode("normal")
                 self.window.resize(width, 800)
                 QTest.qWait(20)
                 self.assertEqual(navigation.height(), 44)
-                if QApplication.platformName() == "windows":
-                    self.assertEqual(navigation.property("navigationMode"), "normal")
+                available = navigation.width()
+                expected_mode = (
+                    "normal"
+                    if available >= self.window._navigation_required_width("normal")
+                    else "compact"
+                    if available >= self.window._navigation_required_width("compact")
+                    else "icon"
+                )
+                self.assertEqual(navigation.property("navigationMode"), expected_mode)
                 self.assertTrue(all(button.isVisible() for button in buttons))
 
         self.window.resize(900, 700)

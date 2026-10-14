@@ -4,8 +4,9 @@ import re
 from PySide6.QtCore import Qt, Signal, QRect, QSize
 from PySide6.QtWidgets import (QHBoxLayout, QInputDialog, QLabel, QMdiArea,
                                QMdiSubWindow, QPushButton, QStackedWidget, QTabBar, QVBoxLayout, QWidget)
+from physalix.fitting import fit_model
 from physalix.ui.components import WheelSafeComboBox, compact_width, panel, role
-from physalix.ui.graph_tab import GraphTab
+from physalix.ui.graph_tab import GraphTab, paired_values
 from physalix.ui.modeling_tab import ModelingTab
 from physalix.ui.theme import LIGHT
 
@@ -120,6 +121,27 @@ class GraphWorkspace(QWidget):
             )
         graph.refresh_plot()
         return graph
+
+    def add_data_graph_with_model(
+        self, x_column, y_column, model_kind, title=None
+    ):
+        """Créer un graphique de données et lui associer un modèle calculé.
+
+        Cette API évite aux autres vues de dépendre de la structure interne des
+        séries ou de simuler une action dans l'onglet Modélisation.
+        """
+        if not (
+            0 <= x_column < self.model.columnCount()
+            and 0 <= y_column < self.model.columnCount()
+        ):
+            raise ValueError("Colonnes du graphique introuvables.")
+        xs, ys, _ = paired_values(self.model.rows, x_column, y_column)
+        result = fit_model(
+            xs, ys, model_kind, axis_name=self.model.names[x_column]
+        )
+        graph = self.add_data_graph(x_column, y_column, title=title)
+        fit = graph.set_model(graph.series[0], result, model_kind)
+        return graph, fit
 
     def add_data_graph_series(self, x_column, y_columns, title=None):
         """Créer un graphique neuf avec plusieurs ordonnées sur l'axe Y gauche."""

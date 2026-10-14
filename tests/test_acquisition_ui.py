@@ -918,14 +918,14 @@ class AcquisitionNavigationTests(unittest.TestCase):
     def setUpClass(cls):
         cls.app = QApplication.instance() or QApplication([])
 
-    def test_acquisition_is_last_and_does_not_touch_measurements(self):
+    def test_acquisition_precedes_spectrophotometry_and_does_not_touch_measurements(self):
         window = MainWindow()
         try:
             count_before = window.data_tab.model.columnCount()
-            self.assertIs(window.tabs.widget(window.tabs.count() - 1), window.acquisition_tab)
-            self.assertEqual(window.tabs.tabText(window.tabs.count() - 1), "Acquisition")
-            self.assertEqual(window.navigation_buttons[-1].toolTip(), "Acquisition")
-            self.assertFalse(window.navigation_buttons[-1].icon().isNull())
+            self.assertIs(window.tabs.widget(window.tabs.count() - 2), window.acquisition_tab)
+            self.assertEqual(window.tabs.tabText(window.tabs.count() - 2), "Acquisition")
+            self.assertEqual(window.navigation_buttons[-2].toolTip(), "Acquisition")
+            self.assertFalse(window.navigation_buttons[-2].icon().isNull())
             self.assertEqual(window.data_tab.model.columnCount(), count_before)
         finally:
             window._discard_on_close = True

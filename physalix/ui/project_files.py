@@ -165,16 +165,19 @@ class ProjectFiles:
             if state is not None:
                 restore(staging, state, path)
             if not self.confirm_save():
+                staging.spectrophotometry_tab.shutdown()
                 staging.acquisition_tab.shutdown()
                 staging.video_tab.shutdown()
                 return False
+            self.spectrophotometry_tab.shutdown()
             self.acquisition_tab.shutdown()
             self.video_tab.shutdown()
             old = self.takeCentralWidget()
             for name in ('main_container', 'navigation', 'navigation_layout', 'navigation_group',
                          'navigation_buttons', 'brand_cartouche', 'brand_logo', '_navigation_mode',
                          'tabs', 'data_tab', 'graph_tab', 'modeling_tab', 'video_tab', 'calculations_tab',
-                         'statistics_tab', 'digitizer_tab', 'acquisition_tab'):
+                         'statistics_tab', 'digitizer_tab', 'acquisition_tab',
+                         'spectrophotometry_tab'):
                 setattr(self, name, getattr(staging, name))
             staging.takeCentralWidget()
             self.setCentralWidget(self.main_container)
@@ -193,6 +196,7 @@ class ProjectFiles:
             self._saved_state = self.document_signature()
             return True
         except Exception:
+            staging.spectrophotometry_tab.shutdown()
             staging.acquisition_tab.shutdown()
             staging.video_tab.shutdown()
             raise
