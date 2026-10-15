@@ -1,6 +1,7 @@
 """Dérivées physiques, expressions et recalcul des chaînes de grandeurs."""
 
 import os
+import math
 import unittest
 from unittest.mock import patch
 
@@ -110,6 +111,38 @@ class CalculationsTests(unittest.TestCase):
         self.assertEqual(model.rows[7][constant], "")
         self.assertEqual(derivative_unit("m/s", "s"), "m/s²")
         self.assertEqual(derivative_unit("cm", "s"), "cm/s")
+
+    def test_manual_logarithmic_linearization_preserves_measurements_and_can_be_graphed(self):
+        window = MainWindow()
+        try:
+            model = window.data_tab.model
+            model.names[:2] = ["Absorbance", "Temps"]
+            model.units[:2] = ["", "s"]
+            source_rows = [["0.5", "0"], ["1", "1"], ["1.5", "2"], ["2", "3"]]
+            model.rows = [row[:] for row in source_rows]
+            column = window.calculations_tab.engine.add(
+                "Linéarisation choisie", "", expression="ln(1,5-Absorbance)")
+            self.assertEqual(model.rows[0][column], "0")
+            self.assertAlmostEqual(float(model.rows[1][column]), math.log(0.5), places=11)
+            self.assertEqual([model.rows[i][column] for i in (2, 3)], ["", ""])
+            self.assertIn("2 erreur(s) de calcul", window.calculations_tab.engine.items[0].status)
+            self.assertEqual([row[:2] for row in model.rows], source_rows)
+
+            graph = window.graph_tab
+            graph.sync_columns()
+            series = graph.series[0]
+            series.x_choice.setCurrentIndex(series.x_choice.findData(1))
+            series.y_choice.setCurrentIndex(series.y_choice.findData(column))
+            graph.refresh_plot()
+            self.assertEqual(len(series.points.getData()[0]), 2)
+            tab = window.modeling_tab
+            tab.model_choice.setCurrentIndex(tab.model_choice.findData("affine"))
+            self.assertFalse(series.fits)
+            tab.calculate()
+            self.assertEqual(series.fits[0].kind, "affine")
+        finally:
+            window._discard_on_close = True
+            window.close()
 
     def test_suggested_units_follow_sources_and_manual_unit_is_preserved(self):
         model = self.make_model()

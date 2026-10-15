@@ -86,6 +86,29 @@ class ProjectTests(unittest.TestCase):
         self.assertEqual(m.rows[0][4], '11')
         self.assertFalse(first.series[0].fits)  # Invalidation normale après modification des mesures.
 
+    def test_plateau_exponential_model_roundtrip(self):
+        import math
+        model = self.window.data_tab.model
+        xs = list(range(4, 12))
+        ys = [6-(6-1.25)*math.exp(-0.65*(x-4)) for x in xs]
+        for row, (x, y) in enumerate(zip(xs, ys), start=2):
+            model.setData(model.index(row, 0), str(x))
+            model.setData(model.index(row, 1), str(y))
+        graph = self.window.graph_tab.active_graph
+        result = fit_model(xs, ys, 'exponential_growth')
+        graph.set_model(graph.series[0], result, 'exponential_growth', {'interval': [4, 11]})
+        write_project(self.path, snapshot(self.window))
+        restored = MainWindow()
+        self.windows.append(restored)
+        restore(restored, read_project(self.path), self.path)
+        fit = restored.graph_tab.active_graph.series[0].fits[0]
+        self.assertEqual(fit.kind, 'exponential_growth')
+        self.assertEqual(fit.result.x0, 4)
+        self.assertAlmostEqual(fit.result.parameters['y_inf'], 6, places=6)
+        self.assertAlmostEqual(fit.result.parameters['y0'], 1.25, places=6)
+        self.assertAlmostEqual(fit.result.parameters['k'], 0.65, places=6)
+        self.assertEqual((fit.curve.getData()[0][0], fit.curve.getData()[0][-1]), (4, 11))
+
     def test_unicode_quantity_names_roundtrip(self):
         model = self.window.data_tab.model
         model.setData(model.index(0, 0), 'σ')

@@ -255,7 +255,8 @@ class ModelingTab(QWidget):
         self.extend_check.setVisible(kind == "affine")
         self.formula_label.setText(math_text(MODELS[kind][1]) + (
             "   ·   x0 = première abscisse de l’intervalle (fixée)" if kind in
-            ("charge", "discharge", "exponential", "sine") else ""))
+            ("charge", "discharge", "exponential", "exponential_growth",
+             "exponential_decay", "sine") else ""))
         item = self.current_series()
         column = item.key()[0] if item else None
         name = self.graph.model.names[column] if column is not None and 0 <= column < self.graph.model.columnCount() else "x"

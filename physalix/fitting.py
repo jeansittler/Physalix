@@ -17,6 +17,10 @@ MODELS = {
     "square": ("Carrée", "a*x^2"),
     "quadratic": ("Polynôme du second degré", "a*x^2 + b*x + c"),
     "exponential": ("Exponentielle", "A*exp(k*(x-x0)) + c"),
+    "exponential_growth": (
+        "Croissance exponentielle", "y_inf - (y_inf-y0)*exp(-k*(x-x0))"),
+    "exponential_decay": (
+        "Décroissance exponentielle", "y_inf + (y0-y_inf)*exp(-k*(x-x0))"),
     "charge": ("Charge de condensateur", "c + A*(1-exp(-(x-x0)/tau))"),
     "discharge": ("Décharge de condensateur", "c + A*exp(-(x-x0)/tau)"),
     "sine": ("Sinusoïdale", "A*sin(omega*(x-x0)+phi) + c"),
@@ -171,6 +175,8 @@ def fit_model(xs, ys, kind, *, expression="", initial="", axis_name="x", interva
         x0 = float(np.min(x)) if kind != "custom" else None
         offset, amplitude = float(np.mean(y)), max(float(np.ptp(y)), 1e-6)
         bounds = (-np.inf, np.inf)
+        parameter_transform = lambda values: np.asarray(values, dtype=float)
+        optimizer_function = None
         if kind == "custom":
             parameters = parse_parameters(initial, axis_name)
             names = list(parameters)
@@ -193,6 +199,28 @@ def fit_model(xs, ys, kind, *, expression="", initial="", axis_name="x", interva
                                     np.arctan2(coefficients[1], coefficients[0]), coefficients[2]]))
             starts = [p for _, p in sorted(candidates, key=lambda entry: entry[0])[:6]]
             bounds = ([-np.inf, 1e-12/span, -np.inf, -np.inf], [np.inf]*4)
+        elif kind in ("exponential_growth", "exponential_decay"):
+            if float(np.ptp(y)) <= np.finfo(float).eps * max(float(np.max(np.abs(y))), 1.0) * 16:
+                raise ValueError("La variation des ordonnées est insuffisante pour déterminer un plateau exponentiel.")
+            names = ["y_inf", "y0", "k"]
+            order = np.argsort(x)
+            first = float(y[order[0]])
+            rates = (0.2, 0.7, 2.0, 5.0)
+            deltas = (0.8*amplitude, amplitude, 1.5*amplitude, 3*amplitude)
+            if kind == "exponential_growth":
+                function = lambda xx, y_inf, y0, k: y_inf-(y_inf-y0)*np.exp(-k*(xx-x0))
+                optimizer_function = lambda xx, y0, delta, k: y0+delta*(1-np.exp(-k*(xx-x0)))
+                parameter_transform = lambda values: np.array(
+                    [values[0]+values[1], values[0], values[2]], dtype=float)
+                starts = [[first, delta, rate/span] for delta, rate in zip(deltas, rates)]
+            else:
+                function = lambda xx, y_inf, y0, k: y_inf+(y0-y_inf)*np.exp(-k*(xx-x0))
+                optimizer_function = lambda xx, y_inf, delta, k: y_inf+delta*np.exp(-k*(xx-x0))
+                parameter_transform = lambda values: np.array(
+                    [values[0], values[0]+values[1], values[2]], dtype=float)
+                starts = [[first-delta, delta, rate/span] for delta, rate in zip(deltas, rates)]
+            # delta > 0 impose le sens du modèle ; k > 0 impose l'approche du plateau.
+            bounds = ([-np.inf, amplitude*1e-12, 1e-12/span], [np.inf]*3)
         elif kind in ("charge", "discharge"):
             names = ["A", "tau", "c"]
             function = (lambda xx, A, tau, c: c+A*(1-np.exp(-(xx-x0)/tau))) if kind == "charge" else (
@@ -208,10 +236,12 @@ def fit_model(xs, ys, kind, *, expression="", initial="", axis_name="x", interva
             starts = [[amplitude, k/span, offset] for k in (-5, -1, 1, 5)]
         if len(x) < len(names) or len(np.unique(x)) < len(names):
             raise ValueError(f"Il faut au moins {len(names)} abscisses distinctes pour ce modèle.")
+        if optimizer_function is None:
+            optimizer_function = function
 
         def residual(p):
             with np.errstate(all="ignore"):
-                predicted = function(x, *p)
+                predicted = optimizer_function(x, *p)
             if not np.all(np.isfinite(predicted)):
                 raise ValueError("Valeurs non finies : modifiez les paramètres initiaux ou l’intervalle.")
             return (predicted-y) / max(amplitude, abs(offset), 1e-100)
@@ -228,7 +258,7 @@ def fit_model(xs, ys, kind, *, expression="", initial="", axis_name="x", interva
         if not solutions:
             raise ValueError("L’ajustement n’a pas convergé. Vérifiez le domaine de la formule et les valeurs initiales.")
         best = min(solutions, key=lambda s: s.cost)
-        p = best.x
+        p = parameter_transform(best.x)
         warning = "Ajustement non linéaire : un minimum local reste possible."
         if np.linalg.matrix_rank(best.jac) < len(names) or np.linalg.cond(best.jac) > 1e10:
             warning += " Paramètres mal déterminés : interprétez les coefficients avec prudence."
