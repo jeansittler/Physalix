@@ -3,7 +3,7 @@
 from PySide6.QtCore import Qt, QSize, QTimer
 from PySide6.QtGui import QFont, QFontMetrics
 from PySide6.QtWidgets import (
-    QButtonGroup, QFrame, QHBoxLayout, QMainWindow, QTabWidget,
+    QButtonGroup, QFrame, QHBoxLayout, QMainWindow, QMenu, QTabWidget,
     QToolButton, QVBoxLayout, QWidget,
 )
 from physalix.ui.components import role
@@ -145,7 +145,28 @@ class MainWindow(QMainWindow, ProjectFiles):
         )
         self.setup_files()
         self.updater = UpdateController(self)
+        self._setup_diagnostic_menu()
         QTimer.singleShot(0, self._update_navigation_density)
+
+    def _setup_diagnostic_menu(self):
+        help_menu = self.updater.about_action.parent()
+        self.diagnostic_tools_menu = QMenu("Outils de diagnostic", self)
+        self.kinetic_diagnostic_export_action = (
+            self.diagnostic_tools_menu.addAction(
+                "Exporter le diagnostic cinétique…",
+                lambda: self.spectrophotometry_tab.export_kinetic_diagnostic(),
+            )
+        )
+        help_menu.insertMenu(self.updater.about_action, self.diagnostic_tools_menu)
+        self._bind_spectrophotometry_diagnostic_action()
+
+    def _bind_spectrophotometry_diagnostic_action(self):
+        self.spectrophotometry_tab.diagnostic_export_availability_changed.connect(
+            self.kinetic_diagnostic_export_action.setEnabled
+        )
+        self.kinetic_diagnostic_export_action.setEnabled(
+            self.spectrophotometry_tab.kinetic_diagnostic_export_available()
+        )
 
     def update_navigation(self, *args):
         current = self.tabs.currentIndex()

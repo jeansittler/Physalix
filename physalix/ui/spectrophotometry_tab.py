@@ -3,11 +3,12 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+import time
 from uuid import uuid4
 
 import numpy as np
 import pyqtgraph as pg
-from PySide6.QtCore import QEvent, Qt, QTimer
+from PySide6.QtCore import QEvent, Qt, QTimer, Signal
 from PySide6.QtGui import QColor, QBrush, QFont, QLinearGradient, QPainterPath, QPalette
 from PySide6.QtWidgets import (
     QAbstractItemView,
@@ -15,6 +16,7 @@ from PySide6.QtWidgets import (
     QComboBox,
     QDialog,
     QDialogButtonBox,
+    QFileDialog,
     QFormLayout,
     QGraphicsPathItem,
     QHeaderView,
@@ -63,6 +65,12 @@ from physalix.spectrophotometry_serial import (
     SpectroSerialError,
     SpectrophotometrySerialController,
 )
+from physalix.spectrophotometry_kinetics import (
+    KINETIC_INTERVALS_SECONDS,
+    KineticExperiment,
+    estimated_measurement_seconds,
+)
+from physalix.spectrophotometry_diagnostics import KineticDiagnosticJournal
 from physalix.ui.components import (
     ask_yes_no,
     label,
@@ -93,6 +101,17 @@ def _format_projection_concentration(value):
         text = f"{mantissa:.{decimals}f}".replace(".", ",")
         return f"{text} × 10{str(exponent).translate(_SUPERSCRIPT)}"
     return format_concentration(value)
+
+
+def _format_kinetic_elapsed(value):
+    """Ajouter une lecture minutes/secondes sans changer le temps scientifique."""
+
+    elapsed = max(0.0, float(value))
+    rounded_tenths = round(elapsed, 1)
+    total_seconds = int(round(rounded_tenths))
+    minutes, seconds = divmod(total_seconds, 60)
+    decimal = format(rounded_tenths, ".1f").replace(".", ",")
+    return f"{decimal} s ({minutes} min {seconds:02d} s)"
 
 
 class MeasurementPreparationDialog(QDialog):
@@ -141,6 +160,50 @@ class MeasurementPreparationDialog(QDialog):
         self.accept_button = role(
             self.buttons.addButton(
                 "Valider et mesurer", QDialogButtonBox.ButtonRole.AcceptRole
+            ),
+            "primary",
+        )
+        self.buttons.rejected.connect(self.reject)
+        self.buttons.accepted.connect(self.accept)
+        layout.addWidget(self.buttons)
+
+
+class KineticsPreparationDialog(QDialog):
+    """Confirmer que la cuve du mélange est prête avant de démarrer l'horloge."""
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("Démarrer la cinétique")
+        self.setModal(True)
+        self.setMinimumWidth(430)
+        self.setMaximumWidth(560)
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(
+            LIGHT.section, LIGHT.section, LIGHT.section, LIGHT.section
+        )
+        layout.setSpacing(LIGHT.group)
+        layout.addWidget(label("Préparation de la cinétique", "sectionTitle"))
+        layout.addWidget(
+            label(
+                "Insérez la cuve contenant le mélange à suivre dans le "
+                "spectrophotomètre.",
+                "context",
+            )
+        )
+        layout.addWidget(
+            label(
+                "Le temps t = 0 correspond au clic sur Démarrer. La réaction peut "
+                "avoir commencé auparavant pendant la manipulation.",
+                "muted",
+            )
+        )
+        self.buttons = QDialogButtonBox()
+        self.cancel_button = self.buttons.addButton(
+            "Annuler", QDialogButtonBox.ButtonRole.RejectRole
+        )
+        self.start_button = role(
+            self.buttons.addButton(
+                "Démarrer l'acquisition", QDialogButtonBox.ButtonRole.AcceptRole
             ),
             "primary",
         )
@@ -306,6 +369,8 @@ class BeerLambertStandardsTable(QTableWidget):
 class SpectrophotometryTab(QWidget):
     """Piloter le Nano Spectro et conserver les spectres de la session courante."""
 
+    diagnostic_export_availability_changed = Signal(bool)
+
     def __init__(
         self,
         controller=None,
@@ -315,6 +380,8 @@ class SpectrophotometryTab(QWidget):
         graph_workspace=None,
         show_graph=None,
         disconnect_timeout_ms=DISCONNECT_TIMEOUT_MS,
+        monotonic_clock=None,
+        diagnostic_root=None,
     ):
         super().__init__(parent)
         self.controller = controller or SpectrophotometrySerialController(self)
@@ -337,6 +404,22 @@ class SpectrophotometryTab(QWidget):
         self._beer_previous_unit_index = 0
         self._beer_transfer_columns = {}
         self._beer_last_transferred_signature = None
+        self._monotonic_clock = monotonic_clock or time.monotonic
+        self.kinetic_experiment: KineticExperiment | None = None
+        self.kinetic_history: list[KineticExperiment] = []
+        self._kinetic_active = False
+        self._kinetic_stopping = False
+        self._pending_kinetic_experiment_id: str | None = None
+        self._kinetic_recalibration_expanded = False
+        self._kinetic_transfer_columns = {}
+        self._kinetic_last_transferred_signature = None
+        self._kinetic_selected_sequence: int | None = None
+        self.kinetic_journal: KineticDiagnosticJournal | None = None
+        self._kinetic_stop_status = "completed"
+        self._diagnostic_root = diagnostic_root
+        self._firmware_info = None
+        self._kinetic_diagnostic_warning = None
+        self._diagnostic_export_available = False
         self._pending_kind: MeasurementKind | None = None
         self._next_config_id = 1
         self._configuration_dirty = True
@@ -349,6 +432,15 @@ class SpectrophotometryTab(QWidget):
         self.disconnect_timer.setSingleShot(True)
         self.disconnect_timer.setInterval(disconnect_timeout_ms)
         self.disconnect_timer.timeout.connect(self._force_disconnect)
+        self.kinetic_schedule_timer = QTimer(self)
+        self.kinetic_schedule_timer.setSingleShot(True)
+        self.kinetic_schedule_timer.timeout.connect(self._kinetic_due)
+        self.kinetic_duration_timer = QTimer(self)
+        self.kinetic_duration_timer.setSingleShot(True)
+        self.kinetic_duration_timer.timeout.connect(self._kinetic_duration_reached)
+        self.kinetic_clock_timer = QTimer(self)
+        self.kinetic_clock_timer.setInterval(250)
+        self.kinetic_clock_timer.timeout.connect(self._refresh_kinetic_clock)
         self.refresh_ports()
         self._update_calibration_status()
         self._update_controls()
@@ -384,6 +476,7 @@ class SpectrophotometryTab(QWidget):
         self.mode_combo.addItem("Spectre", "spectrum")
         self.mode_combo.addItem("Absorbance", "absorbance")
         self.mode_combo.addItem("Beer-Lambert", "beer_lambert")
+        self.mode_combo.addItem("Cinétique", "kinetics")
         self.mode_combo.setMinimumWidth(150)
         configure_popup(self.mode_combo, 220)
         update_popup_height(self.mode_combo)
@@ -524,6 +617,8 @@ class SpectrophotometryTab(QWidget):
         self.mode_stack.addWidget(self.absorbance_page)
         self._build_beer_lambert_ui()
         self.mode_stack.addWidget(self.beer_main_splitter)
+        self._build_kinetics_ui()
+        self.mode_stack.addWidget(self.kinetic_main_splitter)
         layout.addWidget(self.mode_stack, 1)
 
         self.refresh_button.clicked.connect(self.refresh_ports)
@@ -813,6 +908,195 @@ class SpectrophotometryTab(QWidget):
         self._apply_beer_plot_palette()
         self._refresh_beer_ui()
 
+    def _build_kinetics_ui(self):
+        self.kinetic_main_splitter = QSplitter(Qt.Orientation.Horizontal)
+        self.kinetic_main_splitter.setObjectName("kineticMainSplitter")
+        self.kinetic_main_splitter.setChildrenCollapsible(False)
+
+        plot_panel, plot_layout = panel("Cinétique — A = f(t)")
+        plot_panel.setMinimumSize(470, 330)
+        plot_panel.setSizePolicy(
+            QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding
+        )
+        plot_layout.setContentsMargins(LIGHT.small, LIGHT.small, LIGHT.small, LIGHT.small)
+        self.kinetic_plot = pg.PlotWidget(
+            background=self.palette().color(QPalette.ColorRole.Base)
+        )
+        self.kinetic_plot.setLabel("bottom", "Temps", units="s")
+        self.kinetic_plot.setLabel("left", "Absorbance")
+        self.kinetic_plot.getAxis("bottom").enableAutoSIPrefix(False)
+        self.kinetic_plot.getAxis("left").enableAutoSIPrefix(False)
+        self.kinetic_plot.showGrid(x=True, y=True, alpha=0.18)
+        self.kinetic_curve = self.kinetic_plot.plot(
+            [],
+            [],
+            pen=pg.mkPen(SERIES_COLORS[0], width=1.6),
+            symbol="+",
+            symbolSize=9,
+            symbolPen=pg.mkPen(SERIES_COLORS[0], width=1.6),
+            symbolBrush=None,
+            connect="finite",
+        )
+        projection_pen = pg.mkPen(
+            SERIES_COLORS[0], width=1.2, style=Qt.PenStyle.DashLine
+        )
+        self.kinetic_projection_horizontal = pg.PlotDataItem([], [], pen=projection_pen)
+        self.kinetic_projection_vertical = pg.PlotDataItem([], [], pen=projection_pen)
+        for projection in (
+            self.kinetic_projection_horizontal,
+            self.kinetic_projection_vertical,
+        ):
+            self.kinetic_plot.addItem(projection, ignoreBounds=True)
+            projection.setZValue(10)
+            projection.hide()
+        self.kinetic_time_label = pg.TextItem(anchor=(0.5, 1))
+        self.kinetic_absorbance_projection_label = pg.TextItem(anchor=(0, 0.5))
+        for value_label in (
+            self.kinetic_time_label,
+            self.kinetic_absorbance_projection_label,
+        ):
+            self.kinetic_plot.addItem(value_label, ignoreBounds=True)
+            value_label.setZValue(1_000_000)
+            value_label.hide()
+        kinetic_view = self.kinetic_plot.getViewBox()
+        kinetic_view.sigRangeChanged.connect(self._position_kinetic_reticle)
+        kinetic_view.sigResized.connect(self._position_kinetic_reticle)
+        self.kinetic_curve.sigPointsClicked.connect(self._kinetic_points_clicked)
+        plot_layout.addWidget(self.kinetic_plot, 1)
+        plot_layout.addWidget(
+            label(
+                "Chaque point est daté à la réception de la mesure complète. "
+                "Aucun point artificiel n'est ajouté à t = 0.",
+                "caption",
+            )
+        )
+        self.kinetic_main_splitter.addWidget(plot_panel)
+
+        settings_column = QWidget()
+        self.kinetic_settings_column = settings_column
+        settings_column.setMinimumWidth(350)
+        settings_column.setMaximumWidth(520)
+        column_layout = QVBoxLayout(settings_column)
+        column_layout.setContentsMargins(0, 0, 0, 0)
+        column_layout.setSpacing(LIGHT.related)
+        self.kinetic_settings_scroll = QScrollArea()
+        self.kinetic_settings_scroll.setWidgetResizable(True)
+        self.kinetic_settings_scroll.setHorizontalScrollBarPolicy(
+            Qt.ScrollBarPolicy.ScrollBarAlwaysOff
+        )
+        content = QWidget()
+        content.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
+        content_layout = QVBoxLayout(content)
+        content_layout.setContentsMargins(0, 0, LIGHT.small, 0)
+        content_layout.setSpacing(LIGHT.related)
+        self.kinetic_settings_scroll.setWidget(content)
+        column_layout.addWidget(self.kinetic_settings_scroll, 1)
+
+        calibration_panel, calibration_layout = panel("Étalonnage")
+        self.kinetic_calibration_status = label("Noir manquant", "context")
+        calibration_layout.addWidget(self.kinetic_calibration_status)
+        calibration_actions = QHBoxLayout()
+        self.kinetic_dark_button = QPushButton("Mesurer le noir")
+        self.kinetic_white_button = QPushButton("Mesurer le blanc")
+        calibration_actions.addWidget(self.kinetic_dark_button)
+        calibration_actions.addWidget(self.kinetic_white_button)
+        calibration_layout.addLayout(calibration_actions)
+        self.kinetic_recalibrate_button = role(QPushButton("Recalibrer"), "quiet")
+        calibration_layout.addWidget(
+            self.kinetic_recalibrate_button, 0, Qt.AlignmentFlag.AlignLeft
+        )
+        content_layout.addWidget(calibration_panel)
+
+        parameters_panel, parameters_layout = panel("Paramètres de l'expérience")
+        parameters_form = QFormLayout()
+        self.kinetic_band_combo = PopupComboBox()
+        for index, wavelength in enumerate(VISIBLE_WAVELENGTHS_NM, start=1):
+            self.kinetic_band_combo.addItem(f"{wavelength} nm (F{index})", index - 1)
+        self.kinetic_band_combo.setCurrentIndex(6)
+        configure_popup(self.kinetic_band_combo, 220)
+        update_popup_height(self.kinetic_band_combo)
+        self.kinetic_duration_spin = QSpinBox()
+        self.kinetic_duration_spin.setRange(1, 30)
+        self.kinetic_duration_spin.setValue(15)
+        self.kinetic_duration_spin.setSuffix(" min")
+        self.kinetic_interval_combo = PopupComboBox()
+        for seconds in KINETIC_INTERVALS_SECONDS:
+            self.kinetic_interval_combo.addItem(f"{seconds} s", seconds)
+        configure_popup(self.kinetic_interval_combo, 140)
+        update_popup_height(self.kinetic_interval_combo)
+        parameters_form.addRow("Bande", self.kinetic_band_combo)
+        parameters_form.addRow("Durée", self.kinetic_duration_spin)
+        parameters_form.addRow("Intervalle", self.kinetic_interval_combo)
+        parameters_layout.addLayout(parameters_form)
+        self.kinetic_program_label = label("15 min · mesure toutes les 5 s", "muted")
+        parameters_layout.addWidget(self.kinetic_program_label)
+        content_layout.addWidget(parameters_panel)
+
+        results_panel, results_layout = panel("Suivi")
+        self.kinetic_elapsed_label = QLabel(
+            f"Temps écoulé : {_format_kinetic_elapsed(0.0)}"
+        )
+        self.kinetic_count_label = QLabel("Points enregistrés : 0")
+        self.kinetic_absorbance_label = QLabel("Absorbance actuelle : —")
+        self.kinetic_wavelength_label = QLabel("Longueur d'onde : 630 nm (F7)")
+        self.kinetic_state_label = label("Aucune expérience", "context")
+        for widget in (
+            self.kinetic_elapsed_label,
+            self.kinetic_count_label,
+            self.kinetic_absorbance_label,
+            self.kinetic_wavelength_label,
+            self.kinetic_state_label,
+        ):
+            results_layout.addWidget(widget)
+        results_layout.addWidget(
+            label(
+                "La réaction peut avoir commencé avant t = 0 pendant la manipulation.",
+                "muted",
+            )
+        )
+        content_layout.addWidget(results_panel)
+        content_layout.addStretch(1)
+
+        actions_panel, actions_layout = panel("Acquisition")
+        action_row = QHBoxLayout()
+        self.kinetic_start_button = role(QPushButton("Démarrer"), "primary")
+        self.kinetic_stop_button = QPushButton("Arrêter")
+        action_row.addWidget(self.kinetic_start_button)
+        action_row.addWidget(self.kinetic_stop_button)
+        actions_layout.addLayout(action_row)
+        self.kinetic_new_button = QPushButton("Nouvelle expérience")
+        self.kinetic_transfer_button = QPushButton("Transférer vers Graphique")
+        actions_layout.addWidget(self.kinetic_new_button)
+        actions_layout.addWidget(self.kinetic_transfer_button)
+        self.kinetic_action_status = label("", "muted")
+        actions_layout.addWidget(self.kinetic_action_status)
+        column_layout.addWidget(actions_panel)
+
+        self.kinetic_main_splitter.addWidget(settings_column)
+        self.kinetic_main_splitter.setStretchFactor(0, 3)
+        self.kinetic_main_splitter.setStretchFactor(1, 2)
+        self.kinetic_main_splitter.setSizes([760, 500])
+
+        self.kinetic_band_combo.currentIndexChanged.connect(self._refresh_kinetic_ui)
+        self.kinetic_duration_spin.valueChanged.connect(self._refresh_kinetic_program)
+        self.kinetic_interval_combo.currentIndexChanged.connect(
+            self._refresh_kinetic_program
+        )
+        self.kinetic_dark_button.clicked.connect(
+            lambda: self.request_measurement(MeasurementKind.DARK)
+        )
+        self.kinetic_white_button.clicked.connect(
+            lambda: self.request_measurement(MeasurementKind.WHITE)
+        )
+        self.kinetic_recalibrate_button.clicked.connect(
+            self._show_kinetic_recalibration
+        )
+        self.kinetic_start_button.clicked.connect(self.start_kinetics)
+        self.kinetic_stop_button.clicked.connect(self.stop_kinetics)
+        self.kinetic_new_button.clicked.connect(self.new_kinetic_experiment)
+        self.kinetic_transfer_button.clicked.connect(self.transfer_kinetics_to_graph)
+        self._apply_kinetic_plot_palette()
+
     def _connect_controller(self):
         self.controller.state_changed.connect(self._state_changed)
         self.controller.ready.connect(self._controller_ready)
@@ -820,6 +1104,8 @@ class SpectrophotometryTab(QWidget):
         self.controller.measurement_received.connect(self._measurement_received)
         self.controller.measurement_failed.connect(self._measurement_failed)
         self.controller.stopped.connect(self._stopped)
+        self.controller.firmware_error.connect(self._firmware_error)
+        self.controller.response_ignored.connect(self._response_ignored)
         self.controller.error_occurred.connect(self._controller_error)
 
     def _apply_plot_palette(self):
@@ -842,6 +1128,30 @@ class SpectrophotometryTab(QWidget):
             axis.setPen(axis_pen)
             axis.setTextPen(text_pen)
         self._style_beer_projection_labels()
+
+    def _apply_kinetic_plot_palette(self):
+        palette = self.palette()
+        self.kinetic_plot.setBackground(palette.color(QPalette.ColorRole.Base))
+        axis_pen = pg.mkPen(palette.color(QPalette.ColorRole.Mid))
+        text_pen = pg.mkPen(palette.color(QPalette.ColorRole.Text))
+        for name in ("bottom", "left"):
+            axis = self.kinetic_plot.getAxis(name)
+            axis.setPen(axis_pen)
+            axis.setTextPen(text_pen)
+        color = QColor(SERIES_COLORS[0])
+        background = QColor(palette.color(QPalette.ColorRole.Base))
+        background.setAlpha(235)
+        border = QColor(color)
+        border.setAlpha(210)
+        for value_label in (
+            getattr(self, "kinetic_time_label", None),
+            getattr(self, "kinetic_absorbance_projection_label", None),
+        ):
+            if value_label is not None:
+                value_label.setColor(color)
+                value_label.fill = pg.mkBrush(background)
+                value_label.border = pg.mkPen(border, width=1)
+                value_label.update()
 
     def _style_beer_projection_labels(self):
         orange = "#F57C00"
@@ -893,6 +1203,8 @@ class SpectrophotometryTab(QWidget):
             self._apply_plot_palette()
             if hasattr(self, "beer_plot"):
                 self._apply_beer_plot_palette()
+            if hasattr(self, "kinetic_plot"):
+                self._apply_kinetic_plot_palette()
         super().changeEvent(event)
 
     def _mode_changed(self, index):
@@ -1447,6 +1759,585 @@ class SpectrophotometryTab(QWidget):
             self.show_graph()
         return columns, graph
 
+    def kinetic_band_index(self):
+        return int(self.kinetic_band_combo.currentData())
+
+    def _show_kinetic_recalibration(self):
+        self._kinetic_recalibration_expanded = True
+        self._update_kinetic_calibration_controls()
+
+    def _update_kinetic_calibration_controls(self):
+        if not hasattr(self, "kinetic_recalibrate_button"):
+            return
+        calibration_ready = self.calibration is not None
+        show_actions = not calibration_ready or self._kinetic_recalibration_expanded
+        self.kinetic_dark_button.setVisible(show_actions)
+        self.kinetic_white_button.setVisible(show_actions)
+        self.kinetic_recalibrate_button.setVisible(
+            calibration_ready and not self._kinetic_recalibration_expanded
+        )
+
+    def _refresh_kinetic_program(self, *args):
+        if not hasattr(self, "kinetic_program_label"):
+            return
+        if self.kinetic_experiment is not None:
+            duration_minutes = self.kinetic_experiment.duration_seconds // 60
+            interval = self.kinetic_experiment.interval_seconds
+        else:
+            duration_minutes = self.kinetic_duration_spin.value()
+            interval = int(self.kinetic_interval_combo.currentData())
+        self.kinetic_program_label.setText(
+            f"{duration_minutes} min · mesure toutes les {interval} s"
+        )
+
+    def _confirm_kinetic_preparation(self):
+        dialog = KineticsPreparationDialog(self)
+        return dialog.exec() == QDialog.DialogCode.Accepted
+
+    def start_kinetics(self):
+        if self._kinetic_active or self._kinetic_stopping:
+            return
+        if self.kinetic_experiment is not None:
+            self._show_error(
+                "Choisissez Nouvelle expérience avant de recommencer une cinétique."
+            )
+            return
+        if self.calibration is None:
+            self._show_error("Un étalonnage noir et blanc valide est requis.")
+            self.kinetic_action_status.setText("Étalonnage requis avant le démarrage.")
+            return
+        if not self._controller_allows_measurement():
+            self._show_error("Le spectrophotomètre n'est pas prêt pour cette mesure.")
+            return
+        interval = int(self.kinetic_interval_combo.currentData())
+        estimated = estimated_measurement_seconds(self.applied_config)
+        if estimated >= interval:
+            self._show_error(
+                "L'intervalle choisi est trop court pour le temps d'intégration "
+                f"actuel (environ {estimated:.2f} s)."
+            )
+            self.kinetic_action_status.setText("Intervalle incompatible.")
+            return
+        if not self._confirm_kinetic_preparation():
+            self.kinetic_action_status.setText("Démarrage annulé.")
+            return
+        if self.calibration is None or not self._controller_allows_measurement():
+            self._show_error("L'état du spectrophotomètre a changé ; démarrage annulé.")
+            return
+
+        duration_seconds = self.kinetic_duration_spin.value() * 60
+        self.kinetic_experiment = KineticExperiment(
+            uuid4().hex,
+            self.calibration,
+            self._monotonic_clock(),
+            duration_seconds,
+            interval,
+        )
+        self._kinetic_selected_sequence = None
+        self._kinetic_stop_status = "completed"
+        self._kinetic_diagnostic_warning = None
+        self._start_kinetic_diagnostic()
+        self._kinetic_active = True
+        self._kinetic_stopping = False
+        self._kinetic_last_transferred_signature = None
+        self.kinetic_duration_timer.start(duration_seconds * 1000)
+        self.kinetic_clock_timer.start()
+        self.kinetic_state_label.setText("Acquisition en cours")
+        start_text = "Première mesure demandée…"
+        if self._kinetic_diagnostic_warning:
+            start_text += f" {self._kinetic_diagnostic_warning}"
+        self.kinetic_action_status.setText(start_text)
+        self._refresh_kinetic_ui()
+        self._kinetic_due()
+
+    def _kinetic_due(self):
+        experiment = self.kinetic_experiment
+        if not self._kinetic_active or experiment is None:
+            return
+        now = self._monotonic_clock()
+        if experiment.elapsed(now) >= experiment.duration_seconds:
+            self._kinetic_duration_reached()
+            return
+        if self._pending_kind is not None:
+            return
+        self._pending_kinetic_experiment_id = experiment.identifier
+        command_time = self._monotonic_clock()
+        request_id = self.request_measurement(MeasurementKind.SAMPLE)
+        if self._pending_kind is None:
+            self._pending_kinetic_experiment_id = None
+            self._finish_kinetic("Mesure impossible : expérience interrompue.")
+            return
+        if request_id is not None and self.kinetic_journal is not None:
+            self.kinetic_journal.record_measurement_command(
+                request_id,
+                command_time,
+                sequence=len(experiment.points) + 1,
+            )
+        self.kinetic_action_status.setText("Mesure en cours…")
+        self._update_controls()
+
+    def _schedule_next_kinetic_measurement(self):
+        experiment = self.kinetic_experiment
+        if not self._kinetic_active or experiment is None:
+            return
+        now = self._monotonic_clock()
+        if experiment.elapsed(now) >= experiment.duration_seconds:
+            self._kinetic_duration_reached()
+            return
+        due = experiment.next_due_monotonic(now)
+        if due >= experiment.start_monotonic + experiment.duration_seconds:
+            return
+        delay_ms = max(1, int(np.ceil((due - now) * 1000)))
+        self.kinetic_schedule_timer.start(delay_ms)
+        self.kinetic_action_status.setText(
+            f"Prochaine mesure dans {max(0.0, due - now):.1f} s."
+        )
+
+    def _kinetic_duration_reached(self):
+        self.stop_kinetics(automatic=True, reason="Durée programmée atteinte.")
+
+    def stop_kinetics(self, checked=False, *, automatic=False, reason=None):
+        if not self._kinetic_active and not self._kinetic_stopping:
+            return
+        text = reason or (
+            "Arrêt automatique." if automatic else "Arrêt demandé par l'utilisateur."
+        )
+        self._kinetic_stop_status = "completed" if automatic else "stopped"
+        if self.kinetic_journal is not None:
+            self.kinetic_journal.record_event(
+                "stop_requested",
+                automatic=automatic,
+                reason=text,
+                request_id=getattr(self.controller, "_pending_request_id", None),
+            )
+        self.kinetic_schedule_timer.stop()
+        self.kinetic_duration_timer.stop()
+        self.kinetic_clock_timer.stop()
+        self._kinetic_active = False
+        if self.kinetic_experiment is not None:
+            self.kinetic_experiment.stopped_reason = text
+        if (
+            self._pending_kinetic_experiment_id is not None
+            and self.controller.state is SpectroControllerState.MEASURING
+        ):
+            self._kinetic_stopping = bool(self.controller.stop())
+            if self._kinetic_stopping:
+                self.kinetic_state_label.setText("Arrêt de la mesure en cours…")
+                self.kinetic_action_status.setText(text)
+                self._update_controls()
+                return
+        self._pending_kinetic_experiment_id = None
+        self._kinetic_stopping = False
+        self._finish_kinetic(text)
+
+    def _finish_kinetic(self, reason):
+        self.kinetic_schedule_timer.stop()
+        self.kinetic_duration_timer.stop()
+        self.kinetic_clock_timer.stop()
+        self._kinetic_active = False
+        self._kinetic_stopping = False
+        if self.kinetic_experiment is not None:
+            self.kinetic_experiment.stopped_reason = reason
+        self._finish_kinetic_diagnostic(reason, self._kinetic_stop_status)
+        self.kinetic_state_label.setText("Expérience terminée")
+        self.kinetic_action_status.setText(reason)
+        self._refresh_kinetic_ui()
+        self._update_controls()
+
+    def _interrupt_kinetic(self, reason):
+        if not self._kinetic_active and not self._kinetic_stopping:
+            return
+        self.kinetic_schedule_timer.stop()
+        self.kinetic_duration_timer.stop()
+        self.kinetic_clock_timer.stop()
+        self._kinetic_active = False
+        self._kinetic_stopping = False
+        self._kinetic_stop_status = "interrupted"
+        if self.kinetic_journal is not None:
+            self.kinetic_journal.record_event("experiment_interrupted", reason=reason)
+        if (
+            self._pending_kinetic_experiment_id is not None
+            and self.controller.state is SpectroControllerState.MEASURING
+        ):
+            try:
+                self._kinetic_stopping = bool(self.controller.stop())
+            except (SpectroSerialError, ValueError):
+                self._kinetic_stopping = False
+        if self.kinetic_experiment is not None:
+            self.kinetic_experiment.stopped_reason = reason
+        self.kinetic_state_label.setText(
+            "Arrêt de la mesure en cours…"
+            if self._kinetic_stopping
+            else "Expérience interrompue"
+        )
+        self.kinetic_action_status.setText(reason)
+        if not self._kinetic_stopping:
+            self._finish_kinetic_diagnostic(reason, "interrupted")
+
+    def _refresh_kinetic_clock(self):
+        if self.kinetic_experiment is None:
+            return
+        elapsed = min(
+            self.kinetic_experiment.elapsed(self._monotonic_clock()),
+            float(self.kinetic_experiment.duration_seconds),
+        )
+        self.kinetic_elapsed_label.setText(
+            f"Temps écoulé : {_format_kinetic_elapsed(elapsed)}"
+        )
+
+    def _hide_kinetic_reticle(self):
+        for item in (
+            self.kinetic_projection_horizontal,
+            self.kinetic_projection_vertical,
+            self.kinetic_time_label,
+            self.kinetic_absorbance_projection_label,
+        ):
+            item.hide()
+
+    def _selected_kinetic_point(self):
+        experiment = self.kinetic_experiment
+        if experiment is None or self._kinetic_selected_sequence is None:
+            return None
+        return next(
+            (
+                point
+                for point in experiment.points
+                if point.sequence == self._kinetic_selected_sequence
+            ),
+            None,
+        )
+
+    def _position_kinetic_reticle(self, *args):
+        point = self._selected_kinetic_point()
+        if point is None:
+            self._hide_kinetic_reticle()
+            return
+        band = point.spectrum.bands[self.kinetic_band_index()]
+        if not band.is_valid or band.absorbance is None:
+            self._hide_kinetic_reticle()
+            return
+        elapsed = point.elapsed_seconds
+        absorbance = band.absorbance
+        view = self.kinetic_plot.getViewBox()
+        x_range, y_range = view.viewRange()
+        if not (
+            x_range[0] <= elapsed <= x_range[1]
+            and y_range[0] <= absorbance <= y_range[1]
+        ):
+            self._hide_kinetic_reticle()
+            return
+        self.kinetic_projection_horizontal.setData(
+            [x_range[0], elapsed], [absorbance, absorbance]
+        )
+        self.kinetic_projection_vertical.setData(
+            [elapsed, elapsed], [y_range[0], absorbance]
+        )
+        elapsed_text = format(elapsed, ".7g").replace(".", ",")
+        absorbance_text = format(absorbance, ".7g").replace(".", ",")
+        self.kinetic_time_label.setText(f"t = {elapsed_text} s")
+        self.kinetic_absorbance_projection_label.setText(
+            f"A = {absorbance_text}"
+        )
+        x_span = x_range[1] - x_range[0]
+        y_span = y_range[1] - y_range[0]
+        x_pixels, y_pixels = max(view.width(), 1), max(view.height(), 1)
+        x_padding = (
+            self.kinetic_time_label.boundingRect().width() * x_span / (2 * x_pixels)
+        )
+        y_padding = (
+            self.kinetic_absorbance_projection_label.boundingRect().height()
+            * y_span
+            / (2 * y_pixels)
+        )
+        edge_x = x_range[0] + 4 * x_span / x_pixels
+        edge_y = y_range[0] + 4 * y_span / y_pixels
+        label_x = min(
+            max(elapsed, x_range[0] + x_padding), x_range[1] - x_padding
+        )
+        label_y = min(
+            max(absorbance, y_range[0] + y_padding), y_range[1] - y_padding
+        )
+        self.kinetic_time_label.setPos(label_x, edge_y)
+        self.kinetic_absorbance_projection_label.setPos(edge_x, label_y)
+        for item in (
+            self.kinetic_projection_horizontal,
+            self.kinetic_projection_vertical,
+            self.kinetic_time_label,
+            self.kinetic_absorbance_projection_label,
+        ):
+            item.show()
+
+    def _select_kinetic_point(self, sequence):
+        experiment = self.kinetic_experiment
+        if experiment is None:
+            return False
+        point = next(
+            (item for item in experiment.points if item.sequence == sequence), None
+        )
+        if point is None:
+            return False
+        band = point.spectrum.bands[self.kinetic_band_index()]
+        if not band.is_valid or band.absorbance is None:
+            return False
+        self._kinetic_selected_sequence = point.sequence
+        self._position_kinetic_reticle()
+        return True
+
+    def _kinetic_points_clicked(self, item, points, event):
+        if not points or self.kinetic_experiment is None:
+            return
+        if self._kinetic_active:
+            self._kinetic_selected_sequence = self.kinetic_experiment.points[-1].sequence
+            self._position_kinetic_reticle()
+            return
+        elapsed = float(points[0].pos().x())
+        point = min(
+            self.kinetic_experiment.points,
+            key=lambda candidate: abs(candidate.elapsed_seconds - elapsed),
+        )
+        self._select_kinetic_point(point.sequence)
+
+    def _refresh_kinetic_ui(self, *args):
+        if not hasattr(self, "kinetic_curve"):
+            return
+        index = self.kinetic_band_index()
+        wavelength = VISIBLE_WAVELENGTHS_NM[index]
+        self.kinetic_wavelength_label.setText(
+            f"Longueur d'onde : {wavelength} nm (F{index + 1})"
+        )
+        experiment = self.kinetic_experiment
+        if experiment is None:
+            self.kinetic_curve.setData([], [])
+            self._kinetic_selected_sequence = None
+            self._hide_kinetic_reticle()
+            self.kinetic_elapsed_label.setText(
+                f"Temps écoulé : {_format_kinetic_elapsed(0.0)}"
+            )
+            self.kinetic_count_label.setText("Points enregistrés : 0")
+            self.kinetic_absorbance_label.setText("Absorbance actuelle : —")
+            self.kinetic_state_label.setText("Aucune expérience")
+        else:
+            values = experiment.band_values(index)
+            xs = [elapsed for elapsed, _ in values]
+            ys = [np.nan if absorbance is None else absorbance for _, absorbance in values]
+            self.kinetic_curve.setData(xs, ys, connect="finite")
+            if self._kinetic_active and experiment.points:
+                self._kinetic_selected_sequence = experiment.points[-1].sequence
+            self.kinetic_count_label.setText(
+                f"Points enregistrés : {len(experiment.points)}"
+            )
+            if values and values[-1][1] is not None:
+                current = format(values[-1][1], ".6g").replace(".", ",")
+                self.kinetic_absorbance_label.setText(
+                    f"Absorbance actuelle : {current}"
+                )
+            elif values:
+                self.kinetic_absorbance_label.setText(
+                    "Absorbance actuelle : indisponible"
+                )
+            else:
+                self.kinetic_absorbance_label.setText("Absorbance actuelle : —")
+            self._refresh_kinetic_clock()
+            self.kinetic_plot.enableAutoRange()
+            self._position_kinetic_reticle()
+        self._refresh_kinetic_program()
+        self._update_controls()
+
+    def _start_kinetic_diagnostic(self):
+        """Initialiser le journal sans rendre son stockage critique pour l'acquisition."""
+
+        experiment = self.kinetic_experiment
+        if experiment is None:
+            return
+        try:
+            journal = KineticDiagnosticJournal(
+                experiment,
+                firmware=self._firmware_info,
+                base_directory=self._diagnostic_root,
+            )
+        except (OSError, ValueError, TypeError) as error:
+            self.kinetic_journal = None
+            self._kinetic_diagnostic_warning = (
+                f"Journal diagnostic indisponible : {error}. L'acquisition continue."
+            )
+            return
+        self.kinetic_journal = journal
+        calibration = experiment.calibration
+        journal.record_event(
+            "connection_context",
+            connected=self.controller.state is SpectroControllerState.CONFIGURED,
+            port_name=self.port_combo.currentData(),
+            session_id=calibration.session_id,
+            recorded_retroactively=True,
+        )
+        if self._firmware_info is not None:
+            journal.record_event(
+                "hardware_identified",
+                firmware_version=".".join(map(str, self._firmware_info.version)),
+                sensor=self._firmware_info.sensor_type.name,
+                capabilities=self._firmware_info.capabilities,
+            )
+        config = calibration.applied_config
+        journal.record_event(
+            "configuration_applied",
+            config_id=config.config_id,
+            atime=config.atime,
+            astep=config.astep,
+            gain_code=int(config.gain),
+            gain_name=config.gain.name,
+            led_pwm_command=config.led_pwm,
+        )
+        for reference_name, reference in (
+            ("dark_calibration", calibration.dark),
+            ("white_calibration", calibration.white),
+        ):
+            journal.record_event(
+                reference_name,
+                calibration_id=calibration.reference_id,
+                request_id=reference.data.request_id,
+                config_id=reference.data.config_id,
+                arduino_timestamp_ms=reference.data.timestamp_ms,
+                saturation_flags=reference.data.saturation_flags,
+                recorded_retroactively=True,
+            )
+
+    def _finish_kinetic_diagnostic(self, reason, status):
+        journal = self.kinetic_journal
+        if journal is not None:
+            journal.finish(reason, status=status)
+
+    def export_kinetic_diagnostic(self):
+        journal = self.kinetic_journal
+        if journal is None or self._kinetic_active or self._kinetic_stopping:
+            self.kinetic_action_status.setText("Aucun diagnostic terminé à exporter.")
+            self._update_controls()
+            return None
+        suggested = f"diagnostic-cinetique-{journal.experiment.identifier[:8]}.zip"
+        path, _ = QFileDialog.getSaveFileName(
+            self,
+            "Exporter le diagnostic cinétique",
+            suggested,
+            "Archive ZIP (*.zip)",
+        )
+        if not path:
+            self.kinetic_action_status.setText("Export du diagnostic annulé.")
+            return None
+        try:
+            exported = journal.export_zip(path)
+        except OSError as error:
+            QMessageBox.warning(self, "Export impossible", str(error))
+            self.kinetic_action_status.setText("Échec de l'export du diagnostic.")
+            return None
+        self.kinetic_action_status.setText(
+            f"Diagnostic exporté : {exported.name}"
+        )
+        return exported
+
+    def kinetic_diagnostic_export_available(self):
+        return (
+            self.kinetic_journal is not None
+            and self.kinetic_journal.finished
+            and not self._kinetic_active
+            and not self._kinetic_stopping
+        )
+
+    def _update_diagnostic_export_availability(self):
+        available = self.kinetic_diagnostic_export_available()
+        if available == self._diagnostic_export_available:
+            return
+        self._diagnostic_export_available = available
+        self.diagnostic_export_availability_changed.emit(available)
+
+    def new_kinetic_experiment(self):
+        if self._kinetic_active or self._kinetic_stopping:
+            return
+        if self.kinetic_experiment is not None and self.kinetic_experiment.points:
+            if not ask_yes_no(
+                self,
+                "Nouvelle expérience",
+                "L'expérience actuelle sera conservée en mémoire et une nouvelle "
+                "expérience vide sera préparée.\n\nVoulez-vous continuer ?",
+            ):
+                return
+        if self.kinetic_experiment is not None:
+            self.kinetic_history.append(self.kinetic_experiment)
+        self.kinetic_experiment = None
+        self._kinetic_selected_sequence = None
+        self._pending_kinetic_experiment_id = None
+        self._kinetic_last_transferred_signature = None
+        self.kinetic_action_status.setText("Nouvelle expérience prête.")
+        self._refresh_kinetic_ui()
+
+    def _kinetic_transfer_signature(self):
+        if self.kinetic_experiment is None:
+            return None
+        values = self.kinetic_experiment.valid_band_values(self.kinetic_band_index())
+        if not values:
+            return None
+        return (
+            self.kinetic_experiment.identifier,
+            self.kinetic_band_index(),
+            values,
+        )
+
+    def transfer_kinetics_to_graph(self):
+        signature = self._kinetic_transfer_signature()
+        if (
+            signature is None
+            or self._kinetic_active
+            or self._kinetic_stopping
+            or self.data_tab is None
+            or self.graph_workspace is None
+        ):
+            self.kinetic_action_status.setText("Transfert indisponible.")
+            self._update_controls()
+            return None
+        experiment_id, band_index, values = signature
+        wavelength = VISIBLE_WAVELENGTHS_NM[band_index]
+        try:
+            columns = self._kinetic_transfer_columns.get(signature)
+            if columns is None:
+                if not ask_yes_no(
+                    self,
+                    "Transférer vers Graphique",
+                    "Les temps réels et les absorbances valides seront transférés "
+                    "dans Données. Un graphique A = f(t) sera automatiquement créé."
+                    "\n\nVoulez-vous continuer ?",
+                ):
+                    self.kinetic_action_status.setText("Transfert annulé.")
+                    return None
+                rows = [
+                    [format(elapsed, ".17g"), format(absorbance, ".17g")]
+                    for elapsed, absorbance in values
+                ]
+                columns = self.data_tab.append_measurements(
+                    [f"Temps cinétique {wavelength} nm", f"Absorbance {wavelength} nm"],
+                    ["s", ""],
+                    rows,
+                )
+                self._kinetic_transfer_columns[signature] = columns
+            graph = self.graph_workspace.add_data_graph(
+                columns[0], columns[1], title=f"Cinétique à {wavelength} nm"
+            )
+        except Exception as error:
+            QMessageBox.warning(
+                self,
+                "Transfert impossible",
+                "Les données n'ont pas pu être entièrement transférées : "
+                f"{error}\nL'expérience est conservée et le transfert peut être réessayé.",
+            )
+            self.kinetic_action_status.setText("Échec du transfert.")
+            self._update_controls()
+            return None
+        self._kinetic_last_transferred_signature = signature
+        self.kinetic_action_status.setText(
+            f"{len(values)} point(s) transféré(s) — graphique créé."
+        )
+        self._update_controls()
+        if self.show_graph is not None:
+            self.show_graph()
+        return columns, graph
+
     def refresh_ports(self):
         current = self.port_combo.currentData()
         self.port_combo.clear()
@@ -1489,6 +2380,9 @@ class SpectrophotometryTab(QWidget):
     def disconnect(self):
         if self._disconnect_pending:
             return
+        if self.kinetic_journal is not None and self.kinetic_experiment is not None:
+            self.kinetic_journal.record_event("disconnection_requested")
+        self._interrupt_kinetic("Déconnexion : expérience interrompue.")
         if self.controller.state is SpectroControllerState.STOPPING:
             self._disconnect_pending = True
             self.measurement_status.setText("Attente de l'arrêt avant déconnexion…")
@@ -1516,6 +2410,7 @@ class SpectrophotometryTab(QWidget):
         self._pending_kind = None
         self._pending_absorbance = False
         self._pending_beer_target = None
+        self._pending_kinetic_experiment_id = None
         self.controller.close()
         self.session_id = None
         self.applied_config = None
@@ -1525,6 +2420,14 @@ class SpectrophotometryTab(QWidget):
         self._update_controls()
 
     def _controller_ready(self, firmware_info):
+        self._firmware_info = firmware_info
+        if self.kinetic_journal is not None and self.kinetic_experiment is not None:
+            self.kinetic_journal.record_event(
+                "connection_established",
+                firmware_version=".".join(map(str, firmware_info.version)),
+                sensor=firmware_info.sensor_type.name,
+                capabilities=firmware_info.capabilities,
+            )
         version = ".".join(map(str, firmware_info.version))
         self.connection_status.setText(f"Spectro {version} détecté")
         self.apply_configuration()
@@ -1556,6 +2459,16 @@ class SpectrophotometryTab(QWidget):
         ):
             self._clear_active_calibration()
         self.applied_config = applied
+        if self.kinetic_journal is not None and self.kinetic_experiment is not None:
+            self.kinetic_journal.record_event(
+                "configuration_applied",
+                config_id=applied.config_id,
+                atime=applied.atime,
+                astep=applied.astep,
+                gain_code=int(applied.gain),
+                gain_name=applied.gain.name,
+                led_pwm_command=applied.led_pwm,
+            )
         for widget in (self.atime_spin, self.astep_spin, self.gain_combo, self.pwm_spin):
             widget.blockSignals(True)
         self.atime_spin.setValue(applied.atime)
@@ -1596,31 +2509,31 @@ class SpectrophotometryTab(QWidget):
 
     def request_measurement(self, kind: MeasurementKind):
         if self._pending_kind is not None or self._disconnect_pending:
-            return
+            return None
         if kind is MeasurementKind.WHITE and self.dark_measurement is None:
             self._show_error("Mesurez d'abord le noir.")
-            return
+            return None
         if kind is MeasurementKind.SAMPLE and self.calibration is None:
             self._show_error("Un étalonnage noir et blanc valide est requis.")
-            return
+            return None
         if not self._controller_allows_measurement():
             self._show_error("Le spectrophotomètre n'est pas prêt pour cette mesure.")
-            return
+            return None
         if kind in (MeasurementKind.DARK, MeasurementKind.WHITE):
             if not self._confirm_measurement_preparation(kind):
-                return
+                return None
             if not self._controller_allows_measurement():
                 self._show_error(
                     "L'état du spectrophotomètre a changé ; mesure annulée."
                 )
-                return
+                return None
         try:
             self._pending_kind = kind
             if kind is MeasurementKind.DARK:
-                self.controller.measure_dark()
+                request_id = self.controller.measure_dark()
                 text = "Mesure noire en cours…"
             else:
-                self.controller.measure_lit()
+                request_id = self.controller.measure_lit()
                 text = (
                     "Mesure blanche en cours…"
                     if kind is MeasurementKind.WHITE
@@ -1630,7 +2543,9 @@ class SpectrophotometryTab(QWidget):
         except (SpectroSerialError, ValueError) as error:
             self._pending_kind = None
             self._show_error(str(error))
+            request_id = None
         self._update_controls()
+        return request_id
 
     def _controller_allows_measurement(self):
         return (
@@ -1649,9 +2564,11 @@ class SpectrophotometryTab(QWidget):
         kind = self._pending_kind
         absorbance_target = self._pending_absorbance
         beer_target = self._pending_beer_target
+        kinetic_target = self._pending_kinetic_experiment_id
         self._pending_kind = None
         self._pending_absorbance = False
         self._pending_beer_target = None
+        self._pending_kinetic_experiment_id = None
         if kind is None or self.applied_config is None or self.session_id is None:
             self._show_error("Mesure reçue sans contexte scientifique actif.")
             return
@@ -1675,6 +2592,7 @@ class SpectrophotometryTab(QWidget):
                 if usable:
                     self.calibration = candidate
                     self._absorbance_recalibration_expanded = False
+                    self._kinetic_recalibration_expanded = False
                     suffix = "" if usable == 8 else f" ({usable}/8 bandes exploitables)"
                     self.measurement_status.setText(
                         f"Étalonnage prêt{suffix}. Placez l'échantillon."
@@ -1686,7 +2604,49 @@ class SpectrophotometryTab(QWidget):
                     )
             else:
                 spectrum = calculate_absorbance(measured, self.calibration)
-                if absorbance_target:
+                if kinetic_target is not None:
+                    experiment = self.kinetic_experiment
+                    if experiment is None or experiment.identifier != kinetic_target:
+                        raise ValueError(
+                            "La mesure cinétique appartient à une autre expérience."
+                        )
+                    completed = self._monotonic_clock()
+                    point = (
+                        experiment.add_spectrum(spectrum, completed)
+                        if self._kinetic_active
+                        else None
+                    )
+                    if point is None:
+                        if self.kinetic_journal is not None:
+                            self.kinetic_journal.record_event(
+                                "measurement_response_ignored",
+                                request_id=data.request_id,
+                                config_id=data.config_id,
+                                reason="outside_programmed_duration",
+                            )
+                        self._kinetic_stop_status = "interrupted"
+                        self._finish_kinetic(
+                            "Mesure terminée hors de la durée programmée : point ignoré."
+                        )
+                    else:
+                        diagnostic_written = True
+                        if self.kinetic_journal is not None:
+                            diagnostic_written = self.kinetic_journal.record_measurement(
+                                point,
+                                completed_monotonic=completed,
+                            )
+                        self.kinetic_action_status.setText(
+                            f"Point {point.sequence} reçu à {point.elapsed_seconds:.2f} s."
+                            + (
+                                " Journal diagnostic incomplet ; l'acquisition continue."
+                                if not diagnostic_written
+                                else ""
+                            )
+                        )
+                        self._kinetic_last_transferred_signature = None
+                        self._refresh_kinetic_ui()
+                        self._schedule_next_kinetic_measurement()
+                elif absorbance_target:
                     self.absorbance_spectrum = spectrum
                     self.absorbance_acquisition_status.setText("Mesure terminée.")
                 elif beer_target is None:
@@ -1715,36 +2675,93 @@ class SpectrophotometryTab(QWidget):
                 )
                 self.measurement_status.setText(f"Spectre mesuré{suffix}.")
         except (TypeError, ValueError) as error:
+            if kinetic_target is not None:
+                self._kinetic_stop_status = "interrupted"
+                if self.kinetic_journal is not None:
+                    self.kinetic_journal.record_event(
+                        "invalid_measurement_context",
+                        request_id=getattr(data, "request_id", None),
+                        message=str(error),
+                    )
+                self._finish_kinetic(f"Mesure cinétique invalide : {error}")
             self._show_error(str(error))
         self._update_calibration_status()
         self._refresh_absorbance_ui()
         self._refresh_beer_ui()
+        self._refresh_kinetic_ui()
         self._update_controls()
 
     def _measurement_failed(self, request_id, message):
+        kinetic_target = self._pending_kinetic_experiment_id
         self._pending_kind = None
         self._pending_absorbance = False
         self._pending_beer_target = None
+        self._pending_kinetic_experiment_id = None
+        if kinetic_target is not None:
+            self._kinetic_stop_status = "interrupted"
+            if self.kinetic_journal is not None:
+                self.kinetic_journal.record_event(
+                    "measurement_error",
+                    request_id=request_id,
+                    message=message,
+                )
+            self._finish_kinetic(f"Mesure impossible : {message}")
         self.absorbance_acquisition_status.setText(
             f"Mesure impossible : {message}"
         )
         self._show_error(f"Mesure {request_id} impossible : {message}")
 
+    def _firmware_error(self, error):
+        if self.kinetic_journal is not None and self.kinetic_experiment is not None:
+            self.kinetic_journal.record_event(
+                "firmware_error",
+                request_id=error.request_id,
+                error_code=error.error_code,
+            )
+
+    def _response_ignored(self, message):
+        if self.kinetic_journal is not None and self.kinetic_experiment is not None:
+            self.kinetic_journal.record_event(
+                "serial_response_ignored", message=message
+            )
+
     def _stopped(self, request_id):
+        kinetic_target = self._pending_kinetic_experiment_id
+        if (kinetic_target is not None or self._kinetic_stopping) and self.kinetic_journal:
+            self.kinetic_journal.record_event(
+                "stop_acknowledged", request_id=request_id
+            )
         self._pending_kind = None
         self._pending_absorbance = False
         self._pending_beer_target = None
+        self._pending_kinetic_experiment_id = None
         if self._disconnect_pending:
             self._finish_disconnect()
+        elif kinetic_target is not None or self._kinetic_stopping:
+            reason = (
+                self.kinetic_experiment.stopped_reason
+                if self.kinetic_experiment is not None
+                and self.kinetic_experiment.stopped_reason
+                else f"Mesure {request_id} arrêtée."
+            )
+            self._finish_kinetic(reason)
         else:
             self.measurement_status.setText(f"Mesure {request_id} arrêtée.")
             self.absorbance_acquisition_status.setText("Mesure arrêtée.")
             self._update_controls()
 
     def _controller_error(self, message):
+        if self.kinetic_journal is not None and self.kinetic_experiment is not None:
+            self.kinetic_journal.record_event(
+                "communication_error",
+                request_id=getattr(self.controller, "_pending_request_id", None),
+                message=message,
+            )
         self._pending_kind = None
         self._pending_absorbance = False
         self._pending_beer_target = None
+        self._pending_kinetic_experiment_id = None
+        self._interrupt_kinetic(f"Erreur de communication : {message}")
         if self._disconnect_pending:
             self._finish_disconnect()
             return
@@ -1767,9 +2784,16 @@ class SpectrophotometryTab(QWidget):
             SpectroControllerState.ERROR: "Erreur",
         }
         self.connection_status.setText(labels[state])
+        if state in (SpectroControllerState.DISCONNECTED, SpectroControllerState.ERROR):
+            if self.kinetic_journal is not None and self.kinetic_experiment is not None:
+                self.kinetic_journal.record_event(
+                    "connection_state_changed", state=state.name
+                )
+            self._interrupt_kinetic("Connexion interrompue.")
         self._update_controls()
 
     def _clear_active_calibration(self):
+        self._interrupt_kinetic("Étalonnage invalidé : expérience interrompue.")
         self.dark_measurement = None
         self.white_measurement = None
         self.calibration = None
@@ -1799,6 +2823,12 @@ class SpectrophotometryTab(QWidget):
         if hasattr(self, "beer_calibration_status"):
             self.beer_calibration_status.setText(text)
             self._refresh_beer_ui()
+        if hasattr(self, "kinetic_calibration_status"):
+            self.kinetic_calibration_status.setText(
+                f"✓ {text}" if self.calibration is not None else text
+            )
+            self._update_kinetic_calibration_controls()
+            self._refresh_kinetic_ui()
 
     @staticmethod
     def _usable_reference_band_count(calibration):
@@ -2014,12 +3044,17 @@ class SpectrophotometryTab(QWidget):
             self._pending_kind is not None
             or self._pending_absorbance
             or self._pending_beer_target is not None
+            or self._pending_kinetic_experiment_id is not None
+            or self._kinetic_active
+            or self._kinetic_stopping
         )
         configured = (
             state is SpectroControllerState.CONFIGURED
             and self.applied_config is not None
             and not self._configuration_dirty
             and not self._disconnect_pending
+            and not self._kinetic_active
+            and not self._kinetic_stopping
         )
         self.connect_button.setText("Connecter" if disconnected else "Déconnecter")
         self.connect_button.setEnabled(not self._disconnect_pending)
@@ -2036,7 +3071,7 @@ class SpectrophotometryTab(QWidget):
         self.white_button.setEnabled(configured and self.dark_measurement is not None)
         self.sample_button.setEnabled(configured and self.calibration is not None)
         self.remove_spectrum_button.setEnabled(
-            self.spectra_list.currentItem() is not None
+            not busy and self.spectra_list.currentItem() is not None
         )
         if hasattr(self, "absorbance_measure_button"):
             self.absorbance_band_combo.setEnabled(not busy)
@@ -2069,6 +3104,39 @@ class SpectrophotometryTab(QWidget):
                 and signature is not None
                 and signature != self._beer_last_transferred_signature
             )
+        if hasattr(self, "kinetic_start_button"):
+            kinetic_signature = self._kinetic_transfer_signature()
+            self.kinetic_band_combo.setEnabled(True)
+            self.kinetic_duration_spin.setEnabled(
+                not busy and self.kinetic_experiment is None
+            )
+            self.kinetic_interval_combo.setEnabled(
+                not busy and self.kinetic_experiment is None
+            )
+            self.kinetic_dark_button.setEnabled(configured)
+            self.kinetic_white_button.setEnabled(
+                configured and self.dark_measurement is not None
+            )
+            self.kinetic_recalibrate_button.setEnabled(configured)
+            self.kinetic_start_button.setEnabled(
+                configured
+                and self.calibration is not None
+                and self.kinetic_experiment is None
+            )
+            self.kinetic_stop_button.setEnabled(
+                self._kinetic_active and not self._kinetic_stopping
+            )
+            self.kinetic_new_button.setEnabled(
+                not busy and self.kinetic_experiment is not None
+            )
+            self.kinetic_transfer_button.setEnabled(
+                not busy
+                and self.data_tab is not None
+                and self.graph_workspace is not None
+                and kinetic_signature is not None
+                and kinetic_signature != self._kinetic_last_transferred_signature
+            )
+            self._update_diagnostic_export_availability()
 
     def shutdown(self):
         """Nettoyer timers, calibration et port lors d'une fermeture globale."""
@@ -2077,6 +3145,10 @@ class SpectrophotometryTab(QWidget):
             return
         self._closing = True
         self.disconnect_timer.stop()
+        self.kinetic_schedule_timer.stop()
+        self.kinetic_duration_timer.stop()
+        self.kinetic_clock_timer.stop()
+        self._interrupt_kinetic("Fermeture du projet : expérience interrompue.")
         if self.controller.state is SpectroControllerState.MEASURING:
             try:
                 self.controller.stop()
@@ -2086,6 +3158,7 @@ class SpectrophotometryTab(QWidget):
         self._pending_kind = None
         self._pending_absorbance = False
         self._pending_beer_target = None
+        self._pending_kinetic_experiment_id = None
         self.session_id = None
         self.applied_config = None
         self._clear_active_calibration()

@@ -1,13 +1,21 @@
 """Tests Qt ciblés de l'interface Spectre."""
 
 import os
+import csv
+import json
+from pathlib import Path
+import tempfile
 import unittest
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
+import zipfile
+
+import numpy as np
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from PySide6.QtCore import QObject, Qt, QTimer, Signal
+from PySide6.QtCore import QObject, QPointF, Qt, QTimer, Signal
+from PySide6.QtGui import QColor, QPalette
 from PySide6.QtWidgets import (
     QApplication,
     QCheckBox,
@@ -23,7 +31,9 @@ from PySide6.QtWidgets import (
 from physalix.spectrophotometry import MeasurementKind
 from physalix.spectrophotometry_protocol import (
     AS7341Gain,
+    SpectroConfig,
     SpectroData,
+    SpectroErrorPayload,
     SpectroFirmwareInfo,
     SpectroIllumination,
     SpectroSensorType,
@@ -33,6 +43,7 @@ from physalix.ui.graph_series import PopupComboBox
 from physalix.ui.main_window import MainWindow
 from physalix.ui.spectrophotometry_tab import (
     BeerLambertPreparationDialog,
+    KineticsPreparationDialog,
     MeasurementPreparationDialog,
     StandardEditorDialog,
     SpectrophotometryTab,
@@ -162,6 +173,10 @@ class FakeGraphWorkspace:
         self.calls.append((x_column, y_column, model_kind, title))
         return SimpleNamespace(title=title), SimpleNamespace(kind=model_kind)
 
+    def add_data_graph(self, x_column, y_column, title=None):
+        self.calls.append((x_column, y_column, title))
+        return SimpleNamespace(title=title)
+
 
 class SpectrophotometryTabTests(unittest.TestCase):
     @classmethod
@@ -169,6 +184,8 @@ class SpectrophotometryTabTests(unittest.TestCase):
         cls.app = QApplication.instance() or QApplication([])
 
     def setUp(self):
+        self.diagnostic_temporary = tempfile.TemporaryDirectory(dir=Path.cwd())
+        self.clock = [100.0]
         self.controller = FakeSpectroController()
         self.data_tab = FakeDataTab()
         self.graph_workspace = FakeGraphWorkspace()
@@ -179,14 +196,18 @@ class SpectrophotometryTabTests(unittest.TestCase):
             graph_workspace=self.graph_workspace,
             show_graph=self.show_graph,
             disconnect_timeout_ms=20,
+            monotonic_clock=lambda: self.clock[0],
+            diagnostic_root=self.diagnostic_temporary.name,
         )
         self.tab._confirm_measurement_preparation = lambda kind: True
         self.tab._confirm_beer_transfer = lambda: True
+        self.tab._confirm_kinetic_preparation = lambda: True
 
     def tearDown(self):
         self.tab.shutdown()
         self.tab.deleteLater()
         self.app.processEvents()
+        self.diagnostic_temporary.cleanup()
 
     def connect_and_configure(self):
         self.tab.connect_button.click()
@@ -211,6 +232,11 @@ class SpectrophotometryTabTests(unittest.TestCase):
         self.controller.emit_measurement(value, saturation_flags=saturation_flags)
         return standard
 
+    def start_kinetic(self):
+        self.tab.mode_combo.setCurrentIndex(3)
+        self.tab.kinetic_duration_spin.setValue(1)
+        self.tab.kinetic_start_button.click()
+
     def test_creation_is_idle_and_uses_expected_layout_components(self):
         self.assertIsNone(self.controller.opened_port)
         self.assertEqual(self.tab.port_combo.currentData(), "COM4")
@@ -218,12 +244,17 @@ class SpectrophotometryTabTests(unittest.TestCase):
         self.assertIsInstance(self.tab.mode_combo, PopupComboBox)
         self.assertTrue(self.tab.mode_combo.model().item(1).isEnabled())
         self.assertTrue(self.tab.mode_combo.model().item(2).isEnabled())
-        self.assertEqual(self.tab.mode_combo.count(), 3)
+        self.assertTrue(self.tab.mode_combo.model().item(3).isEnabled())
+        self.assertEqual(self.tab.mode_combo.count(), 4)
         self.assertFalse(self.tab.advanced_content.isVisible())
         self.assertEqual(self.tab.main_splitter.count(), 2)
         self.assertCountEqual(
             self.tab.findChildren(QScrollArea),
-            [self.tab.settings_scroll, self.tab.beer_settings_scroll],
+            [
+                self.tab.settings_scroll,
+                self.tab.beer_settings_scroll,
+                self.tab.kinetic_settings_scroll,
+            ],
         )
 
     def test_layout_keeps_plot_larger_and_actions_visible(self):
@@ -282,6 +313,507 @@ class SpectrophotometryTabTests(unittest.TestCase):
             [header.model().headerData(i, header.orientation()) for i in range(4)],
             ["Solution", "c (mmol/L)", "A (445 nm)", "État"],
         )
+
+    def test_kinetic_mode_defaults_and_layout(self):
+        self.tab.mode_combo.setCurrentIndex(3)
+
+        self.assertIs(
+            self.tab.mode_stack.currentWidget(), self.tab.kinetic_main_splitter
+        )
+        self.assertEqual(self.tab.kinetic_band_combo.currentData(), 6)
+        self.assertEqual(self.tab.kinetic_duration_spin.value(), 15)
+        self.assertEqual(self.tab.kinetic_interval_combo.currentData(), 5)
+        for width, height in ((1280, 800), (1366, 768), (1600, 900)):
+            with self.subTest(size=(width, height)):
+                self.tab.resize(width, height)
+                self.tab.show()
+                self.app.processEvents()
+                self.assertGreater(
+                    self.tab.kinetic_plot.width(),
+                    self.tab.kinetic_settings_column.width(),
+                )
+                self.assertTrue(self.tab.kinetic_start_button.isVisible())
+                self.assertTrue(self.tab.kinetic_transfer_button.isVisible())
+                self.assertNotIn(
+                    "Exporter le diagnostic",
+                    [button.text() for button in self.tab.findChildren(QPushButton)],
+                )
+
+    def test_kinetic_start_requires_calibration(self):
+        self.connect_and_configure()
+        count = len(self.controller.measurements)
+
+        self.tab.mode_combo.setCurrentIndex(3)
+        self.tab.start_kinetics()
+
+        self.assertIsNone(self.tab.kinetic_experiment)
+        self.assertEqual(len(self.controller.measurements), count)
+        self.assertIn("Étalonnage requis", self.tab.kinetic_action_status.text())
+
+    def test_cancelled_kinetic_preparation_starts_no_measurement(self):
+        self.connect_and_configure()
+        self.calibrate()
+        self.tab._confirm_kinetic_preparation = Mock(return_value=False)
+        count = len(self.controller.measurements)
+
+        self.tab.start_kinetics()
+
+        self.assertIsNone(self.tab.kinetic_experiment)
+        self.assertEqual(len(self.controller.measurements), count)
+        self.assertEqual(self.tab.kinetic_action_status.text(), "Démarrage annulé.")
+
+    def test_kinetic_rejects_interval_shorter_than_integration(self):
+        self.connect_and_configure()
+        self.calibrate()
+        slow = SpectroConfig(
+            self.tab.applied_config.config_id,
+            255,
+            65535,
+            self.tab.applied_config.gain,
+            self.tab.applied_config.led_pwm,
+        )
+        self.tab.applied_config = slow
+        self.controller.config = slow
+
+        self.tab.start_kinetics()
+
+        self.assertIsNone(self.tab.kinetic_experiment)
+        self.assertEqual(self.tab.kinetic_action_status.text(), "Intervalle incompatible.")
+
+    def test_kinetic_reuses_shared_calibration_controls(self):
+        self.connect_and_configure()
+        self.tab.mode_combo.setCurrentIndex(3)
+        self.assertFalse(self.tab.kinetic_dark_button.isHidden())
+
+        self.calibrate()
+
+        self.assertIn("Étalonnage prêt", self.tab.kinetic_calibration_status.text())
+        self.assertTrue(self.tab.kinetic_dark_button.isHidden())
+        self.assertTrue(self.tab.kinetic_white_button.isHidden())
+        self.assertFalse(self.tab.kinetic_recalibrate_button.isHidden())
+
+    def test_kinetic_uses_real_completion_time_and_never_overlaps(self):
+        self.connect_and_configure()
+        self.calibrate()
+
+        self.start_kinetic()
+        measurement_count = len(self.controller.measurements)
+        self.tab._kinetic_due()
+        self.assertEqual(len(self.controller.measurements), measurement_count)
+
+        self.clock[0] = 100.65
+        self.controller.emit_measurement(10)
+
+        point = self.tab.kinetic_experiment.points[0]
+        self.assertAlmostEqual(point.elapsed_seconds, 0.65)
+        self.assertGreater(point.elapsed_seconds, 0)
+        self.assertEqual(point.arduino_timestamp_ms, 300)
+        self.assertTrue(self.tab.kinetic_schedule_timer.isActive())
+        self.assertEqual(len(self.controller.measurements), measurement_count)
+
+    def test_kinetic_uses_plus_markers_for_180_exact_measurements(self):
+        self.connect_and_configure()
+        self.calibrate()
+        self.tab.mode_combo.setCurrentIndex(3)
+        self.tab.kinetic_duration_spin.setValue(15)
+        self.tab.kinetic_start_button.click()
+
+        for index in range(180):
+            self.clock[0] = 100.5 + index * 5
+            self.controller.emit_measurement(20 + index)
+            self.tab.kinetic_schedule_timer.stop()
+            if index < 179:
+                self.clock[0] = 105.0 + index * 5
+                self.tab._kinetic_due()
+        self.tab.stop_kinetics()
+
+        xs, ys = self.tab.kinetic_curve.getData()
+        expected = self.tab.kinetic_experiment.band_values(6)
+        self.assertEqual(self.tab.kinetic_curve.opts["symbol"], "+")
+        self.assertEqual(len(self.tab.kinetic_curve.scatter.points()), 180)
+        self.assertEqual(list(xs), [item[0] for item in expected])
+        self.assertEqual(list(ys), [item[1] for item in expected])
+        self.assertEqual(len(self.tab.kinetic_experiment.points), 180)
+
+    def test_kinetic_reticle_selects_only_recorded_points_and_follows_view(self):
+        self.connect_and_configure()
+        self.calibrate()
+        self.start_kinetic()
+        self.clock[0] = 100.5
+        self.controller.emit_measurement(10)
+        self.tab.kinetic_schedule_timer.stop()
+        self.clock[0] = 105.0
+        self.tab._kinetic_due()
+        self.clock[0] = 105.5
+        self.controller.emit_measurement(20)
+        self.tab.stop_kinetics()
+        self.tab.show()
+        self.app.processEvents()
+
+        self.assertTrue(self.tab._select_kinetic_point(1))
+        selected = self.tab.kinetic_experiment.points[0]
+        absorbance = selected.spectrum.bands[6].absorbance
+        view = self.tab.kinetic_plot.getViewBox()
+        view.setRange(xRange=(0.0, 6.0), yRange=(0.0, 1.2), padding=0)
+        self.tab._position_kinetic_reticle()
+        horizontal_x, horizontal_y = self.tab.kinetic_projection_horizontal.getData()
+        vertical_x, vertical_y = self.tab.kinetic_projection_vertical.getData()
+        self.assertEqual(horizontal_x[-1], selected.elapsed_seconds)
+        self.assertEqual(horizontal_y[-1], absorbance)
+        self.assertEqual(vertical_x[-1], selected.elapsed_seconds)
+        self.assertEqual(vertical_y[-1], absorbance)
+        self.assertIn("A = ", self.tab.kinetic_absorbance_projection_label.toPlainText())
+        self.assertIn("t = 0,5 s", self.tab.kinetic_time_label.toPlainText())
+        self.assertTrue(self.tab.kinetic_time_label.isVisible())
+
+        initial_y = self.tab.kinetic_time_label.pos().y()
+        self.tab.resize(1280, 800)
+        view.setRange(xRange=(0.0, 2.0), yRange=(0.8, 1.1), padding=0)
+        self.app.processEvents()
+        self.tab._position_kinetic_reticle()
+        self.assertNotEqual(self.tab.kinetic_time_label.pos().y(), initial_y)
+        x_range, y_range = view.viewRange()
+        self.assertGreaterEqual(self.tab.kinetic_time_label.pos().x(), x_range[0])
+        self.assertLessEqual(self.tab.kinetic_time_label.pos().x(), x_range[1])
+        self.assertGreaterEqual(
+            self.tab.kinetic_absorbance_projection_label.pos().y(), y_range[0]
+        )
+        self.assertLessEqual(
+            self.tab.kinetic_absorbance_projection_label.pos().y(), y_range[1]
+        )
+
+        fake_point = SimpleNamespace(pos=lambda: QPointF(5.5, 0.0))
+        self.tab._kinetic_points_clicked(None, [fake_point], None)
+        self.assertEqual(self.tab._kinetic_selected_sequence, 2)
+
+    def test_kinetic_reticle_follows_latest_point_and_updates_with_band(self):
+        self.connect_and_configure()
+        self.calibrate()
+        self.start_kinetic()
+        self.clock[0] = 100.5
+        self.controller.emit_measurement((10, 20, 30, 40, 50, 60, 70, 80))
+
+        self.assertEqual(self.tab._kinetic_selected_sequence, 1)
+        first_text = self.tab.kinetic_absorbance_projection_label.toPlainText()
+        measurement_count = len(self.controller.measurements)
+        self.tab.kinetic_band_combo.setCurrentIndex(0)
+        self.assertEqual(len(self.controller.measurements), measurement_count)
+        self.assertEqual(self.tab._kinetic_selected_sequence, 1)
+        self.assertNotEqual(
+            self.tab.kinetic_absorbance_projection_label.toPlainText(), first_text
+        )
+
+        self.tab.kinetic_schedule_timer.stop()
+        self.clock[0] = 105.0
+        self.tab._kinetic_due()
+        self.clock[0] = 105.5
+        self.controller.emit_measurement((20, 30, 40, 50, 60, 70, 80, 90))
+        self.assertEqual(self.tab._kinetic_selected_sequence, 2)
+
+    def test_kinetic_elapsed_display_combines_seconds_and_minutes(self):
+        self.connect_and_configure()
+        self.calibrate()
+        self.tab.mode_combo.setCurrentIndex(3)
+        self.tab.kinetic_duration_spin.setValue(15)
+        self.tab.kinetic_start_button.click()
+
+        for elapsed, expected in (
+            (65.0, "65,0 s (1 min 05 s)"),
+            (330.0, "330,0 s (5 min 30 s)"),
+            (900.0, "900,0 s (15 min 00 s)"),
+        ):
+            with self.subTest(elapsed=elapsed):
+                self.clock[0] = 100.0 + elapsed
+                self.tab._refresh_kinetic_clock()
+                self.assertEqual(
+                    self.tab.kinetic_elapsed_label.text(),
+                    f"Temps écoulé : {expected}",
+                )
+
+    def test_kinetic_reticle_cartouches_follow_light_and_dark_palettes(self):
+        dark_palette = QPalette(self.tab.palette())
+        dark_palette.setColor(QPalette.ColorRole.Base, QColor("#20242a"))
+        dark_palette.setColor(QPalette.ColorRole.Text, QColor("#f4f5f6"))
+        self.tab.setPalette(dark_palette)
+        self.tab._apply_kinetic_plot_palette()
+
+        dark_fill = self.tab.kinetic_time_label.fill.color()
+        self.assertEqual(dark_fill.name(), "#20242a")
+        self.assertEqual(dark_fill.alpha(), 235)
+
+        light_palette = QPalette(dark_palette)
+        light_palette.setColor(QPalette.ColorRole.Base, QColor("#ffffff"))
+        light_palette.setColor(QPalette.ColorRole.Text, QColor("#10243e"))
+        self.tab.setPalette(light_palette)
+        self.tab._apply_kinetic_plot_palette()
+        self.assertEqual(
+            self.tab.kinetic_time_label.fill.color().name(), "#ffffff"
+        )
+
+    def test_kinetic_late_schedule_skips_missed_deadlines_without_burst(self):
+        self.connect_and_configure()
+        self.calibrate()
+        self.start_kinetic()
+        self.clock[0] = 100.6
+        self.controller.emit_measurement(10)
+        initial_count = len(self.controller.measurements)
+        self.tab.kinetic_schedule_timer.stop()
+
+        self.clock[0] = 112.2
+        self.tab._kinetic_due()
+        self.assertEqual(len(self.controller.measurements), initial_count + 1)
+        self.clock[0] = 112.8
+        self.controller.emit_measurement(10)
+
+        self.assertEqual(len(self.controller.measurements), initial_count + 1)
+        self.assertGreaterEqual(self.tab.kinetic_schedule_timer.interval(), 2200)
+        self.assertLessEqual(self.tab.kinetic_schedule_timer.interval(), 2201)
+
+    def test_kinetic_manual_stop_uses_stop_and_preserves_points(self):
+        self.connect_and_configure()
+        self.calibrate()
+        self.start_kinetic()
+        self.clock[0] = 100.7
+        self.controller.emit_measurement(10)
+        self.clock[0] = 105.0
+        self.tab._kinetic_due()
+
+        self.tab.kinetic_stop_button.click()
+
+        self.assertEqual(self.controller.stop_calls, 1)
+        self.assertEqual(len(self.tab.kinetic_experiment.points), 1)
+        self.controller.acknowledge_stop()
+        self.assertFalse(self.tab._kinetic_active)
+        self.assertFalse(self.tab._kinetic_stopping)
+        self.assertEqual(len(self.tab.kinetic_experiment.points), 1)
+
+    def test_kinetic_diagnostic_tracks_command_response_and_manual_stop(self):
+        self.connect_and_configure()
+        self.calibrate()
+
+        self.start_kinetic()
+        journal = self.tab.kinetic_journal
+        self.assertIsNotNone(journal)
+        self.clock[0] = 100.75
+        self.controller.emit_measurement((20, 21, 22, 23, 24, 25, 26, 27))
+        self.tab.stop_kinetics()
+
+        with journal.measurements_path.open(encoding="utf-8", newline="") as stream:
+            row = next(csv.DictReader(stream))
+        self.assertEqual(row["request_id"], "3")
+        self.assertEqual(row["raw_f1"], "20")
+        self.assertEqual(row["raw_f8"], "27")
+        self.assertEqual(row["command_response_latency_seconds"], "0.75")
+        events = [
+            json.loads(line)["type"]
+            for line in journal.events_path.read_text(encoding="utf-8").splitlines()
+        ]
+        self.assertIn("measurement_command", events)
+        self.assertIn("measurement_response", events)
+        self.assertIn("stop_requested", events)
+        self.assertTrue(journal.finished)
+        self.assertTrue(self.tab.kinetic_diagnostic_export_available())
+
+    def test_kinetic_automatic_stop_uses_stop_for_pending_measurement(self):
+        self.connect_and_configure()
+        self.calibrate()
+        self.start_kinetic()
+
+        self.tab._kinetic_duration_reached()
+
+        self.assertEqual(self.controller.stop_calls, 1)
+        self.assertTrue(self.tab._kinetic_stopping)
+        self.controller.acknowledge_stop()
+        self.assertFalse(self.tab._kinetic_active)
+        self.assertIn("Durée programmée", self.tab.kinetic_action_status.text())
+
+    def test_kinetic_late_completion_after_duration_is_ignored(self):
+        self.connect_and_configure()
+        self.calibrate()
+        self.start_kinetic()
+
+        self.clock[0] = 160.01
+        self.controller.emit_measurement(10)
+
+        self.assertEqual(self.tab.kinetic_experiment.points, [])
+        self.assertFalse(self.tab._kinetic_active)
+        self.assertIn("hors de la durée", self.tab.kinetic_action_status.text())
+
+    def test_kinetic_band_change_reuses_data_and_keeps_invalid_gap(self):
+        self.connect_and_configure()
+        self.calibrate()
+        self.start_kinetic()
+        self.clock[0] = 100.6
+        self.controller.emit_measurement((10, 10, 10, 10, 10, 50, 10, 10))
+        self.clock[0] = 105.0
+        self.tab._kinetic_due()
+        self.clock[0] = 105.6
+        self.controller.emit_measurement(10, saturation_flags=1 << 6)
+        count = len(self.controller.measurements)
+        _, before = self.tab.kinetic_curve.getData()
+
+        self.tab.kinetic_band_combo.setCurrentIndex(5)
+        _, after = self.tab.kinetic_curve.getData()
+
+        self.assertEqual(len(self.controller.measurements), count)
+        self.assertNotEqual(list(before[:1]), list(after[:1]))
+        self.tab.kinetic_band_combo.setCurrentIndex(6)
+        _, invalid = self.tab.kinetic_curve.getData()
+        self.assertTrue(np.isnan(invalid[1]))
+
+    def test_kinetic_disconnect_stops_and_keeps_experiment(self):
+        self.connect_and_configure()
+        self.calibrate()
+        self.start_kinetic()
+        experiment = self.tab.kinetic_experiment
+
+        self.tab.disconnect()
+        self.controller.acknowledge_stop()
+
+        self.assertIs(self.tab.kinetic_experiment, experiment)
+        self.assertFalse(self.tab.kinetic_schedule_timer.isActive())
+        self.assertFalse(self.tab.kinetic_duration_timer.isActive())
+        self.assertEqual(self.controller.state, SpectroControllerState.DISCONNECTED)
+        self.assertIsNone(self.tab.calibration)
+        self.assertTrue(self.tab.kinetic_journal.finished)
+        self.assertTrue(self.tab.kinetic_diagnostic_export_available())
+        event_types = [
+            json.loads(line)["type"]
+            for line in self.tab.kinetic_journal.events_path.read_text(
+                encoding="utf-8"
+            ).splitlines()
+        ]
+        self.assertIn("disconnection_requested", event_types)
+        self.assertIn("experiment_interrupted", event_types)
+
+    def test_kinetic_serial_error_is_logged_and_does_not_remove_diagnostic(self):
+        self.connect_and_configure()
+        self.calibrate()
+        self.start_kinetic()
+        journal = self.tab.kinetic_journal
+
+        self.controller.set_state(SpectroControllerState.ERROR)
+        self.controller.error_occurred.emit("port série perdu")
+
+        self.assertTrue(journal.finished)
+        self.assertEqual(journal.metadata["status"], "interrupted")
+        event_types = [event["type"] for event in (
+            json.loads(line)
+            for line in journal.events_path.read_text(encoding="utf-8").splitlines()
+        )]
+        self.assertIn("connection_state_changed", event_types)
+        self.assertIn("experiment_interrupted", event_types)
+        self.assertTrue(self.tab.kinetic_diagnostic_export_available())
+
+    def test_kinetic_timeout_firmware_error_and_ignored_response_are_logged(self):
+        self.connect_and_configure()
+        self.calibrate()
+        self.start_kinetic()
+        journal = self.tab.kinetic_journal
+        request_id = self.controller.measurements[-1][0]
+
+        self.controller.firmware_error.emit(SpectroErrorPayload(request_id, 7))
+        self.controller.response_ignored.emit("réponse tardive ignorée")
+        self.controller.set_state(SpectroControllerState.CONFIGURED)
+        self.controller.measurement_failed.emit(request_id, "délai expiré")
+
+        self.assertTrue(journal.finished)
+        event_types = [
+            json.loads(line)["type"]
+            for line in journal.events_path.read_text(encoding="utf-8").splitlines()
+        ]
+        self.assertIn("firmware_error", event_types)
+        self.assertIn("serial_response_ignored", event_types)
+        self.assertIn("measurement_error", event_types)
+
+    def test_kinetic_diagnostic_export_uses_selected_zip(self):
+        self.connect_and_configure()
+        self.calibrate()
+        self.start_kinetic()
+        self.clock[0] = 100.5
+        self.controller.emit_measurement(20)
+        self.tab.stop_kinetics()
+        destination = Path(self.diagnostic_temporary.name) / "diagnostic-exporte.zip"
+
+        with patch(
+            "physalix.ui.spectrophotometry_tab.QFileDialog.getSaveFileName",
+            return_value=(str(destination), "Archive ZIP (*.zip)"),
+        ):
+            result = self.tab.export_kinetic_diagnostic()
+
+        self.assertEqual(result, destination)
+        with zipfile.ZipFile(destination) as archive:
+            self.assertEqual(
+                set(archive.namelist()),
+                {"metadata.json", "measurements.csv", "events.jsonl"},
+            )
+        self.assertIn("Diagnostic exporté", self.tab.kinetic_action_status.text())
+
+    def test_new_kinetic_experiment_archives_previous_data(self):
+        self.connect_and_configure()
+        self.calibrate()
+        self.start_kinetic()
+        self.clock[0] = 100.5
+        self.controller.emit_measurement(10)
+        self.tab.stop_kinetics()
+        previous = self.tab.kinetic_experiment
+
+        with patch(
+            "physalix.ui.spectrophotometry_tab.ask_yes_no", return_value=True
+        ):
+            self.tab.new_kinetic_experiment()
+
+        self.assertIsNone(self.tab.kinetic_experiment)
+        self.assertEqual(self.tab.kinetic_history, [previous])
+
+    def test_kinetic_transfer_excludes_invalid_values_and_opens_graph(self):
+        self.connect_and_configure()
+        self.calibrate()
+        self.start_kinetic()
+        self.clock[0] = 100.5
+        self.controller.emit_measurement(10)
+        self.clock[0] = 105.0
+        self.tab._kinetic_due()
+        self.clock[0] = 105.5
+        self.controller.emit_measurement(10, saturation_flags=1 << 6)
+        self.tab.stop_kinetics()
+
+        with patch(
+            "physalix.ui.spectrophotometry_tab.ask_yes_no", return_value=True
+        ):
+            result = self.tab.transfer_kinetics_to_graph()
+
+        self.assertEqual(result[0], (6, 7))
+        names, units, rows = self.data_tab.calls[0]
+        self.assertIn("630 nm", names[0])
+        self.assertEqual(units, ["s", ""])
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(
+            self.graph_workspace.calls, [(6, 7, "Cinétique à 630 nm")]
+        )
+        self.show_graph.assert_called_once_with()
+        self.assertFalse(self.tab.kinetic_transfer_button.isEnabled())
+
+    def test_kinetic_transfer_retry_does_not_duplicate_columns(self):
+        self.connect_and_configure()
+        self.calibrate()
+        self.start_kinetic()
+        self.clock[0] = 100.5
+        self.controller.emit_measurement(10)
+        self.tab.stop_kinetics()
+        original = self.graph_workspace.add_data_graph
+        self.graph_workspace.add_data_graph = Mock(side_effect=RuntimeError("échec"))
+
+        with (
+            patch("physalix.ui.spectrophotometry_tab.ask_yes_no", return_value=True),
+            patch("physalix.ui.spectrophotometry_tab.QMessageBox.warning"),
+        ):
+            self.assertIsNone(self.tab.transfer_kinetics_to_graph())
+        self.assertEqual(len(self.data_tab.calls), 1)
+
+        self.graph_workspace.add_data_graph = original
+        self.assertIsNotNone(self.tab.transfer_kinetics_to_graph())
+        self.assertEqual(len(self.data_tab.calls), 1)
 
     def test_connection_is_explicit_and_each_configuration_id_is_unique(self):
         self.tab.connect_button.click()
@@ -441,17 +973,21 @@ class SpectrophotometryTabTests(unittest.TestCase):
     def test_shutdown_closes_controller_and_clears_timers(self):
         self.connect_and_configure()
         self.calibrate()
+        self.start_kinetic()
 
         self.tab.shutdown()
 
         self.assertEqual(self.controller.state, SpectroControllerState.DISCONNECTED)
         self.assertFalse(self.tab.disconnect_timer.isActive())
+        self.assertFalse(self.tab.kinetic_schedule_timer.isActive())
+        self.assertFalse(self.tab.kinetic_duration_timer.isActive())
+        self.assertFalse(self.tab.kinetic_clock_timer.isActive())
         self.assertIsNone(self.tab.calibration)
 
     def test_absorbance_is_the_second_mode_with_eight_real_bands(self):
         self.assertEqual(
-            [self.tab.mode_combo.itemText(i) for i in range(3)],
-            ["Spectre", "Absorbance", "Beer-Lambert"],
+            [self.tab.mode_combo.itemText(i) for i in range(4)],
+            ["Spectre", "Absorbance", "Beer-Lambert", "Cinétique"],
         )
         self.tab.mode_combo.setCurrentIndex(1)
         self.assertIs(self.tab.mode_stack.currentWidget(), self.tab.absorbance_page)
@@ -1020,6 +1556,20 @@ class MeasurementPreparationDialogTests(unittest.TestCase):
                 self.assertEqual(dialog.result(), QDialog.DialogCode.Rejected)
                 dialog.deleteLater()
 
+    def test_kinetic_dialog_explains_time_origin_and_has_expected_actions(self):
+        dialog = KineticsPreparationDialog()
+        try:
+            texts = self.texts(dialog)
+            self.assertEqual(dialog.windowTitle(), "Démarrer la cinétique")
+            self.assertTrue(any("mélange à suivre" in text for text in texts))
+            self.assertTrue(any("t = 0" in text for text in texts))
+            self.assertEqual(dialog.cancel_button.text(), "Annuler")
+            self.assertEqual(dialog.start_button.text(), "Démarrer l'acquisition")
+            dialog.cancel_button.click()
+            self.assertEqual(dialog.result(), QDialog.DialogCode.Rejected)
+        finally:
+            dialog.deleteLater()
+
 
 class BeerLambertDialogTests(unittest.TestCase):
     @classmethod
@@ -1114,6 +1664,53 @@ class SpectrophotometryNavigationTests(unittest.TestCase):
             window._discard_on_close = True
             window.close()
 
+    def test_help_menu_contains_discreet_disabled_diagnostic_action(self):
+        window = MainWindow()
+        try:
+            help_menu = next(
+                action.menu()
+                for action in window.menuBar().actions()
+                if action.text() == "Aide"
+            )
+            tools_action = next(
+                action
+                for action in help_menu.actions()
+                if action.text() == "Outils de diagnostic"
+            )
+            self.assertEqual(
+                [action.text() for action in tools_action.menu().actions()],
+                ["Exporter le diagnostic cinétique…"],
+            )
+            self.assertFalse(window.kinetic_diagnostic_export_action.isEnabled())
+        finally:
+            window._discard_on_close = True
+            window.close()
+
+    def test_diagnostic_menu_action_reuses_current_tab_export(self):
+        window = MainWindow()
+        try:
+            with patch.object(
+                window.spectrophotometry_tab,
+                "export_kinetic_diagnostic",
+            ) as export:
+                window.kinetic_diagnostic_export_action.setEnabled(True)
+                window.kinetic_diagnostic_export_action.trigger()
+                export.assert_called_once_with()
+
+            window.spectrophotometry_tab.kinetic_journal = SimpleNamespace(
+                finished=True
+            )
+            window.spectrophotometry_tab._update_controls()
+            self.assertTrue(window.kinetic_diagnostic_export_action.isEnabled())
+            window.spectrophotometry_tab._kinetic_active = True
+            window.spectrophotometry_tab._update_controls()
+            self.assertFalse(window.kinetic_diagnostic_export_action.isEnabled())
+            window.spectrophotometry_tab._kinetic_active = False
+            window.spectrophotometry_tab.kinetic_journal = None
+        finally:
+            window._discard_on_close = True
+            window.close()
+
     def test_project_replacement_shuts_down_old_spectro_tab(self):
         window = MainWindow()
         old_tab = window.spectrophotometry_tab
@@ -1122,6 +1719,11 @@ class SpectrophotometryNavigationTests(unittest.TestCase):
                 self.assertTrue(window.replace_project())
                 shutdown.assert_called_once_with()
             self.assertIsNot(window.spectrophotometry_tab, old_tab)
+            window.spectrophotometry_tab.kinetic_journal = SimpleNamespace(
+                finished=True
+            )
+            window.spectrophotometry_tab._update_controls()
+            self.assertTrue(window.kinetic_diagnostic_export_action.isEnabled())
         finally:
             window._discard_on_close = True
             window.close()

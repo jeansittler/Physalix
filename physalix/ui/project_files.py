@@ -188,6 +188,7 @@ class ProjectFiles:
             self.modeling_tab.graph_requested.disconnect()
             self.modeling_tab.graph_requested.connect(lambda: self.tabs.setCurrentWidget(self.graph_tab))
             self.acquisition_tab.show_graph = lambda: self.tabs.setCurrentWidget(self.graph_tab)
+            self._bind_spectrophotometry_diagnostic_action()
             old.deleteLater()
             self.project_path = Path(path) if path else None
             self.setWindowTitle(f'{self.project_path.name} — Physalix' if path else 'Physalix')
