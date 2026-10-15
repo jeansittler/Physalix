@@ -86,6 +86,64 @@ class ProjectTests(unittest.TestCase):
         self.assertEqual(m.rows[0][4], '11')
         self.assertFalse(first.series[0].fits)  # Invalidation normale après modification des mesures.
 
+    def test_active_graph_is_restored_by_stable_identifier_after_reopening(self):
+        source = self.populated()
+        active = next(window for window in source.graph_tab.windows
+                      if window.graph is source.graph_tab.active_graph)
+        self.assertEqual(active.windowTitle(), 'Tension doublée')
+        write_project(self.path, snapshot(source))
+
+        reopened = MainWindow()
+        self.windows.append(reopened)
+        self.assertTrue(reopened.open_project_path(self.path))
+        self.app.processEvents()
+
+        restored = next(window for window in reopened.graph_tab.windows
+                        if window.graph is reopened.graph_tab.active_graph)
+        self.assertEqual(restored.identifier, active.identifier)
+        self.assertEqual(restored.windowTitle(), 'Tension doublée')
+
+    def test_old_project_restores_active_graph_from_legacy_index(self):
+        state = snapshot(self.populated())
+        state.pop('active_graph_id')
+        for graph in state['graphs']:
+            graph.pop('identifier')
+        state['active_graph'] = 1
+
+        restored = MainWindow()
+        self.windows.append(restored)
+        restore(restored, state)
+        self.app.processEvents()
+
+        self.assertIs(restored.graph_tab.active_graph, restored.graph_tab.windows[1].graph)
+
+    def test_missing_active_graph_falls_back_to_first_available_graph(self):
+        state = snapshot(self.populated())
+        state['active_graph_id'] = 'graphique-supprime'
+        state.pop('active_graph')
+
+        restored = MainWindow()
+        self.windows.append(restored)
+        restore(restored, state)
+        self.app.processEvents()
+
+        self.assertIs(restored.graph_tab.active_graph, restored.graph_tab.windows[0].graph)
+
+    def test_switching_active_graph_does_not_mark_project_as_modified(self):
+        self.populated()
+        signature = self.window.document_signature()
+
+        self.window.graph_tab.area.setActiveSubWindow(self.window.graph_tab.windows[0])
+        self.app.processEvents()
+
+        self.assertEqual(self.window.document_signature(), signature)
+
+    def test_new_project_has_a_persistent_identifier_for_its_first_graph(self):
+        state = snapshot(self.window)
+
+        self.assertTrue(state['graphs'][0]['identifier'])
+        self.assertEqual(state['active_graph_id'], state['graphs'][0]['identifier'])
+
     def test_plateau_exponential_model_roundtrip(self):
         import math
         model = self.window.data_tab.model

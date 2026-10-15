@@ -1,5 +1,6 @@
 """Graphiques indépendants en onglets, comparaison ou fenêtres libres."""
 import re
+from uuid import uuid4
 
 from PySide6.QtCore import Qt, Signal, QRect, QSize
 from PySide6.QtWidgets import (QHBoxLayout, QInputDialog, QLabel, QMdiArea,
@@ -12,9 +13,10 @@ from physalix.ui.theme import LIGHT
 
 
 class GraphWindow(QMdiSubWindow):
-    def __init__(self, owner, graph):
+    def __init__(self, owner, graph, identifier=None):
         super().__init__()
         self.owner, self.graph = owner, graph
+        self.identifier = identifier or uuid4().hex
         self.uses_default_title = True
         self.setWidget(graph)
         from physalix.ui.icons import icon
@@ -53,7 +55,7 @@ class GraphWorkspace(QWidget):
         bar.setContentsMargins(LIGHT.section, LIGHT.small, LIGHT.section, LIGHT.small)
         bar.setSpacing(LIGHT.related)
         self.add_button = compact_width(QPushButton('Nouveau graphique'), LIGHT.action_compact)
-        self.add_button.clicked.connect(self.add_graph)
+        self.add_button.clicked.connect(lambda: self.add_graph())
         bar.addWidget(self.add_button, 0, Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
         bar.addWidget(QLabel('Disposition'))
         self.arrangement = WheelSafeComboBox()
@@ -91,10 +93,10 @@ class GraphWorkspace(QWidget):
                 return getattr(graph, name)
         raise AttributeError(name)
 
-    def add_graph(self):
+    def add_graph(self, *, identifier=None):
         graph = GraphTab(self.model)
         self.number += 1
-        window = GraphWindow(self, graph)
+        window = GraphWindow(self, graph, identifier)
         self.windows.append(window)
         self.update_graph_display_numbers()
         self.area.addSubWindow(window)

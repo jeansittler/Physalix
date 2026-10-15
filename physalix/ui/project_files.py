@@ -89,6 +89,7 @@ class ProjectFiles:
         # La navigation, la lecture vidéo et les dimensions de fenêtre ne modifient pas le travail.
         state.pop('tab', None)
         state.pop('active_graph', None)
+        state.pop('active_graph_id', None)
         state['video'].pop('index', None)
         state['video'].pop('controls', None)
         for graph in state['graphs']:
@@ -193,7 +194,8 @@ class ProjectFiles:
             self.project_path = Path(path) if path else None
             self.setWindowTitle(f'{self.project_path.name} — Physalix' if path else 'Physalix')
             if state is not None:
-                restore_views(self, state['graphs'])
+                restore_views(self, state['graphs'], state.get('active_graph_id'),
+                              state.get('active_graph'))
             self._saved_state = self.document_signature()
             return True
         except Exception:

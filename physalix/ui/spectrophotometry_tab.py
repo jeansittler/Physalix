@@ -393,6 +393,7 @@ class SpectrophotometryTab(QWidget):
         self.dark_measurement: SpectroMeasurement | None = None
         self.white_measurement: SpectroMeasurement | None = None
         self.calibration: SpectroCalibration | None = None
+        self._restored_calibration_ids: set[str] = set()
         self.spectra: list[SpectrumDisplay] = []
         self.absorbance_spectrum: AbsorbanceSpectrum | None = None
         self._pending_absorbance = False
@@ -403,6 +404,7 @@ class SpectrophotometryTab(QWidget):
         self._pending_beer_target = None
         self._beer_previous_unit_index = 0
         self._beer_transfer_columns = {}
+        self._beer_completed_transfers = set()
         self._beer_last_transferred_signature = None
         self._monotonic_clock = monotonic_clock or time.monotonic
         self.kinetic_experiment: KineticExperiment | None = None
@@ -412,6 +414,7 @@ class SpectrophotometryTab(QWidget):
         self._pending_kinetic_experiment_id: str | None = None
         self._kinetic_recalibration_expanded = False
         self._kinetic_transfer_columns = {}
+        self._kinetic_completed_transfers = set()
         self._kinetic_last_transferred_signature = None
         self._kinetic_selected_sequence: int | None = None
         self.kinetic_journal: KineticDiagnosticJournal | None = None
@@ -1276,7 +1279,11 @@ class SpectrophotometryTab(QWidget):
                 else "Effectuez un étalonnage noir et blanc avant la mesure."
             )
             return
-        if not self._spectrum_uses_active_calibration(spectrum):
+        if (
+            not self._spectrum_uses_active_calibration(spectrum)
+            and self._spectrum_reference_id(spectrum)
+            not in self._restored_calibration_ids
+        ):
             self._set_absorbance_display("—")
             self.absorbance_result_status.setText(
                 "Résultat associé à une référence devenue inactive."
@@ -1292,7 +1299,9 @@ class SpectrophotometryTab(QWidget):
         value = 0.0 if band.absorbance == 0 else band.absorbance
         self._set_absorbance_display(format(value, ".6g").replace(".", ","))
         self.absorbance_result_status.setText(
-            "Valeur expérimentale de la bande sélectionnée, sans interpolation."
+            "Valeur historique consultable ; recalibrez avant toute nouvelle mesure."
+            if not self._spectrum_uses_active_calibration(spectrum)
+            else "Valeur expérimentale de la bande sélectionnée, sans interpolation."
         )
 
     @staticmethod
@@ -1341,6 +1350,7 @@ class SpectrophotometryTab(QWidget):
             self.beer_standards.clear()
             self.beer_unknown_spectrum = None
             self._beer_transfer_columns.clear()
+            self._beer_completed_transfers.clear()
             self._beer_last_transferred_signature = None
         self._beer_previous_unit_index = index
         self._refresh_beer_ui()
@@ -1452,8 +1462,33 @@ class SpectrophotometryTab(QWidget):
             and spectrum.calibration.reference_id == self.calibration.reference_id
         )
 
+    @staticmethod
+    def _spectrum_reference_id(spectrum):
+        return (
+            spectrum.calibration.reference_id
+            if spectrum is not None and spectrum.calibration is not None
+            else None
+        )
+
+    def _beer_reference_id(self):
+        if self.calibration is not None:
+            return self.calibration.reference_id
+        references = {
+            self._spectrum_reference_id(standard.spectrum)
+            for standard in self.beer_standards
+            if standard.spectrum is not None
+        }
+        references.discard(None)
+        return (
+            next(iter(references))
+            if len(references) == 1
+            and references.issubset(self._restored_calibration_ids)
+            else None
+        )
+
     def _beer_absorbance(self, spectrum):
-        if not self._spectrum_uses_active_calibration(spectrum):
+        reference_id = self._beer_reference_id()
+        if reference_id is None or self._spectrum_reference_id(spectrum) != reference_id:
             return None
         return band_absorbance(spectrum, self.beer_band_index())
 
@@ -1485,10 +1520,12 @@ class SpectrophotometryTab(QWidget):
             absorbance = self._beer_absorbance(standard.spectrum)
             if standard.spectrum is None:
                 state = "À mesurer"
-            elif not self._spectrum_uses_active_calibration(standard.spectrum):
+            elif self._spectrum_reference_id(standard.spectrum) != self._beer_reference_id():
                 state = "Référence inactive"
             elif absorbance is None:
                 state = "Bande indisponible"
+            elif not self._spectrum_uses_active_calibration(standard.spectrum):
+                state = "Historique"
             else:
                 state = "Valide"
             values = (
@@ -1583,7 +1620,7 @@ class SpectrophotometryTab(QWidget):
             self.beer_unknown_result_label.setText("Concentration : —")
             if self.beer_unknown_spectrum is None:
                 warning = ""
-            elif not self._spectrum_uses_active_calibration(self.beer_unknown_spectrum):
+            elif self._spectrum_reference_id(self.beer_unknown_spectrum) != self._beer_reference_id():
                 warning = "Mesure associée à une référence inactive."
             else:
                 warning = "Bande indisponible pour cette mesure."
@@ -1604,11 +1641,16 @@ class SpectrophotometryTab(QWidget):
                 self.beer_unknown_result_label.setText(
                     f"Concentration : {format_concentration(result.concentration)} {unit}"
                 )
-                self.beer_unknown_warning.setText(
+                result_text = (
                     "Attention : résultat hors de la gamme d'étalonnage."
                     if result.extrapolated
                     else "Résultat compris dans la gamme d'étalonnage."
                 )
+                if not self._spectrum_uses_active_calibration(
+                    self.beer_unknown_spectrum
+                ):
+                    result_text = "Résultat historique. " + result_text
+                self.beer_unknown_warning.setText(result_text)
 
         if unknown_result is not None:
             concentration = unknown_result.concentration
@@ -1688,10 +1730,11 @@ class SpectrophotometryTab(QWidget):
 
     def _beer_transfer_signature(self):
         points = tuple(sorted(self._beer_valid_points()))
-        if self.calibration is None:
+        reference_id = self._beer_reference_id()
+        if reference_id is None:
             return None
         return (
-            self.calibration.reference_id,
+            reference_id,
             self.beer_unit_combo.currentText(),
             self.beer_wavelength(),
             points,
@@ -1708,6 +1751,10 @@ class SpectrophotometryTab(QWidget):
 
     def transfer_beer_to_graph(self):
         signature = self._beer_transfer_signature()
+        if signature is not None and signature in self._beer_completed_transfers:
+            self.beer_transfer_status.setText("Données déjà transférées.")
+            self._update_controls()
+            return None
         if (
             signature is None
             or self.beer_regression is None
@@ -1751,6 +1798,7 @@ class SpectrophotometryTab(QWidget):
             self._update_controls()
             return None
         self._beer_last_transferred_signature = signature
+        self._beer_completed_transfers.add(signature)
         self.beer_transfer_status.setText(
             f"{len(points)} point(s) transféré(s) — graphique créé."
         )
@@ -2282,6 +2330,10 @@ class SpectrophotometryTab(QWidget):
 
     def transfer_kinetics_to_graph(self):
         signature = self._kinetic_transfer_signature()
+        if signature is not None and signature in self._kinetic_completed_transfers:
+            self.kinetic_action_status.setText("Données déjà transférées.")
+            self._update_controls()
+            return None
         if (
             signature is None
             or self._kinetic_active
@@ -2330,6 +2382,7 @@ class SpectrophotometryTab(QWidget):
             self._update_controls()
             return None
         self._kinetic_last_transferred_signature = signature
+        self._kinetic_completed_transfers.add(signature)
         self.kinetic_action_status.setText(
             f"{len(values)} point(s) transféré(s) — graphique créé."
         )
@@ -2863,11 +2916,19 @@ class SpectrophotometryTab(QWidget):
             "Masquer les paramètres" if checked else "Afficher les paramètres"
         )
 
-    def add_spectrum(self, spectrum: AbsorbanceSpectrum):
+    def add_spectrum(
+        self,
+        spectrum: AbsorbanceSpectrum,
+        *,
+        name=None,
+        color=None,
+        visible=True,
+    ):
         display = SpectrumDisplay(
             spectrum=spectrum,
-            name=f"Spectre {len(self.spectra) + 1}",
-            color=SERIES_COLORS[len(self.spectra) % len(SERIES_COLORS)],
+            name=name or f"Spectre {len(self.spectra) + 1}",
+            color=color or SERIES_COLORS[len(self.spectra) % len(SERIES_COLORS)],
+            visible=bool(visible),
         )
         self.spectra.append(display)
         item = QListWidgetItem()
@@ -2875,26 +2936,26 @@ class SpectrophotometryTab(QWidget):
         row = QWidget()
         row_layout = QHBoxLayout(row)
         row_layout.setContentsMargins(LIGHT.small, 0, LIGHT.small, 0)
-        visible = QCheckBox()
-        visible.setChecked(True)
-        visible.setToolTip("Afficher ou masquer ce spectre")
-        name = QLineEdit(display.name)
-        color = QLabel("●")
-        color.setStyleSheet(f"color: {display.color}; font-size: 18px;")
-        row_layout.addWidget(visible)
-        row_layout.addWidget(color)
-        row_layout.addWidget(name, 1)
+        visible_box = QCheckBox()
+        visible_box.setChecked(display.visible)
+        visible_box.setToolTip("Afficher ou masquer ce spectre")
+        name_edit = QLineEdit(display.name)
+        color_label = QLabel("●")
+        color_label.setStyleSheet(f"color: {display.color}; font-size: 18px;")
+        row_layout.addWidget(visible_box)
+        row_layout.addWidget(color_label)
+        row_layout.addWidget(name_edit, 1)
         item.setSizeHint(row.sizeHint())
         self.spectra_list.addItem(item)
         self.spectra_list.setItemWidget(item, row)
         self.spectra_list.setCurrentItem(item)
         display.list_item = item
-        visible.toggled.connect(
+        visible_box.toggled.connect(
             lambda checked, selected=display: self._set_spectrum_visible(
                 selected, checked
             )
         )
-        name.textChanged.connect(
+        name_edit.textChanged.connect(
             lambda text, selected=display: self._rename_spectrum(selected, text)
         )
         self.refresh_plot()
@@ -3102,7 +3163,7 @@ class SpectrophotometryTab(QWidget):
                 and self.graph_workspace is not None
                 and self.beer_regression is not None
                 and signature is not None
-                and signature != self._beer_last_transferred_signature
+                and signature not in self._beer_completed_transfers
             )
         if hasattr(self, "kinetic_start_button"):
             kinetic_signature = self._kinetic_transfer_signature()
@@ -3134,7 +3195,7 @@ class SpectrophotometryTab(QWidget):
                 and self.data_tab is not None
                 and self.graph_workspace is not None
                 and kinetic_signature is not None
-                and kinetic_signature != self._kinetic_last_transferred_signature
+                and kinetic_signature not in self._kinetic_completed_transfers
             )
             self._update_diagnostic_export_availability()
 
