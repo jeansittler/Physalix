@@ -48,7 +48,15 @@ from physalix.spectrophotometry import (
     SpectroMeasurement,
     calculate_absorbance,
 )
-from physalix.spectrophotometry_protocol import AS7341Gain, SpectroConfig
+from physalix.spectrophotometry_protocol import AS7341Gain, PROTOCOL_VERSION, SpectroConfig
+from physalix.firmware_flash import (
+    FirmwareCompatibility,
+    FlashErrorKind,
+    NanoBootloader,
+    NanoFirmwareFlash,
+    compare_firmware,
+)
+from physalix.firmware_resources import FirmwareResourceError, load_nano_resources
 from physalix.spectrophotometry_beer_lambert import (
     CONCENTRATION_UNITS,
     BeerLambertError,
@@ -88,6 +96,9 @@ from physalix.ui.theme import LIGHT, SERIES_COLORS
 
 
 DISCONNECT_TIMEOUT_MS = 3500
+FIRMWARE_PORT_RELEASE_MS = 300
+FIRMWARE_RECONNECT_RETRY_MS = 600
+FIRMWARE_RECONNECT_TIMEOUT_MS = 20_000
 _SUPERSCRIPT = str.maketrans("-0123456789", "⁻⁰¹²³⁴⁵⁶⁷⁸⁹")
 SPECTRUM_DISPLAY_POINTS = "points"
 SPECTRUM_DISPLAY_INTERPOLATED = "interpolated"
@@ -394,9 +405,18 @@ class SpectrophotometryTab(QWidget):
         disconnect_timeout_ms=DISCONNECT_TIMEOUT_MS,
         monotonic_clock=None,
         diagnostic_root=None,
+        firmware_flash=None,
+        firmware_resource_loader=load_nano_resources,
     ):
         super().__init__(parent)
         self.controller = controller or SpectrophotometrySerialController(self)
+        self.firmware_flash = firmware_flash or NanoFirmwareFlash(self)
+        try:
+            self.firmware_resources = firmware_resource_loader()
+            self._firmware_resource_error = ""
+        except FirmwareResourceError as error:
+            self.firmware_resources = None
+            self._firmware_resource_error = str(error)
         self.data_tab = data_tab
         self.graph_workspace = graph_workspace
         self.show_graph = show_graph
@@ -433,6 +453,10 @@ class SpectrophotometryTab(QWidget):
         self._kinetic_stop_status = "completed"
         self._diagnostic_root = diagnostic_root
         self._firmware_info = None
+        self._firmware_mode = "unidentified"
+        self._flash_workflow_active = False
+        self._flash_port = None
+        self._flash_reconnect_opened = False
         self._kinetic_diagnostic_warning = None
         self._diagnostic_export_available = False
         self._pending_kind: MeasurementKind | None = None
@@ -443,10 +467,25 @@ class SpectrophotometryTab(QWidget):
 
         self._build_ui()
         self._connect_controller()
+        self._connect_firmware_flash()
         self.disconnect_timer = QTimer(self)
         self.disconnect_timer.setSingleShot(True)
         self.disconnect_timer.setInterval(disconnect_timeout_ms)
         self.disconnect_timer.timeout.connect(self._force_disconnect)
+        self.firmware_port_release_timer = QTimer(self)
+        self.firmware_port_release_timer.setSingleShot(True)
+        self.firmware_port_release_timer.setInterval(FIRMWARE_PORT_RELEASE_MS)
+        self.firmware_port_release_timer.timeout.connect(self._start_firmware_flash)
+        self.firmware_reconnect_timer = QTimer(self)
+        self.firmware_reconnect_timer.setSingleShot(True)
+        self.firmware_reconnect_timer.setInterval(FIRMWARE_RECONNECT_RETRY_MS)
+        self.firmware_reconnect_timer.timeout.connect(self._attempt_firmware_reconnect)
+        self.firmware_reconnect_timeout = QTimer(self)
+        self.firmware_reconnect_timeout.setSingleShot(True)
+        self.firmware_reconnect_timeout.setInterval(FIRMWARE_RECONNECT_TIMEOUT_MS)
+        self.firmware_reconnect_timeout.timeout.connect(
+            self._firmware_reconnect_timed_out
+        )
         self.kinetic_schedule_timer = QTimer(self)
         self.kinetic_schedule_timer.setSingleShot(True)
         self.kinetic_schedule_timer.timeout.connect(self._kinetic_due)
@@ -614,6 +653,26 @@ class SpectrophotometryTab(QWidget):
         advanced_form.addRow("Gain", self.gain_combo)
         advanced_form.addRow("LED PWM", self.pwm_spin)
         advanced_form.addRow(self.apply_config_button)
+        self.firmware_board_label = QLabel("Arduino Nano · ATmega328P · 5 V")
+        self.firmware_embedded_label = QLabel("Micrologiciel embarqué : indisponible")
+        self.firmware_status_label = QLabel("Carte non identifiée")
+        self.firmware_status_label.setWordWrap(True)
+        self.nano_bootloader_combo = PopupComboBox()
+        self.nano_bootloader_combo.addItem(
+            "Récent (115200 bauds)", NanoBootloader.RECENT
+        )
+        self.nano_bootloader_combo.addItem(
+            "Ancien (57600 bauds)", NanoBootloader.OLD
+        )
+        configure_popup(self.nano_bootloader_combo, 260)
+        update_popup_height(self.nano_bootloader_combo)
+        self.firmware_button = QPushButton("Installer le micrologiciel…")
+        advanced_form.addRow(label("Micrologiciel du spectrophotomètre", "sectionTitle"))
+        advanced_form.addRow("Carte cible", self.firmware_board_label)
+        advanced_form.addRow("Version Physalix", self.firmware_embedded_label)
+        advanced_form.addRow("État", self.firmware_status_label)
+        advanced_form.addRow("Bootloader", self.nano_bootloader_combo)
+        advanced_form.addRow(self.firmware_button)
         self.advanced_content.hide()
         advanced_layout.addWidget(self.advanced_content)
         settings_layout.addWidget(advanced_panel)
@@ -657,6 +716,7 @@ class SpectrophotometryTab(QWidget):
         self.connect_button.clicked.connect(self.toggle_connection)
         self.advanced_toggle.toggled.connect(self._toggle_advanced)
         self.apply_config_button.clicked.connect(self.apply_configuration)
+        self.firmware_button.clicked.connect(self.request_firmware_installation)
         self.dark_button.clicked.connect(
             lambda: self.request_measurement(MeasurementKind.DARK)
         )
@@ -1142,6 +1202,193 @@ class SpectrophotometryTab(QWidget):
         self.controller.firmware_error.connect(self._firmware_error)
         self.controller.response_ignored.connect(self._response_ignored)
         self.controller.error_occurred.connect(self._controller_error)
+
+    def _connect_firmware_flash(self):
+        if hasattr(self.firmware_flash, "phase_changed"):
+            self.firmware_flash.phase_changed.connect(
+                self.firmware_status_label.setText
+            )
+        self.firmware_flash.upload_verified.connect(self._firmware_upload_verified)
+        self.firmware_flash.succeeded.connect(self._firmware_flash_succeeded)
+        self.firmware_flash.failed.connect(self._firmware_flash_failed)
+        self.firmware_flash.process_settled.connect(self._firmware_process_settled)
+
+    def _display_firmware_state(self, firmware_info):
+        if self.firmware_resources is None:
+            return
+        result = compare_firmware(
+            self.firmware_resources.manifest,
+            firmware_info.version,
+            PROTOCOL_VERSION,
+            firmware_info.capabilities,
+        )
+        installed = ".".join(map(str, firmware_info.version))
+        if result.status is FirmwareCompatibility.COMPATIBLE:
+            self._firmware_mode = "current"
+            text = f"Version installée {installed} — à jour"
+        elif result.status is FirmwareCompatibility.OLDER:
+            self._firmware_mode = "older"
+            text = f"Version installée {installed} — mise à jour disponible"
+        elif result.status is FirmwareCompatibility.NEWER:
+            self._firmware_mode = "newer"
+            text = f"Version installée {installed} — compatible"
+        else:
+            self._firmware_mode = "incompatible"
+            text = f"Version installée {installed} — incompatible"
+        self.firmware_status_label.setText(text)
+
+    def _update_firmware_controls(self, busy):
+        if self.firmware_resources is None:
+            self.firmware_embedded_label.setText("Ressources invalides")
+            self.firmware_status_label.setText(
+                f"Micrologiciel indisponible — {self._firmware_resource_error}"
+            )
+            self.firmware_button.hide()
+            self.nano_bootloader_combo.setEnabled(False)
+            return
+        target = self.firmware_resources.manifest.firmware_version
+        self.firmware_embedded_label.setText(target)
+        labels = {
+            "unidentified": "Installer le micrologiciel…",
+            "older": "Mettre à jour le micrologiciel…",
+            "current": "Réinstaller le micrologiciel…",
+            "newer": "Réinstaller le micrologiciel…",
+            "incompatible": "Réinstaller le micrologiciel…",
+        }
+        self.firmware_button.setText(
+            "Annuler l’installation" if self._flash_workflow_active
+            else labels[self._firmware_mode]
+        )
+        selected_port = bool(self.port_combo.currentData())
+        allowed = selected_port and not busy and not self._disconnect_pending
+        if self._flash_workflow_active:
+            allowed = True
+        self.firmware_button.setEnabled(allowed)
+        self.nano_bootloader_combo.setEnabled(
+            not busy and not self._flash_workflow_active
+        )
+
+    def request_firmware_installation(self):
+        if self._flash_workflow_active:
+            self.firmware_flash.shutdown()
+            if self._flash_workflow_active:
+                self._finish_firmware_flash_failure("Installation annulée")
+            return
+        port = self.port_combo.currentData()
+        bootloader = self.nano_bootloader_combo.currentData()
+        if not port or not isinstance(bootloader, NanoBootloader):
+            self._show_error("Sélectionnez explicitement le port et le bootloader du Nano.")
+            return
+        if not self.firmware_button.isEnabled() or not self._confirm_firmware_flash(
+            port, bootloader
+        ):
+            return
+        self._flash_port = port
+        self._flash_workflow_active = True
+        self._flash_reconnect_opened = False
+        self._interrupt_kinetic("Installation du micrologiciel : expérience interrompue.")
+        self.firmware_status_label.setText("Libération du port série…")
+        self.controller.close()
+        self.firmware_port_release_timer.start()
+        self._update_controls()
+
+    def _confirm_firmware_flash(self, port, bootloader):
+        target = self.firmware_resources.manifest.firmware_version
+        bootloader_text = self.nano_bootloader_combo.currentText()
+        dialog = QMessageBox(self)
+        dialog.setWindowTitle("Installer le micrologiciel du spectrophotomètre")
+        dialog.setIcon(QMessageBox.Icon.Warning)
+        dialog.setText(
+            "Cette opération remplacera le programme présent sur la carte.\n\n"
+            "Vérifiez manuellement la cible : Arduino Nano, ATmega328P, 5 V.\n"
+            f"Port : {port}\nBootloader : {bootloader_text}\n"
+            f"Micrologiciel SPCT : {target}\n\n"
+            "Physalix ne peut pas identifier un Nano neuf avant sa programmation."
+        )
+        install = dialog.addButton("Installer", QMessageBox.ButtonRole.AcceptRole)
+        dialog.addButton("Annuler", QMessageBox.ButtonRole.RejectRole)
+        dialog.exec()
+        return dialog.clickedButton() is install
+
+    def _start_firmware_flash(self):
+        if not self._flash_workflow_active or not self._flash_port:
+            return
+        self.firmware_status_label.setText("Écriture et vérification par AVRDUDE…")
+        bootloader = self.nano_bootloader_combo.currentData()
+        if not self.firmware_flash.start_flash(self._flash_port, bootloader):
+            if self._flash_workflow_active:
+                self._finish_firmware_flash_failure("Démarrage impossible")
+
+    def _firmware_upload_verified(self, _manifest):
+        if not self._flash_workflow_active:
+            return
+        self._clear_active_calibration()
+        self.applied_config = None
+        self.session_id = None
+        self.firmware_status_label.setText("Redémarrage du Nano…")
+        self.firmware_reconnect_timeout.start()
+        self.firmware_reconnect_timer.start()
+
+    def _attempt_firmware_reconnect(self):
+        if not self._flash_workflow_active or not self._flash_port:
+            return
+        if self.controller.state not in (
+            SpectroControllerState.DISCONNECTED, SpectroControllerState.ERROR
+        ):
+            return
+        self.controller.close()
+        self.firmware_status_label.setText("Vérification SPCT du micrologiciel…")
+        if self.controller.open(self._flash_port):
+            self._flash_reconnect_opened = True
+        else:
+            self.firmware_reconnect_timer.start()
+
+    def _firmware_reconnect_timed_out(self):
+        if not self._flash_workflow_active:
+            return
+        self.firmware_reconnect_timer.stop()
+        self.controller.close()
+        message = (
+            "Le Nano est revenu mais le micrologiciel SPCT n’a pas été identifié."
+            if self._flash_reconnect_opened
+            else "Le Nano n’est pas revenu après la programmation."
+        )
+        try:
+            self.firmware_flash.fail_post_flash_verification(
+                message, "Délai global de reconnexion dépassé."
+            )
+        except RuntimeError:
+            self._finish_firmware_flash_failure(message)
+
+    def _firmware_flash_succeeded(self, result):
+        self._stop_firmware_timers()
+        self._flash_workflow_active = False
+        self._firmware_mode = "current"
+        version = ".".join(map(str, result.actual_version))
+        self.firmware_status_label.setText(
+            f"Version installée {version} — vérifiée et prête"
+        )
+        self._update_controls()
+
+    def _firmware_flash_failed(self, failure):
+        message = failure.user_message
+        if failure.kind is FlashErrorKind.AVRDUDE_FAILED:
+            message += " Vérifiez le port et le bootloader sélectionnés."
+        self._finish_firmware_flash_failure(message)
+
+    def _firmware_process_settled(self):
+        self._update_controls()
+
+    def _finish_firmware_flash_failure(self, message):
+        self._stop_firmware_timers()
+        self._flash_workflow_active = False
+        self.firmware_status_label.setText(f"Installation échouée — {message}")
+        self._update_controls()
+
+    def _stop_firmware_timers(self):
+        self.firmware_port_release_timer.stop()
+        self.firmware_reconnect_timer.stop()
+        self.firmware_reconnect_timeout.stop()
 
     def _apply_plot_palette(self):
         palette = self.palette()
@@ -2534,6 +2781,18 @@ class SpectrophotometryTab(QWidget):
 
     def _controller_ready(self, firmware_info):
         self._firmware_info = firmware_info
+        if self.firmware_resources is not None:
+            self._display_firmware_state(firmware_info)
+        if self._flash_workflow_active:
+            self.firmware_reconnect_timer.stop()
+            self.firmware_status_label.setText("Vérification SPCT du micrologiciel…")
+            if not self.firmware_flash.confirm_firmware(
+                firmware_info.version, PROTOCOL_VERSION, firmware_info.capabilities
+            ):
+                return
+            # Le flash invalide volontairement l'ancienne session scientifique.
+            # La reconnexion vérifiée ouvre une session neuve avant toute mesure.
+            self.session_id = uuid4().hex
         if self.kinetic_journal is not None and self.kinetic_experiment is not None:
             self.kinetic_journal.record_event(
                 "connection_established",
@@ -2864,6 +3123,12 @@ class SpectrophotometryTab(QWidget):
             self._update_controls()
 
     def _controller_error(self, message):
+        if self._flash_workflow_active and self.firmware_reconnect_timeout.isActive():
+            self.controller.close()
+            self.firmware_status_label.setText("Redémarrage du Nano…")
+            self.firmware_reconnect_timer.start()
+            self._update_controls()
+            return
         if self.kinetic_journal is not None and self.kinetic_experiment is not None:
             self.kinetic_journal.record_event(
                 "communication_error",
@@ -3201,6 +3466,8 @@ class SpectrophotometryTab(QWidget):
             or self._pending_kinetic_experiment_id is not None
             or self._kinetic_active
             or self._kinetic_stopping
+            or self._flash_workflow_active
+            or self.firmware_flash.active
         )
         configured = (
             state is SpectroControllerState.CONFIGURED
@@ -3211,9 +3478,11 @@ class SpectrophotometryTab(QWidget):
             and not self._kinetic_stopping
         )
         self.connect_button.setText("Connecter" if disconnected else "Déconnecter")
-        self.connect_button.setEnabled(not self._disconnect_pending)
-        self.port_combo.setEnabled(disconnected)
-        self.refresh_button.setEnabled(disconnected)
+        self.connect_button.setEnabled(
+            not self._disconnect_pending and not self._flash_workflow_active
+        )
+        self.port_combo.setEnabled(disconnected and not self._flash_workflow_active)
+        self.refresh_button.setEnabled(disconnected and not self._flash_workflow_active)
         self.mode_combo.setEnabled(not busy)
         self.apply_config_button.setEnabled(
             state in (SpectroControllerState.READY, SpectroControllerState.CONFIGURED)
@@ -3291,6 +3560,8 @@ class SpectrophotometryTab(QWidget):
                 and kinetic_signature not in self._kinetic_completed_transfers
             )
             self._update_diagnostic_export_availability()
+        if hasattr(self, "firmware_button"):
+            self._update_firmware_controls(busy)
 
     def shutdown(self):
         """Nettoyer timers, calibration et port lors d'une fermeture globale."""
@@ -3302,6 +3573,8 @@ class SpectrophotometryTab(QWidget):
         self.kinetic_schedule_timer.stop()
         self.kinetic_duration_timer.stop()
         self.kinetic_clock_timer.stop()
+        self._stop_firmware_timers()
+        self.firmware_flash.shutdown()
         self._interrupt_kinetic("Fermeture du projet : expérience interrompue.")
         if self.controller.state is SpectroControllerState.MEASURING:
             try:

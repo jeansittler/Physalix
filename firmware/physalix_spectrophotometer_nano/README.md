@@ -37,9 +37,20 @@ arduino-cli compile --fqbn arduino:avr:uno --clean --warnings all `
   .\firmware\physalix_spectrophotometer_nano
 ```
 
-Le FQBN `arduino:avr:uno` produit le code ATmega328P demandé. Les paramètres de
-téléversement propres au bootloader du Nano seront traités lors des essais
-matériels et ne font pas partie de ce lot.
+Le FQBN `arduino:avr:uno` produit le code ATmega328P demandé. Le HEX applicatif
+officiel est distribué dans `physalix/resources/firmware/nano-spectro`, avec un
+manifeste SHA-256 strict. Physalix réutilise l'AVRDUDE 8.1 déjà distribué pour
+l'Acquisition Uno, sans en embarquer une seconde copie.
+
+La programmation cible toujours `atmega328p` avec le programmeur AVRDUDE
+`arduino`. L'utilisateur choisit explicitement le bootloader avant le flash :
+
+- bootloader récent : 115200 bauds ;
+- ancien bootloader : 57600 bauds.
+
+Physalix ne tente jamais automatiquement le second profil après un échec. Le
+succès final exige une reconnexion, la signature SPCT, le capteur AS7341, le
+protocole 1, les capacités attendues et la version 1.0.0.
 
 ## Protocole
 

@@ -39,6 +39,12 @@ from physalix.spectrophotometry_protocol import (
     SpectroSensorType,
 )
 from physalix.spectrophotometry_serial import SpectroControllerState
+from physalix.firmware_flash import (
+    FirmwareCompatibility,
+    NanoBootloader,
+    compare_firmware,
+)
+from physalix.firmware_resources import load_nano_resources
 from physalix.ui.graph_series import PopupComboBox
 from physalix.ui.main_window import MainWindow
 from physalix.ui.spectrophotometry_tab import (
@@ -152,6 +158,48 @@ class FakeSpectroController(QObject):
     def close(self):
         self.close_calls += 1
         self.set_state(SpectroControllerState.DISCONNECTED)
+
+
+class FakeSpectroFirmwareFlash(QObject):
+    upload_verified = Signal(object)
+    succeeded = Signal(object)
+    failed = Signal(object)
+    process_settled = Signal()
+
+    def __init__(self):
+        super().__init__()
+        self.resources = load_nano_resources()
+        self.active = False
+        self.start_calls = []
+        self.confirm_calls = []
+        self.verification_failures = []
+        self.shutdown_calls = 0
+
+    def start_flash(self, port, bootloader):
+        self.start_calls.append((port, bootloader))
+        self.active = True
+        return True
+
+    def emit_upload_verified(self):
+        self.upload_verified.emit(self.resources.manifest)
+
+    def confirm_firmware(self, version, protocol, capabilities):
+        self.confirm_calls.append((version, protocol, capabilities))
+        result = compare_firmware(
+            self.resources.manifest, version, protocol, capabilities
+        )
+        if result.status is FirmwareCompatibility.COMPATIBLE:
+            self.active = False
+            self.succeeded.emit(result)
+            return True
+        return False
+
+    def fail_post_flash_verification(self, message, details):
+        self.verification_failures.append((message, details))
+
+    def shutdown(self):
+        self.shutdown_calls += 1
+        self.active = False
 
 
 class FakeDataTab:
@@ -1743,6 +1791,117 @@ class SpectrophotometryNavigationTests(unittest.TestCase):
         finally:
             window._discard_on_close = True
             window.close()
+
+
+class SpectrophotometryFirmwareUiTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.app = QApplication.instance() or QApplication([])
+
+    def setUp(self):
+        self.controller = FakeSpectroController()
+        self.flash = FakeSpectroFirmwareFlash()
+        self.tab = SpectrophotometryTab(
+            self.controller,
+            firmware_flash=self.flash,
+            firmware_resource_loader=lambda: self.flash.resources,
+        )
+
+    def tearDown(self):
+        self.tab.shutdown()
+        self.tab.deleteLater()
+        self.app.processEvents()
+
+    def test_advanced_section_displays_target_version_and_bootloaders(self):
+        self.assertEqual(self.tab.firmware_board_label.text(), "Arduino Nano · ATmega328P · 5 V")
+        self.assertEqual(self.tab.firmware_embedded_label.text(), "1.0.0")
+        self.assertEqual(
+            [self.tab.nano_bootloader_combo.itemData(index)
+             for index in range(self.tab.nano_bootloader_combo.count())],
+            [NanoBootloader.RECENT, NanoBootloader.OLD],
+        )
+        self.tab.connect_button.click()
+        self.controller.emit_ready()
+        self.assertIn("à jour", self.tab.firmware_status_label.text())
+        self.assertEqual(self.tab.firmware_button.text(), "Réinstaller le micrologiciel…")
+
+    def test_confirmation_cancel_and_busy_state_start_no_flash(self):
+        with patch.object(self.tab, "_confirm_firmware_flash", return_value=False):
+            self.tab.firmware_button.click()
+        self.assertFalse(self.flash.start_calls)
+        self.tab.connect_button.click()
+        self.controller.emit_ready()
+        self.controller.accept_configuration()
+        self.controller.set_state(SpectroControllerState.MEASURING)
+        self.tab._update_controls()
+        self.assertFalse(self.tab.firmware_button.isEnabled())
+
+    def test_active_flash_can_be_cancelled_without_touching_another_port(self):
+        with patch.object(self.tab, "_confirm_firmware_flash", return_value=True):
+            self.tab.firmware_button.click()
+        self.assertEqual(self.tab._flash_port, "COM4")
+        self.tab.request_firmware_installation()
+        self.assertFalse(self.tab._flash_workflow_active)
+        self.assertEqual(self.flash.shutdown_calls, 1)
+        self.assertIn("annulée", self.tab.firmware_status_label.text())
+
+    def test_explicit_old_bootloader_flash_reconnects_and_invalidates_only_calibration(self):
+        self.tab.nano_bootloader_combo.setCurrentIndex(1)
+        preserved = object()
+        self.tab.spectra = [preserved]
+        with patch.object(self.tab, "_confirm_firmware_flash", return_value=True):
+            self.tab.firmware_button.click()
+        self.tab.firmware_port_release_timer.stop()
+        self.tab._start_firmware_flash()
+        self.assertEqual(
+            self.flash.start_calls, [("COM4", NanoBootloader.OLD)]
+        )
+        self.tab.dark_measurement = object()
+        self.tab.white_measurement = object()
+        self.tab.calibration = object()
+        self.flash.emit_upload_verified()
+        self.assertIsNone(self.tab.calibration)
+        self.assertEqual(self.tab.spectra, [preserved])
+        self.tab.firmware_reconnect_timer.stop()
+        self.tab._attempt_firmware_reconnect()
+        self.controller.emit_ready()
+        self.assertEqual(self.flash.confirm_calls[-1], ((1, 0, 0), 1, 0x1F))
+        self.assertFalse(self.tab._flash_workflow_active)
+        self.assertIn("vérifiée et prête", self.tab.firmware_status_label.text())
+        self.assertIsNotNone(self.tab.session_id)
+        self.controller.accept_configuration()
+
+        # L'expérience historique reste disponible, puis la nouvelle session
+        # doit pouvoir enchaîner noir, blanc et échantillon sans redémarrage.
+        self.assertEqual(self.tab.spectra, [preserved])
+        self.tab.spectra = []
+        self.tab._confirm_measurement_preparation = lambda _kind: True
+        self.tab.dark_button.click()
+        self.controller.emit_measurement(0)
+        self.tab.white_button.click()
+        self.controller.emit_measurement(100)
+        self.assertIsNotNone(self.tab.calibration)
+        self.tab.sample_button.click()
+        self.controller.emit_measurement(10)
+        self.assertEqual(len(self.tab.spectra), 1)
+
+    def test_missing_post_flash_handshake_is_not_reported_as_success(self):
+        with patch.object(self.tab, "_confirm_firmware_flash", return_value=True):
+            self.tab.firmware_button.click()
+        self.tab.firmware_port_release_timer.stop()
+        self.tab._start_firmware_flash()
+        self.flash.emit_upload_verified()
+        self.tab._flash_reconnect_opened = True
+        self.tab._firmware_reconnect_timed_out()
+        self.assertTrue(self.flash.verification_failures)
+        self.assertIn("pas été identifié", self.flash.verification_failures[-1][0])
+        self.assertIsNone(self.tab.session_id)
+        self.assertEqual(self.controller.configurations, [])
+
+class SpectrophotometryNavigationAdditionalTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.app = QApplication.instance() or QApplication([])
 
     def test_help_menu_contains_discreet_disabled_diagnostic_action(self):
         window = MainWindow()

@@ -74,10 +74,19 @@ def bundle(directory):
         if source.is_file():
             target = directory / "_internal" / source.relative_to(ROOT)
             assert target.read_bytes() == source.read_bytes(), target
-    from physalix.firmware_resources import load_uno_resources
+    from physalix.firmware_resources import load_nano_resources, load_uno_resources
     firmware = load_uno_resources(
         directory / "_internal/physalix/resources/firmware/uno")
     avrdude_startup(firmware.uploader_executable, firmware.uploader_config)
+    nano = load_nano_resources(
+        directory / "_internal/physalix/resources/firmware/nano-spectro",
+        directory / "_internal/physalix/resources/firmware/uno",
+    )
+    assert nano.manifest.firmware_version == "1.0.0"
+    assert nano.manifest.protocol_version == 1
+    assert nano.manifest.required_capabilities == 0x1F
+    assert nano.uploader_executable == firmware.uploader_executable
+    assert nano.uploader_config == firmware.uploader_config
     for name in ("python312.dll", "VCRUNTIME140.dll", "VCRUNTIME140_1.dll", "MSVCP140.dll"):
         assert list(directory.rglob(name)), f"Missing runtime: {name}"
     assert list(directory.rglob("qwindows.dll")), "Windows Qt plugin missing"
