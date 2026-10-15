@@ -277,14 +277,21 @@ class ProjectTests(unittest.TestCase):
         application.arguments.return_value = ['Physalix.exe', str(path)]
         application.exec.return_value = 0
         window = MagicMock()
+        splash = MagicMock()
+        guard = MagicMock()
         with patch('physalix.app.QApplication', return_value=application), \
-                patch('physalix.app.MainWindow', return_value=window), \
+                patch('physalix.app._load_main_window', return_value=MagicMock(return_value=window)), \
+                patch('physalix.app.StartupSplash', return_value=splash), \
                 patch('physalix.app.set_windows_app_id'), \
                 patch('physalix.app.application_icon'), \
                 patch('physalix.app.apply_theme'):
-            self.assertEqual(app_main(), 0)
+            self.assertEqual(app_main(guard), 0)
         window.open_project_path.assert_called_once_with(path)
         window.show.assert_called_once_with()
+        guard.tag_window.assert_any_call(splash)
+        guard.tag_window.assert_any_call(window)
+        guard.untag_window.assert_called_once_with(splash)
+        splash.finish.assert_called_once_with(window)
 
     def test_manual_open_delegates_to_shared_path_loader(self):
         with patch.object(QFileDialog, 'getOpenFileName', return_value=(str(self.path), '')), \

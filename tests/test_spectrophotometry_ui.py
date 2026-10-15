@@ -247,6 +247,14 @@ class SpectrophotometryTabTests(unittest.TestCase):
         self.assertTrue(self.tab.mode_combo.model().item(3).isEnabled())
         self.assertEqual(self.tab.mode_combo.count(), 4)
         self.assertFalse(self.tab.advanced_content.isVisible())
+        self.assertEqual(
+            [
+                self.tab.spectrum_display_combo.itemText(index)
+                for index in range(self.tab.spectrum_display_combo.count())
+            ],
+            ["Points mesurés", "Courbe interpolée (PCHIP)"],
+        )
+        self.assertEqual(self.tab.spectrum_display_combo.currentData(), "points")
         self.assertEqual(self.tab.main_splitter.count(), 2)
         self.assertCountEqual(
             self.tab.findChildren(QScrollArea),
@@ -872,7 +880,7 @@ class SpectrophotometryTabTests(unittest.TestCase):
         confirmation.assert_not_called()
         self.assertEqual(len(self.tab.spectra), 1)
 
-    def test_dark_white_sample_workflow_creates_eight_points(self):
+    def test_default_spectrum_display_shows_only_eight_measured_points(self):
         self.connect_and_configure()
         self.assertTrue(self.tab.dark_button.isEnabled())
         self.assertFalse(self.tab.white_button.isEnabled())
@@ -888,12 +896,38 @@ class SpectrophotometryTabTests(unittest.TestCase):
         self.assertEqual(len(display.spectrum.bands), 8)
         self.assertEqual(len(display.experimental_item.xData), 8)
         self.assertEqual(tuple(display.experimental_item.xData), (415, 445, 480, 515, 555, 590, 630, 680))
+        self.assertIsNone(display.experimental_item.opts["pen"])
+        self.assertEqual(display.interpolation_items, [])
+        self.assertEqual(display.fill_items, [])
+        self.assertEqual(self.tab.spectrum_display_combo.currentData(), "points")
+        self.assertIsNotNone(self.tab.spectrum_band_item)
+        bounds = self.tab.spectrum_band_item.path().boundingRect()
+        self.assertEqual(bounds.left(), 415)
+        self.assertEqual(bounds.right(), 680)
+
+    def test_interpolated_mode_keeps_pchip_curve_and_spectral_fill(self):
+        self.connect_and_configure()
+        self.calibrate()
+        self.measure_sample()
+        display = self.tab.spectra[0]
+        measurement_count = len(self.controller.measurements)
+        spectrum = display.spectrum
+
+        self.tab.spectrum_display_combo.setCurrentIndex(
+            self.tab.spectrum_display_combo.findData("interpolated")
+        )
+
+        self.assertEqual(len(self.controller.measurements), measurement_count)
+        self.assertIs(display.spectrum, spectrum)
+        self.assertEqual(len(display.experimental_item.xData), 8)
         self.assertEqual(len(display.interpolation_items), 1)
         self.assertEqual(len(display.fill_items), 1)
+        self.assertIsNone(self.tab.spectrum_band_item)
         self.assertEqual(display.fill_items[0].path().boundingRect().left(), 415)
         self.assertEqual(display.fill_items[0].path().boundingRect().right(), 680)
         self.assertGreater(display.experimental_item.zValue(), display.fill_items[0].zValue())
         self.assertGreater(display.interpolation_items[0].zValue(), display.fill_items[0].zValue())
+        self.assertIn("pics", self.tab.spectrum_display_note.text())
 
     def test_parameter_change_invalidates_active_calibration_but_keeps_spectra(self):
         self.connect_and_configure()
@@ -910,6 +944,9 @@ class SpectrophotometryTabTests(unittest.TestCase):
     def test_invalid_band_is_not_drawn_or_interpolated_across(self):
         self.connect_and_configure()
         self.calibrate()
+        self.tab.spectrum_display_combo.setCurrentIndex(
+            self.tab.spectrum_display_combo.findData("interpolated")
+        )
         self.measure_sample(saturation_flags=1 << 3)
 
         display = self.tab.spectra[0]
@@ -923,6 +960,48 @@ class SpectrophotometryTabTests(unittest.TestCase):
         self.assertGreaterEqual(display.fill_items[1].path().boundingRect().left(), 555)
         self.assertIn("1 bande(s) indisponible(s)", self.tab.measurement_status.text())
 
+    def test_invalid_band_is_omitted_in_points_mode_without_segments(self):
+        self.connect_and_configure()
+        self.calibrate()
+        self.measure_sample(saturation_flags=1 << 3)
+
+        display = self.tab.spectra[0]
+        self.assertEqual(len(display.experimental_item.xData), 7)
+        self.assertNotIn(515, display.experimental_item.xData)
+        self.assertIsNone(display.experimental_item.opts["pen"])
+        self.assertEqual(display.interpolation_items, [])
+        self.assertEqual(display.fill_items, [])
+
+    def test_points_mode_rainbow_band_tracks_zoom_resize_and_theme(self):
+        self.tab.resize(1280, 800)
+        self.tab.show()
+        self.app.processEvents()
+        item = self.tab.spectrum_band_item
+        self.assertIsNotNone(item)
+
+        self.tab.plot.setRange(xRange=(430, 610), yRange=(-0.2, 1.8), padding=0)
+        self.tab.resize(1600, 900)
+        self.app.processEvents()
+        bounds = item.path().boundingRect()
+        y_range = self.tab.plot.viewRange()[1]
+        self.assertEqual((bounds.left(), bounds.right()), (415, 680))
+        self.assertGreaterEqual(bounds.top(), y_range[0])
+        self.assertLess(bounds.bottom(), y_range[0] + 0.08 * (y_range[1] - y_range[0]))
+
+        dark_palette = QPalette(self.tab.palette())
+        dark_palette.setColor(QPalette.ColorRole.Base, QColor("#20242a"))
+        self.tab.setPalette(dark_palette)
+        self.tab._apply_plot_palette()
+        dark_alphas = [color.alpha() for _, color in item.brush().gradient().stops()]
+        self.assertTrue(dark_alphas and all(alpha == 185 for alpha in dark_alphas))
+
+        light_palette = QPalette(dark_palette)
+        light_palette.setColor(QPalette.ColorRole.Base, QColor("#ffffff"))
+        self.tab.setPalette(light_palette)
+        self.tab._apply_plot_palette()
+        light_alphas = [color.alpha() for _, color in item.brush().gradient().stops()]
+        self.assertTrue(light_alphas and all(alpha == 215 for alpha in light_alphas))
+
     def test_multiple_spectra_can_be_renamed_and_hidden(self):
         self.connect_and_configure()
         self.calibrate()
@@ -930,6 +1009,7 @@ class SpectrophotometryTabTests(unittest.TestCase):
         self.measure_sample(20)
 
         self.assertEqual(len(self.tab.spectra), 2)
+        self.assertNotEqual(self.tab.spectra[0].color, self.tab.spectra[1].color)
         first_row = self.tab.spectra_list.itemWidget(self.tab.spectra_list.item(0))
         first_row.findChild(QLineEdit).setText("Permanganate")
         first_row.findChild(QCheckBox).setChecked(False)

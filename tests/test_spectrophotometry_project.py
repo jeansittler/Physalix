@@ -186,6 +186,9 @@ class SpectrophotometryProjectTests(unittest.TestCase):
 
     def test_real_project_roundtrip_restores_all_modes_without_active_calibration(self):
         source = self.populated_window()
+        source.spectrophotometry_tab.spectrum_display_combo.setCurrentIndex(
+            source.spectrophotometry_tab.spectrum_display_combo.findData("interpolated")
+        )
         source.data_tab.model.setData(source.data_tab.model.index(2, 0), "42")
         state = snapshot(source)
         json.dumps(state, ensure_ascii=False, allow_nan=False)
@@ -205,6 +208,7 @@ class SpectrophotometryProjectTests(unittest.TestCase):
         self.assertIsNone(tab.white_measurement)
         self.assertFalse(tab.absorbance_measure_button.isEnabled())
         self.assertFalse(tab.kinetic_start_button.isEnabled())
+        self.assertEqual(tab.spectrum_display_combo.currentData(), "interpolated")
 
         self.assertEqual(len(tab.spectra), 1)
         display = tab.spectra[0]
@@ -256,6 +260,36 @@ class SpectrophotometryProjectTests(unittest.TestCase):
         self.assertIsNone(tab.absorbance_spectrum)
         self.assertEqual(tab.beer_standards, [])
         self.assertIsNone(tab.kinetic_experiment)
+
+    def test_old_spectro_project_without_display_preference_keeps_pchip(self):
+        source = self.populated_window()
+        state = snapshot(source)
+        state["spectrophotometry"].pop("spectrum_display_mode")
+        state["spectrophotometry"]["spectra"][0]["visible"] = True
+
+        restored = self.window()
+        restore(restored, state)
+
+        tab = restored.spectrophotometry_tab
+        self.assertEqual(tab.spectrum_display_combo.currentData(), "interpolated")
+        display = tab.spectra[0]
+        self.assertEqual(len(display.interpolation_items), 1)
+        self.assertEqual(len(display.fill_items), 1)
+
+    def test_points_display_preference_survives_save_and_reopen(self):
+        source = self.populated_window()
+        self.assertEqual(
+            source.spectrophotometry_tab.spectrum_display_combo.currentData(),
+            "points",
+        )
+        write_project(self.path, snapshot(source))
+
+        restored = self.window()
+        restore(restored, read_project(self.path), self.path)
+
+        tab = restored.spectrophotometry_tab
+        self.assertEqual(tab.spectrum_display_combo.currentData(), "points")
+        self.assertIsNotNone(tab.spectrum_band_item)
 
     def test_corrupt_or_incomplete_spectro_state_is_rejected(self):
         source = self.populated_window()

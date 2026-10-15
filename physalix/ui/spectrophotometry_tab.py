@@ -89,6 +89,18 @@ from physalix.ui.theme import LIGHT, SERIES_COLORS
 
 DISCONNECT_TIMEOUT_MS = 3500
 _SUPERSCRIPT = str.maketrans("-0123456789", "⁻⁰¹²³⁴⁵⁶⁷⁸⁹")
+SPECTRUM_DISPLAY_POINTS = "points"
+SPECTRUM_DISPLAY_INTERPOLATED = "interpolated"
+SPECTRAL_COLORS = (
+    (415, "#6F2DBD"),
+    (445, "#2455D6"),
+    (480, "#009FE3"),
+    (515, "#00A651"),
+    (555, "#F0D000"),
+    (590, "#FF8C00"),
+    (630, "#E32636"),
+    (680, "#A4142D"),
+)
 
 
 def _format_projection_concentration(value):
@@ -444,6 +456,7 @@ class SpectrophotometryTab(QWidget):
         self.kinetic_clock_timer = QTimer(self)
         self.kinetic_clock_timer.setInterval(250)
         self.kinetic_clock_timer.timeout.connect(self._refresh_kinetic_clock)
+        self.refresh_plot()
         self.refresh_ports()
         self._update_calibration_status()
         self._update_controls()
@@ -503,14 +516,30 @@ class SpectrophotometryTab(QWidget):
         self.plot.showGrid(x=True, y=True, alpha=0.18)
         self.plot.setXRange(400, 695, padding=0)
         self.plot.addLegend(offset=(8, 8))
+        display_row = QHBoxLayout()
+        display_row.setSpacing(LIGHT.related)
+        display_row.addStretch()
+        display_row.addWidget(label("Affichage", "fieldLabel"))
+        self.spectrum_display_combo = PopupComboBox()
+        self.spectrum_display_combo.addItem(
+            "Points mesurés", SPECTRUM_DISPLAY_POINTS
+        )
+        self.spectrum_display_combo.addItem(
+            "Courbe interpolée (PCHIP)", SPECTRUM_DISPLAY_INTERPOLATED
+        )
+        self.spectrum_display_combo.setMinimumWidth(230)
+        configure_popup(self.spectrum_display_combo, 270)
+        update_popup_height(self.spectrum_display_combo)
+        display_row.addWidget(self.spectrum_display_combo)
+        plot_layout.addLayout(display_row)
         self._apply_plot_palette()
         plot_layout.addWidget(self.plot, 1)
-        plot_layout.addWidget(
-            label(
-                "Les marqueurs sont les huit mesures ; les lignes sont des "
-                "interpolations PCHIP et le remplissage repère les longueurs d'onde.",
-                "caption",
-            )
+        self.spectrum_display_note = label("", "caption")
+        plot_layout.addWidget(self.spectrum_display_note)
+        self.spectrum_band_item = None
+        self._update_spectrum_display_note()
+        self.plot.getViewBox().sigRangeChanged.connect(
+            self._position_spectrum_band
         )
         self.main_splitter.addWidget(plot_panel)
 
@@ -639,6 +668,9 @@ class SpectrophotometryTab(QWidget):
         )
         self.remove_spectrum_button.clicked.connect(self.remove_selected_spectrum)
         self.mode_combo.currentIndexChanged.connect(self._mode_changed)
+        self.spectrum_display_combo.currentIndexChanged.connect(
+            self._spectrum_display_changed
+        )
         for widget in (self.atime_spin, self.astep_spin, self.gain_combo, self.pwm_spin):
             signal = (
                 widget.currentIndexChanged
@@ -1120,6 +1152,17 @@ class SpectrophotometryTab(QWidget):
             axis = self.plot.getAxis(name)
             axis.setPen(axis_pen)
             axis.setTextPen(text_pen)
+        dark_background = palette.color(QPalette.ColorRole.Base).lightness() < 128
+        band = getattr(self, "spectrum_band_item", None)
+        if band is not None:
+            band.setBrush(
+                QBrush(self._spectral_gradient(185 if dark_background else 215))
+            )
+        for display in getattr(self, "spectra", []):
+            for fill in display.fill_items:
+                fill.setBrush(
+                    QBrush(self._spectral_gradient(120 if dark_background else 160))
+                )
 
     def _apply_beer_plot_palette(self):
         palette = self.palette()
@@ -1213,6 +1256,23 @@ class SpectrophotometryTab(QWidget):
     def _mode_changed(self, index):
         self.mode_stack.setCurrentIndex(index)
         self._update_controls()
+
+    def _spectrum_display_changed(self, _index):
+        self._update_spectrum_display_note()
+        self.refresh_plot()
+
+    def _update_spectrum_display_note(self):
+        if self.spectrum_display_combo.currentData() == SPECTRUM_DISPLAY_INTERPOLATED:
+            text = (
+                "Interpolation PCHIP indicative entre les bandes valides : des pics "
+                "non mesurés peuvent exister entre les huit marqueurs expérimentaux."
+            )
+        else:
+            text = (
+                "Les marqueurs sont les mesures réelles de l’AS7341 ; la bande colorée "
+                "situe seulement les longueurs d’onde visibles."
+            )
+        self.spectrum_display_note.setText(text)
 
     def absorbance_band_index(self):
         return int(self.absorbance_band_combo.currentData())
@@ -2989,10 +3049,15 @@ class SpectrophotometryTab(QWidget):
         self._update_controls()
 
     def refresh_plot(self):
+        self.spectrum_band_item = None
         self.plot.clear()
         legend = self.plot.getPlotItem().legend
         if legend is not None:
             legend.clear()
+        interpolated = (
+            self.spectrum_display_combo.currentData()
+            == SPECTRUM_DISPLAY_INTERPOLATED
+        )
         for display in self.spectra:
             display.experimental_item = None
             display.interpolation_items.clear()
@@ -3013,6 +3078,8 @@ class SpectrophotometryTab(QWidget):
                 name=f"{display.name} — points mesurés",
             )
             display.experimental_item.setZValue(20)
+            if not interpolated:
+                continue
             for run_index, run in enumerate(self._valid_runs(display.spectrum)):
                 if len(run) < 2:
                     continue
@@ -3035,8 +3102,48 @@ class SpectrophotometryTab(QWidget):
                 )
                 curve.setZValue(10)
                 display.interpolation_items.append(curve)
+        if not interpolated:
+            self._create_visible_spectrum_band()
         self.plot.setXRange(400, 695, padding=0)
         self.plot.enableAutoRange(axis="y", enable=True)
+        self._position_spectrum_band()
+
+    def _spectral_gradient(self, alpha):
+        gradient = QLinearGradient(415.0, 0.0, 680.0, 0.0)
+        for wavelength, color_name in SPECTRAL_COLORS:
+            color = QColor(color_name)
+            color.setAlpha(alpha)
+            gradient.setColorAt((wavelength - 415) / (680 - 415), color)
+        return gradient
+
+    def _create_visible_spectrum_band(self):
+        dark_background = (
+            self.palette().color(QPalette.ColorRole.Base).lightness() < 128
+        )
+        item = QGraphicsPathItem()
+        border = QColor(self.palette().color(QPalette.ColorRole.Mid))
+        border.setAlpha(150)
+        item.setPen(pg.mkPen(border, width=0.7))
+        item.setBrush(QBrush(self._spectral_gradient(185 if dark_background else 215)))
+        item.setZValue(-30)
+        self.plot.addItem(item, ignoreBounds=True)
+        self.spectrum_band_item = item
+
+    def _position_spectrum_band(self, *args):
+        item = self.spectrum_band_item
+        if item is None:
+            return
+        y_min, y_max = self.plot.viewRange()[1]
+        span = max(y_max - y_min, 1e-12)
+        bottom = y_min + 0.018 * span
+        top = bottom + 0.028 * span
+        path = QPainterPath()
+        path.moveTo(415.0, bottom)
+        path.lineTo(680.0, bottom)
+        path.lineTo(680.0, top)
+        path.lineTo(415.0, top)
+        path.closeSubpath()
+        item.setPath(path)
 
     def _create_spectrum_fill(self, xs, ys):
         path = QPainterPath()
@@ -3047,28 +3154,14 @@ class SpectrophotometryTab(QWidget):
         path.lineTo(float(xs[-1]), 0.0)
         path.closeSubpath()
 
-        gradient = QLinearGradient(415.0, 0.0, 680.0, 0.0)
         dark_background = (
             self.palette().color(QPalette.ColorRole.Base).lightness() < 128
         )
         alpha = 120 if dark_background else 160
-        for wavelength, color_name in (
-            (415, "#6F2DBD"),
-            (445, "#2455D6"),
-            (480, "#009FE3"),
-            (515, "#00A651"),
-            (555, "#F0D000"),
-            (590, "#FF8C00"),
-            (630, "#E32636"),
-            (680, "#A4142D"),
-        ):
-            color = QColor(color_name)
-            color.setAlpha(alpha)
-            gradient.setColorAt((wavelength - 415) / (680 - 415), color)
 
         item = QGraphicsPathItem(path)
         item.setPen(Qt.PenStyle.NoPen)
-        item.setBrush(QBrush(gradient))
+        item.setBrush(QBrush(self._spectral_gradient(alpha)))
         item.setZValue(-20)
         return item
 

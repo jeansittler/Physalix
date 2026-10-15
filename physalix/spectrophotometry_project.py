@@ -412,6 +412,7 @@ def snapshot_spectrophotometry(tab):
         "version": SPECTRO_PROJECT_VERSION,
         "calibrations": list(calibrations.values()),
         "mode": tab.mode_combo.currentData(),
+        "spectrum_display_mode": tab.spectrum_display_combo.currentData(),
         "spectra": [
             {
                 "name": display.name,
@@ -509,6 +510,14 @@ def restore_spectrophotometry(tab, saved, column_count):
         if calibration.reference_id in calibrations:
             raise ValueError("Identifiant de calibration historique répété.")
         calibrations[calibration.reference_id] = calibration
+
+    # Les projets antérieurs à ce réglage conservent leur ancien rendu PCHIP.
+    spectrum_display_mode = saved.get("spectrum_display_mode", "interpolated")
+    if spectrum_display_mode not in ("points", "interpolated"):
+        raise ValueError("Mode d'affichage du spectre inconnu.")
+    tab.spectrum_display_combo.setCurrentIndex(
+        tab.spectrum_display_combo.findData(spectrum_display_mode)
+    )
 
     raw_spectra = _sequence(saved.get("spectra", []), "Spectres", MAX_SPECTRA)
     for raw in raw_spectra:
