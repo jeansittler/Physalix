@@ -38,68 +38,51 @@ Fonctionnalités principales existantes :
 
 ### Version publique
 
-**Physalix 1.5.2**
+**Physalix 1.6.0**
 
 Commit de release :
 
-`396257e971870f012f467434593026a0fa8981cd`
+`5306f57a09000cdce5c7bf538cedd84dd85ece0c`
 
 Tag :
 
-`v1.5.2`
+`v1.6.0`
 
 Branche stable :
 
 `main`
 
-État de développement actuel :
+Release GitHub :
 
-`main == origin/main == 852eb5f987ce6140d3ad9944d6dbc1b01a3c3c9a`
+`https://github.com/jeansittler/Physalix/releases/tag/v1.6.0`
 
-Ce commit fusionne les six commits de `feature/spectrophotometry` dans `main`.
-La version du code reste `1.5.2`, mais cet état de développement est postérieur au
-tag public `v1.5.2`. La prochaine version publique n'est pas encore publiée et son
-numéro n'est pas officiellement décidé.
-
-Au début de la consolidation documentaire, `PROJECT_CONTEXT.md` était le seul
-fichier local modifié.
-
-### Release 1.5.2
-
-Physalix 1.5.2 est la release stable et Latest sur GitHub. Il s'agit de la
-première release Windows officiellement signée avec Certum, sans nouvelle
-fonctionnalité pédagogique.
+Le tag annoté `v1.6.0` pointe exactement sur le commit de release ci-dessus.
+Physalix 1.6.0 est la release stable et Latest sur GitHub. Elle publie notamment
+la Spectrophotométrie Arduino Nano / AS7341 intégrée à `main`.
 
 Assets publiés :
-- `Physalix-Setup-1.5.2.exe`
-- `Physalix-Setup-1.5.2.exe.sha256`
+- `Physalix-Setup-1.6.0.exe`
+- `Physalix-Setup-1.6.0.exe.sha256`
 - `update.json`
 
-SHA-256 de l’installateur 1.5.2 :
+SHA-256 de l’installateur 1.6.0 :
 
-`6365983a09876a7a7c9d5270f5c222e8b1f3bd80f4877906d76a0314e8c54b3c`
+`dbe631195a2a1fbe6cc4e9848421a9b6d96772bfa5a8699c62a5c1269e6873e9`
 
 `update.json` public :
-- version `1.5.2`
+- version `1.6.0`
 - `mandatory = false`
 - URL de l’installateur cohérente avec la release GitHub
 - SHA identique à celui de l’installateur
 - changelog cumulatif
 
-Validation de release : 410 tests réussis, bundle et smoke test réussis,
-`Physalix.exe`, installateur et désinstalleur Inno signés avec le certificat
-attendu et horodatés RFC 3161, manifeste non obligatoire cohérent avec le SHA-256
-final. Les signatures et horodatages ont été validés sous Windows 10 et Windows
-11. L'installation réelle et le lancement de la 1.5.2 ont été validés sous
-Windows 11, ainsi que la version affichée dans la fenêtre À propos.
-
-### Mise à jour réelle depuis 1.5.1
-
-La véritable mise à jour `1.5.1 → 1.5.2` a finalement réussi sur le portable
-Windows 10. Pendant ce parcours, un message indiquant que les droits
-d'administration étaient nécessaires est apparu après l'analyse CyberCapture.
-L'installation a néanmoins continué et abouti après fermeture de ce message.
-La cause exacte de ce comportement n'est pas établie.
+Validation de release : 615 tests réussis dans le pipeline, bundle de 674 fichiers
+(301,3 Mio), inventaire tiers de 29 fichiers, smoke test réussi après correction de
+sa détection du splash, et signatures Authenticode avec horodatage RFC 3161 valides.
+L'installateur signé fait 85 401 424 octets. Les trois assets ont été téléchargés
+depuis leurs URL publiques ; la signature, l'horodatage, la taille, le SHA-256 et
+le manifeste public ont été revérifiés. La véritable mise à jour
+`1.5.2 → 1.6.0` reste à tester et ne doit pas être présentée comme validée.
 
 Les règles permanentes de travail avec Codex sont centralisées dans `AGENTS.md`.
 
@@ -550,14 +533,14 @@ Préparation locale signée Physalix 1.5.2 :
 - `410 tests`
 - OK
 
-Dernier checkpoint complet après développement du Spectro :
-- `615 tests` — OK ;
-- exécuté avant la fusion sur le même arbre de code que celui fusionné dans `main`.
+Release Physalix 1.6.0 :
+- `615 tests` — OK dans le pipeline signé ;
+- bundle PyInstaller, inventaire tiers et smoke test — OK ;
+- signatures Authenticode et horodatages RFC 3161 — OK ;
+- assets GitHub publics et SHA-256 — OK.
 
-Le build PyInstaller incluant le firmware Nano a été validé. Le flash réel du Nano,
-sa reconnexion et sa réutilisation après flash ont également été validés. Ces
-contrôles ne constituent pas encore une validation de release signée ni une
-validation d'installation de la prochaine version publique.
+Le flash réel du Nano, sa reconnexion et sa réutilisation après flash avaient été
+validés avant la release. La mise à jour réelle `1.5.2 → 1.6.0` reste à effectuer.
 
 Dernière validation ciblée UI Acquisition/Firmware UI avant intégration :
 - `56 tests`
@@ -618,9 +601,8 @@ Les ressources firmware nécessaires au runtime doivent être incluses :
 - firmware et manifeste Nano pour la Spectrophotométrie ;
 - AVRDUDE 8.1 et sa configuration, partagés par les deux cartes.
 
-Le bundle PyInstaller avec les ressources Nano a été validé sur l'arbre Spectro
-fusionné. Une future release doit néanmoins refaire les contrôles de distribution,
-de signature et d'installation prévus par le workflow de release.
+Le bundle 1.6.0 publié contient les ressources Nano et Uno ainsi qu'AVRDUDE. Les
+contrôles de distribution, de signature et de publication publique ont réussi.
 
 ### Updater
 
@@ -744,9 +726,9 @@ Après stabilisation définitive, la branche pourra éventuellement être suppri
 
 Version applicative actuelle :
 
-`1.5.2`
+`1.6.0`
 
-Version publique actuelle : `1.5.2`.
+Version publique actuelle : `1.6.0`.
 
 Firmware Arduino :
 
@@ -857,8 +839,8 @@ La Spectrophotométrie est intégrée à `main` par le commit de fusion :
 `852eb5f987ce6140d3ad9944d6dbc1b01a3c3c9a`
 
 Ce commit conserve les six commits de `feature/spectrophotometry`, dont le dernier
-est `9c2577e46af869b203988285c3781fa1391bf4d0`. La branche stable et sa référence
-distante sont synchronisées sur ce commit.
+est `9c2577e46af869b203988285c3781fa1391bf4d0`. Le module est publié dans la release
+1.6.0, taguée sur `5306f57a09000cdce5c7bf538cedd84dd85ece0c`.
 
 Le développement parallèle dans `C:\Physalix-spectro` est terminé. Les corrections
 courantes du module se font désormais dans `C:\Physalix` sur `main`, sauf
@@ -924,7 +906,7 @@ Spectrophotométrie sans alourdir inutilement le présent contexte principal.
 
 ### Validations
 
-Dernier checkpoint connu sur l'arbre fusionné :
+Validations conservées :
 
 - `615 tests` complets réussis avant la fusion ;
 - build PyInstaller avec firmware Nano validé ;
@@ -932,23 +914,17 @@ Dernier checkpoint connu sur l'arbre fusionné :
 - reconnexion et réutilisation du Nano après flash validées ;
 - validation visuelle utilisateur réussie.
 
-Aucune nouvelle release publique ni installation signée intégrant Spectro n'est
-encore considérée comme validée.
+La release signée 1.6.0 intégrant Spectro est publiée et ses assets publics sont
+vérifiés. La mise à jour réelle depuis 1.5.2 reste distincte et non encore validée.
 
 ---
 
 ## 22. Prochaines étapes
 
-1. Préparer de manière contrôlée la prochaine release Physalix intégrant la
-   Spectrophotométrie, sans présumer de son numéro avant décision explicite.
-2. Exécuter au checkpoint de release les contrôles nécessaires : tests pertinents,
-   build, bundle, smoke test, signatures, horodatages et vérifications des ressources
-   Uno et Nano.
-3. Contrôler la réaction antivirus et réaliser une véritable mise à jour depuis
-   Physalix `1.5.2`, puis vérifier le redémarrage et les fonctions matérielles utiles.
-4. Publier uniquement après validation explicite de l'utilisateur et après
-   vérification complète des artefacts.
-5. Étudier ultérieurement un updater incrémental dans un worktree dédié, sans
+1. Réaliser une véritable mise à jour depuis Physalix `1.5.2`, puis vérifier le
+   redémarrage, la préservation des projets utilisateur et les fonctions utiles.
+2. Contrôler pendant ce parcours la réaction antivirus et l'élévation UAC.
+3. Étudier ultérieurement un updater incrémental dans un worktree dédié, sans
    commencer son développement pendant la préparation courante de release.
 
 Ne jamais présenter ces validations de release ou de mise à jour comme réalisées
