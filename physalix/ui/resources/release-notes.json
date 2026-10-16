@@ -92,5 +92,19 @@
       "Fiabilisation de la chaîne de publication afin d'empêcher la préparation accidentelle d'une release non signée.",
       "Aucune nouvelle fonctionnalité pédagogique ; la signature améliore l'identification de l'éditeur sans garantir la disparition immédiate de toutes les analyses de réputation antivirus."
     ]
+  },
+  {
+    "version": "1.6.0",
+    "notes": [
+      "Nouvel onglet Spectrophotométrie pour Arduino Nano et capteur AS7341, avec mesure de huit bandes visibles.",
+      "Calibration guidée par mesure noire et mesure blanche, puis calcul des huit points expérimentaux du spectre d'absorbance.",
+      "Ajout du mode Beer-Lambert avec étalons, régression linéaire et détermination d'une concentration inconnue.",
+      "Ajout du suivi cinétique de l'absorbance et de diagnostics exportables.",
+      "Transfert des résultats de spectrophotométrie vers Données et Graphique, avec sauvegarde et restauration dans les projets Physalix.",
+      "Installation du firmware du spectrophotomètre Nano directement depuis Physalix, avec contrôle de version et de compatibilité après reconnexion.",
+      "Ajout des modèles de croissance et de décroissance exponentielles dans Modélisation.",
+      "Amélioration de l'affichage du module Spectrophotométrie et du démarrage de Physalix.",
+      "Fiabilisation de l'élévation UAC lors du lancement de l'installateur téléchargé par le système de mise à jour."
+    ]
   }
 ]

@@ -3,6 +3,21 @@ $ErrorActionPreference = 'Stop'
 $Executable = (Resolve-Path -LiteralPath $Executable).Path
 $productVersion = (Get-Item -LiteralPath $Executable).VersionInfo.ProductVersion
 $expectedTitle = if ($productVersion -like '*-dev') { "Physalix $([char]0x2014) $productVersion" } else { 'Physalix' }
+if (-not ('PhysalixSmoke.NativeMethods' -as [type])) {
+    Add-Type @'
+using System;
+using System.Runtime.InteropServices;
+
+namespace PhysalixSmoke {
+    public static class NativeMethods {
+        [DllImport("user32.dll", EntryPoint = "GetWindowLongW")]
+        public static extern int GetWindowLong(IntPtr window, int index);
+    }
+}
+'@
+}
+$windowStyleIndex = -16  # GWL_STYLE
+$overlappedWindowMask = 0x00CF0000  # WS_OVERLAPPEDWINDOW; absent from the splash.
 $root = Split-Path -Parent $PSScriptRoot
 $savedEnvironment = @{}
 Get-ChildItem Env: | Where-Object { $_.Name -match '^(PATH$|PYTHON|QT_|PYSIDE|VIRTUAL_ENV|CONDA)' } |
@@ -18,8 +33,16 @@ try {
         Start-Sleep -Milliseconds 200
         $process.Refresh()
         if ($process.HasExited) { throw "Physalix exited during startup: $($process.ExitCode)" }
-    } while ($process.MainWindowTitle -ne $expectedTitle -and [DateTime]::UtcNow -lt $deadline)
-    if ($process.MainWindowTitle -ne $expectedTitle -or -not $process.Responding) { throw 'No responsive Physalix window.' }
+        $window = $process.MainWindowHandle
+        $style = if ($window -ne [IntPtr]::Zero) {
+            [PhysalixSmoke.NativeMethods]::GetWindowLong($window, $windowStyleIndex)
+        } else { 0 }
+        $mainWindowReady = (
+            $process.MainWindowTitle -eq $expectedTitle -and
+            ($style -band $overlappedWindowMask) -eq $overlappedWindowMask
+        )
+    } while (-not $mainWindowReady -and [DateTime]::UtcNow -lt $deadline)
+    if (-not $mainWindowReady -or -not $process.Responding) { throw 'No responsive Physalix main window.' }
     $modules = @(
         foreach ($module in $process.Modules) {
             $module.FileName
