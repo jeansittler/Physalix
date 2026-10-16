@@ -105,6 +105,24 @@ class GraphWorkspaceTests(unittest.TestCase):
         window = next(window for window in self.workspace.windows if window.graph is graph)
         self.assertEqual(window.windowTitle(), "Deux tensions")
 
+    def test_add_data_graph_with_constrained_linear_model(self):
+        self.model.rows = [["1", "2", ""], ["2", "4", ""], ["3", "6", ""]]
+        self.workspace.sync_columns()
+
+        graph, fit = self.workspace.add_data_graph_with_model(
+            0, 1, "linear", title="Beer-Lambert"
+        )
+
+        self.assertEqual(graph.series[0].key(), (0, 1))
+        self.assertEqual(fit.kind, "linear")
+        self.assertAlmostEqual(fit.result.parameters["a"], 2.0)
+        self.assertNotIn("b", fit.result.parameters)
+        curve_x, curve_y = fit.curve.getData()
+        self.assertAlmostEqual(curve_x[0], 0.0)
+        self.assertAlmostEqual(curve_y[0], 0.0)
+        window = next(window for window in self.workspace.windows if window.graph is graph)
+        self.assertEqual(window.windowTitle(), "Beer-Lambert")
+
     def test_right_axis_bounds_models_and_return_to_left(self):
         graph = self.workspace.active_graph
         right = graph.add_series()

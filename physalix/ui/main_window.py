@@ -3,7 +3,7 @@
 from PySide6.QtCore import Qt, QSize, QTimer
 from PySide6.QtGui import QFont, QFontMetrics
 from PySide6.QtWidgets import (
-    QButtonGroup, QFrame, QHBoxLayout, QMainWindow, QTabWidget,
+    QButtonGroup, QFrame, QHBoxLayout, QMainWindow, QMenu, QTabWidget,
     QToolButton, QVBoxLayout, QWidget,
 )
 from physalix.ui.components import role
@@ -18,6 +18,7 @@ from physalix.ui.calculations_tab import CalculationsTab
 from physalix.ui.statistics_tab import StatisticsTab
 from physalix.ui.graph_digitizer_tab import GraphDigitizerTab
 from physalix.ui.acquisition_tab import AcquisitionTab
+from physalix.ui.spectrophotometry_tab import SpectrophotometryTab
 from physalix.ui.graph_workspace import GraphWorkspace, ModelingWorkspace
 from physalix.ui.project_files import ProjectFiles
 from physalix.ui.updates import UpdateController
@@ -26,11 +27,11 @@ from physalix import __development__, __version__
 
 NAVIGATION_LABELS = (
     "Données", "Graphique", "Modélisation", "Pointage", "Calculs",
-    "Statistiques", "Numérisation", "Acquisition",
+    "Statistiques", "Numérisation", "Acquisition", "Spectrophotométrie",
 )
 NAVIGATION_TOOLTIPS = (
     "Données", "Graphique", "Modélisation", "Pointage vidéo", "Calculs",
-    "Statistiques", "Numérisation", "Acquisition",
+    "Statistiques", "Numérisation", "Acquisition", "Spectrophotométrie",
 )
 NAVIGATION_LOGO_SIZES = {
     "normal": (100, 28), "compact": (86, 26), "icon": (70, 24),
@@ -78,6 +79,12 @@ class MainWindow(QMainWindow, ProjectFiles):
             show_graph=lambda: self.tabs.setCurrentWidget(self.graph_tab),
         )
         self.tabs.addTab(self.acquisition_tab, "Acquisition")
+        self.spectrophotometry_tab = SpectrophotometryTab(
+            data_tab=self.data_tab,
+            graph_workspace=self.graph_tab,
+            show_graph=lambda: self.tabs.setCurrentWidget(self.graph_tab),
+        )
+        self.tabs.addTab(self.spectrophotometry_tab, "Spectrophotométrie")
         for index, tooltip in enumerate(NAVIGATION_TOOLTIPS):
             self.tabs.setTabToolTip(index, tooltip)
             self.tabs.setTabWhatsThis(index, tooltip)
@@ -138,11 +145,32 @@ class MainWindow(QMainWindow, ProjectFiles):
         )
         self.setup_files()
         self.updater = UpdateController(self)
+        self._setup_diagnostic_menu()
         QTimer.singleShot(0, self._update_navigation_density)
+
+    def _setup_diagnostic_menu(self):
+        help_menu = self.updater.about_action.parent()
+        self.diagnostic_tools_menu = QMenu("Outils de diagnostic", self)
+        self.kinetic_diagnostic_export_action = (
+            self.diagnostic_tools_menu.addAction(
+                "Exporter le diagnostic cinétique…",
+                lambda: self.spectrophotometry_tab.export_kinetic_diagnostic(),
+            )
+        )
+        help_menu.insertMenu(self.updater.about_action, self.diagnostic_tools_menu)
+        self._bind_spectrophotometry_diagnostic_action()
+
+    def _bind_spectrophotometry_diagnostic_action(self):
+        self.spectrophotometry_tab.diagnostic_export_availability_changed.connect(
+            self.kinetic_diagnostic_export_action.setEnabled
+        )
+        self.kinetic_diagnostic_export_action.setEnabled(
+            self.spectrophotometry_tab.kinetic_diagnostic_export_available()
+        )
 
     def update_navigation(self, *args):
         current = self.tabs.currentIndex()
-        for index, name in enumerate(("data", "graph", "model", "video", "calculations", "statistics", "digitizer", "acquisition")):
+        for index, name in enumerate(("data", "graph", "model", "video", "calculations", "statistics", "digitizer", "acquisition", "spectrophotometry")):
             active = index == current
             self.navigation_buttons[index].setChecked(active)
             self.navigation_buttons[index].setIcon(icon(name, active, navigation=True))
@@ -225,6 +253,7 @@ class MainWindow(QMainWindow, ProjectFiles):
             event.ignore()
             return
         self.updater.stop()
+        self.spectrophotometry_tab.shutdown()
         self.acquisition_tab.shutdown()
         self.video_tab.shutdown()
         super().closeEvent(event)

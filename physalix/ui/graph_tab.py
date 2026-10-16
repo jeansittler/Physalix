@@ -580,7 +580,8 @@ class GraphTab(QWidget):
         fit.extension.clear()
         display_x, display_y = result.x, result.y
         xs, ys, _ = paired_values(self.model.rows, *item.key())
-        if xs and (fit.kind != 'affine' or fit.settings.get('extend', False)):
+        limited_to_fit_domain = fit.kind in ('exponential_growth', 'exponential_decay')
+        if xs and not limited_to_fit_domain and (fit.kind != 'affine' or fit.settings.get('extend', False)):
             span = max(xs) - min(xs)
             margin = span * .12
             low, high = min(xs) - margin, max(xs) + margin

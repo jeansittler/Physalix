@@ -12,11 +12,14 @@ import re
 FIRMWARE_MANIFEST_SCHEMA = 2
 UNO_BOARD = "uno-r3-atmega328p"
 UNO_HEX_FILE = "physalix_acquisition_uno.hex"
+NANO_BOARD = "nano-atmega328p-5v"
+NANO_HEX_FILE = "physalix_spectrophotometer_nano.hex"
 AVRDUDE_NAME = "avrdude"
 AVRDUDE_VERSION = "8.1"
 AVRDUDE_EXECUTABLE = "tools/avrdude.exe"
 AVRDUDE_CONFIG = "tools/avrdude.conf"
 UNO_RESOURCE_DIRECTORY = Path(__file__).resolve().parent / "resources" / "firmware" / "uno"
+NANO_RESOURCE_DIRECTORY = Path(__file__).resolve().parent / "resources" / "firmware" / "nano-spectro"
 
 _MANIFEST_FIELDS = {
     "schema", "board", "firmware_version", "protocol_version",
@@ -118,13 +121,14 @@ class FirmwareManifest:
     uploader: UploaderManifest
 
     @classmethod
-    def from_dict(cls, data: object) -> "FirmwareManifest":
+    def from_dict(cls, data: object, *, expected_board: str = UNO_BOARD,
+                  expected_hex_file: str = UNO_HEX_FILE) -> "FirmwareManifest":
         if not isinstance(data, dict) or set(data) != _MANIFEST_FIELDS:
             raise FirmwareResourceError("Champs du manifeste firmware invalides.")
         if type(data["schema"]) is not int or data["schema"] != FIRMWARE_MANIFEST_SCHEMA:
             raise FirmwareResourceError("Schéma du manifeste firmware non pris en charge.")
-        if data["board"] != UNO_BOARD:
-            raise FirmwareResourceError("Le manifeste ne cible pas l'Arduino Uno R3.")
+        if data["board"] != expected_board:
+            raise FirmwareResourceError("Le manifeste ne cible pas la carte attendue.")
         if not isinstance(data["firmware_version"], str) or not _VERSION_RE.fullmatch(data["firmware_version"]):
             raise FirmwareResourceError("Version firmware invalide dans le manifeste.")
         if type(data["protocol_version"]) is not int or not 0 <= data["protocol_version"] <= 255:
@@ -133,7 +137,9 @@ class FirmwareManifest:
         if type(capabilities) is not int or not 0 <= capabilities <= 0xFFFFFFFF:
             raise FirmwareResourceError("Capacités firmware invalides dans le manifeste.")
         hex_file = data["hex_file"]
-        if not isinstance(hex_file, str) or PurePosixPath(hex_file).name != hex_file or hex_file != UNO_HEX_FILE:
+        if (not isinstance(hex_file, str)
+                or PurePosixPath(hex_file).name != hex_file
+                or hex_file != expected_hex_file):
             raise FirmwareResourceError("Nom du fichier HEX invalide dans le manifeste.")
         digest = data["hex_sha256"]
         if not isinstance(digest, str) or not _SHA256_RE.fullmatch(digest):
@@ -143,12 +149,16 @@ class FirmwareManifest:
         return cls(**values)
 
     @classmethod
-    def load(cls, path: Path) -> "FirmwareManifest":
+    def load(cls, path: Path, *, expected_board: str = UNO_BOARD,
+             expected_hex_file: str = UNO_HEX_FILE) -> "FirmwareManifest":
         try:
             data = json.loads(path.read_text(encoding="utf-8"))
         except (OSError, UnicodeError, json.JSONDecodeError) as error:
             raise FirmwareResourceError(f"Impossible de lire le manifeste firmware : {error}") from error
-        return cls.from_dict(data)
+        return cls.from_dict(
+            data, expected_board=expected_board,
+            expected_hex_file=expected_hex_file,
+        )
 
     def verify_hex(self, directory: Path) -> Path:
         path = directory / self.hex_file
@@ -179,6 +189,26 @@ def load_uno_resources(directory: Path | None = None) -> FirmwareResources:
     manifest = FirmwareManifest.load(directory / "manifest.json")
     firmware = manifest.verify_hex(directory)
     executable, config = manifest.verify_uploader(directory)
+    return FirmwareResources(manifest, firmware, executable, config)
+
+
+def load_nano_resources(directory: Path | None = None,
+                        uploader_directory: Path | None = None) -> FirmwareResources:
+    """Charger le firmware Spectro en partageant l'AVRDUDE distribué pour l'Uno."""
+
+    directory = Path(directory) if directory is not None else NANO_RESOURCE_DIRECTORY
+    uploader_directory = (
+        Path(uploader_directory)
+        if uploader_directory is not None
+        else UNO_RESOURCE_DIRECTORY
+    )
+    manifest = FirmwareManifest.load(
+        directory / "manifest.json",
+        expected_board=NANO_BOARD,
+        expected_hex_file=NANO_HEX_FILE,
+    )
+    firmware = manifest.verify_hex(directory)
+    executable, config = manifest.verify_uploader(uploader_directory)
     return FirmwareResources(manifest, firmware, executable, config)
 
 
@@ -221,8 +251,44 @@ def read_source_metadata(path: Path) -> FirmwareSourceMetadata:
     )
 
 
+def read_spectro_source_metadata(path: Path) -> FirmwareSourceMetadata:
+    """Lire les constantes SPCT sans imposer les noms du firmware Acquisition."""
+
+    try:
+        text = path.read_text(encoding="utf-8")
+    except (OSError, UnicodeError) as error:
+        raise FirmwareResourceError(f"Impossible de lire les métadonnées firmware : {error}") from error
+    defines = dict(_DEFINE_RE.findall(text))
+    names = (
+        "PHYSALIX_SPECTRO_FIRMWARE_VERSION_MAJOR",
+        "PHYSALIX_SPECTRO_FIRMWARE_VERSION_MINOR",
+        "PHYSALIX_SPECTRO_FIRMWARE_VERSION_PATCH",
+        "PHYSALIX_SPECTRO_PROTOCOL_VERSION",
+        "PHYSALIX_SPECTRO_CAPABILITIES",
+    )
+    missing = [name for name in names if name not in defines]
+    if missing:
+        raise FirmwareResourceError(f"Métadonnées firmware absentes : {', '.join(missing)}")
+
+    def number(name: str) -> int:
+        try:
+            return int(defines[name].rstrip("uUlL"), 0)
+        except ValueError as error:
+            raise FirmwareResourceError(
+                f"Valeur non entière pour {name} : {defines[name]}"
+            ) from error
+
+    version = tuple(number(name) for name in names[:3])
+    if any(not 0 <= part <= 255 for part in version):
+        raise FirmwareResourceError("Composante de version firmware hors limites.")
+    return FirmwareSourceMetadata(
+        ".".join(map(str, version)), number(names[3]), number(names[4])
+    )
+
+
 def create_manifest(hex_path: Path, metadata: FirmwareSourceMetadata,
-                    uploader_directory: Path) -> FirmwareManifest:
+                    uploader_directory: Path, *, board: str = UNO_BOARD,
+                    hex_file: str = UNO_HEX_FILE) -> FirmwareManifest:
     if not hex_path.is_file() or hex_path.stat().st_size == 0:
         raise FirmwareResourceError(f"Fichier HEX absent ou vide : {hex_path}")
     uploader_files = tuple(
@@ -236,11 +302,11 @@ def create_manifest(hex_path: Path, metadata: FirmwareSourceMetadata,
     uploader.verify(uploader_directory)
     return FirmwareManifest(
         schema=FIRMWARE_MANIFEST_SCHEMA,
-        board=UNO_BOARD,
+        board=board,
         firmware_version=metadata.firmware_version,
         protocol_version=metadata.protocol_version,
         required_capabilities=metadata.required_capabilities,
-        hex_file=UNO_HEX_FILE,
+        hex_file=hex_file,
         hex_sha256=sha256_file(hex_path),
         uploader=uploader,
     )

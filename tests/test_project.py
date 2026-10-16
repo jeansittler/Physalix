@@ -86,6 +86,87 @@ class ProjectTests(unittest.TestCase):
         self.assertEqual(m.rows[0][4], '11')
         self.assertFalse(first.series[0].fits)  # Invalidation normale après modification des mesures.
 
+    def test_active_graph_is_restored_by_stable_identifier_after_reopening(self):
+        source = self.populated()
+        active = next(window for window in source.graph_tab.windows
+                      if window.graph is source.graph_tab.active_graph)
+        self.assertEqual(active.windowTitle(), 'Tension doublée')
+        write_project(self.path, snapshot(source))
+
+        reopened = MainWindow()
+        self.windows.append(reopened)
+        self.assertTrue(reopened.open_project_path(self.path))
+        self.app.processEvents()
+
+        restored = next(window for window in reopened.graph_tab.windows
+                        if window.graph is reopened.graph_tab.active_graph)
+        self.assertEqual(restored.identifier, active.identifier)
+        self.assertEqual(restored.windowTitle(), 'Tension doublée')
+
+    def test_old_project_restores_active_graph_from_legacy_index(self):
+        state = snapshot(self.populated())
+        state.pop('active_graph_id')
+        for graph in state['graphs']:
+            graph.pop('identifier')
+        state['active_graph'] = 1
+
+        restored = MainWindow()
+        self.windows.append(restored)
+        restore(restored, state)
+        self.app.processEvents()
+
+        self.assertIs(restored.graph_tab.active_graph, restored.graph_tab.windows[1].graph)
+
+    def test_missing_active_graph_falls_back_to_first_available_graph(self):
+        state = snapshot(self.populated())
+        state['active_graph_id'] = 'graphique-supprime'
+        state.pop('active_graph')
+
+        restored = MainWindow()
+        self.windows.append(restored)
+        restore(restored, state)
+        self.app.processEvents()
+
+        self.assertIs(restored.graph_tab.active_graph, restored.graph_tab.windows[0].graph)
+
+    def test_switching_active_graph_does_not_mark_project_as_modified(self):
+        self.populated()
+        signature = self.window.document_signature()
+
+        self.window.graph_tab.area.setActiveSubWindow(self.window.graph_tab.windows[0])
+        self.app.processEvents()
+
+        self.assertEqual(self.window.document_signature(), signature)
+
+    def test_new_project_has_a_persistent_identifier_for_its_first_graph(self):
+        state = snapshot(self.window)
+
+        self.assertTrue(state['graphs'][0]['identifier'])
+        self.assertEqual(state['active_graph_id'], state['graphs'][0]['identifier'])
+
+    def test_plateau_exponential_model_roundtrip(self):
+        import math
+        model = self.window.data_tab.model
+        xs = list(range(4, 12))
+        ys = [6-(6-1.25)*math.exp(-0.65*(x-4)) for x in xs]
+        for row, (x, y) in enumerate(zip(xs, ys), start=2):
+            model.setData(model.index(row, 0), str(x))
+            model.setData(model.index(row, 1), str(y))
+        graph = self.window.graph_tab.active_graph
+        result = fit_model(xs, ys, 'exponential_growth')
+        graph.set_model(graph.series[0], result, 'exponential_growth', {'interval': [4, 11]})
+        write_project(self.path, snapshot(self.window))
+        restored = MainWindow()
+        self.windows.append(restored)
+        restore(restored, read_project(self.path), self.path)
+        fit = restored.graph_tab.active_graph.series[0].fits[0]
+        self.assertEqual(fit.kind, 'exponential_growth')
+        self.assertEqual(fit.result.x0, 4)
+        self.assertAlmostEqual(fit.result.parameters['y_inf'], 6, places=6)
+        self.assertAlmostEqual(fit.result.parameters['y0'], 1.25, places=6)
+        self.assertAlmostEqual(fit.result.parameters['k'], 0.65, places=6)
+        self.assertEqual((fit.curve.getData()[0][0], fit.curve.getData()[0][-1]), (4, 11))
+
     def test_unicode_quantity_names_roundtrip(self):
         model = self.window.data_tab.model
         model.setData(model.index(0, 0), 'σ')
@@ -196,14 +277,21 @@ class ProjectTests(unittest.TestCase):
         application.arguments.return_value = ['Physalix.exe', str(path)]
         application.exec.return_value = 0
         window = MagicMock()
+        splash = MagicMock()
+        guard = MagicMock()
         with patch('physalix.app.QApplication', return_value=application), \
-                patch('physalix.app.MainWindow', return_value=window), \
+                patch('physalix.app._load_main_window', return_value=MagicMock(return_value=window)), \
+                patch('physalix.app.StartupSplash', return_value=splash), \
                 patch('physalix.app.set_windows_app_id'), \
                 patch('physalix.app.application_icon'), \
                 patch('physalix.app.apply_theme'):
-            self.assertEqual(app_main(), 0)
+            self.assertEqual(app_main(guard), 0)
         window.open_project_path.assert_called_once_with(path)
         window.show.assert_called_once_with()
+        guard.tag_window.assert_any_call(splash)
+        guard.tag_window.assert_any_call(window)
+        guard.untag_window.assert_called_once_with(splash)
+        splash.finish.assert_called_once_with(window)
 
     def test_manual_open_delegates_to_shared_path_loader(self):
         with patch.object(QFileDialog, 'getOpenFileName', return_value=(str(self.path), '')), \

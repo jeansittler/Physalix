@@ -11,8 +11,10 @@ def number(value):
 def math_text(expression):
     text = escape(expression).replace('**', '^')
     text = re.sub(r'\^(\d+)', r'<sup>\1</sup>', text)
-    text = re.sub(r'\b(tau|omega|phi|x0)\b',
-                  lambda m: {'tau': 'τ', 'omega': 'ω', 'phi': 'φ', 'x0': 'x<sub>0</sub>'}[m[0]], text)
+    text = re.sub(r'\b(y_inf|y0|tau|omega|phi|x0)\b',
+                  lambda m: {'y_inf': 'y<sub>∞</sub>', 'y0': 'y<sub>0</sub>',
+                             'tau': 'τ', 'omega': 'ω', 'phi': 'φ',
+                             'x0': 'x<sub>0</sub>'}[m[0]], text)
     return text.replace('*', ' · ').replace('-', '−')
 
 

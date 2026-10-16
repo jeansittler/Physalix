@@ -15,12 +15,14 @@ from physalix.firmware_resources import (
     FirmwareResourceError,
     FirmwareResources,
     UNO_RESOURCE_DIRECTORY,
+    load_nano_resources,
 )
 
 
 AVR_PART = "atmega328p"
 AVR_PROGRAMMER = "arduino"
 AVR_BAUD_RATE = 115200
+NANO_OLD_BOOTLOADER_BAUD_RATE = 57600
 FLASH_TIMEOUT_MS = 120_000
 PROCESS_KILL_GRACE_MS = 2_000
 TECHNICAL_LOG_LIMIT = 64 * 1024
@@ -56,6 +58,11 @@ class FirmwareCompatibility(Enum):
     NEWER = auto()
     PROTOCOL_INCOMPATIBLE = auto()
     MISSING_CAPABILITIES = auto()
+
+
+class NanoBootloader(Enum):
+    RECENT = "recent"
+    OLD = "old"
 
 
 class FirmwareFlashBusyError(RuntimeError):
@@ -100,6 +107,27 @@ def build_avrdude_command(resources: FirmwareResources, port_name: str) -> Flash
         "-c", AVR_PROGRAMMER,
         "-P", port,
         "-b", str(AVR_BAUD_RATE),
+        "-D",
+        "-U", f"flash:w:{resources.firmware}:i",
+    ))
+
+
+def build_nano_avrdude_command(resources: FirmwareResources, port_name: str,
+                               bootloader: NanoBootloader) -> FlashCommand:
+    if not isinstance(bootloader, NanoBootloader):
+        raise ValueError("Type de bootloader Nano invalide.")
+    port = validate_port_name(port_name)
+    baud = (
+        AVR_BAUD_RATE
+        if bootloader is NanoBootloader.RECENT
+        else NANO_OLD_BOOTLOADER_BAUD_RATE
+    )
+    return FlashCommand(resources.uploader_executable, (
+        "-C", str(resources.uploader_config),
+        "-p", AVR_PART,
+        "-c", AVR_PROGRAMMER,
+        "-P", port,
+        "-b", str(baud),
         "-D",
         "-U", f"flash:w:{resources.firmware}:i",
     ))
@@ -150,6 +178,8 @@ class FirmwareFlash(QObject):
 
     def __init__(self, parent: QObject | None = None, *,
                  resource_directory: Path = UNO_RESOURCE_DIRECTORY,
+                 resource_loader: Callable[[], FirmwareResources] | None = None,
+                 command_builder: Callable[[FirmwareResources, str], FlashCommand] | None = None,
                  process_factory: Callable[[QObject], QProcess] | None = None,
                  timeout_ms: int = FLASH_TIMEOUT_MS,
                  log_limit: int = TECHNICAL_LOG_LIMIT) -> None:
@@ -157,6 +187,8 @@ class FirmwareFlash(QObject):
         if timeout_ms <= 0 or log_limit <= 0:
             raise ValueError("Les limites temporelle et de journal doivent être positives.")
         self.resource_directory = Path(resource_directory)
+        self.resource_loader = resource_loader
+        self.command_builder = command_builder or build_avrdude_command
         self.process_factory = process_factory or (lambda owner: QProcess(owner))
         self.timeout_ms = timeout_ms
         self.log_limit = log_limit
@@ -196,21 +228,30 @@ class FirmwareFlash(QObject):
             self._fail(FlashErrorKind.INVALID_PORT,
                        "Le port série sélectionné est invalide.", str(error))
             return False
-        try:
-            manifest = FirmwareManifest.load(self.resource_directory / "manifest.json")
-            firmware = manifest.verify_hex(self.resource_directory)
-        except FirmwareResourceError as error:
-            self._fail(FlashErrorKind.FIRMWARE_RESOURCES,
-                       "Les ressources du firmware sont invalides.", str(error))
-            return False
-        try:
-            executable, config = manifest.verify_uploader(self.resource_directory)
-        except FirmwareResourceError as error:
-            self._fail(FlashErrorKind.UPLOADER_RESOURCES,
-                       "Les ressources AVRDUDE sont absentes ou corrompues.", str(error))
-            return False
-        self.resources = FirmwareResources(manifest, firmware, executable, config)
-        command = build_avrdude_command(self.resources, port)
+        if self.resource_loader is None:
+            try:
+                manifest = FirmwareManifest.load(self.resource_directory / "manifest.json")
+                firmware = manifest.verify_hex(self.resource_directory)
+            except FirmwareResourceError as error:
+                self._fail(FlashErrorKind.FIRMWARE_RESOURCES,
+                           "Les ressources du firmware sont invalides.", str(error))
+                return False
+            try:
+                executable, config = manifest.verify_uploader(self.resource_directory)
+            except FirmwareResourceError as error:
+                self._fail(FlashErrorKind.UPLOADER_RESOURCES,
+                           "Les ressources AVRDUDE sont absentes ou corrompues.", str(error))
+                return False
+            resources = FirmwareResources(manifest, firmware, executable, config)
+        else:
+            try:
+                resources = self.resource_loader()
+            except FirmwareResourceError as error:
+                self._fail(FlashErrorKind.FIRMWARE_RESOURCES,
+                           "Les ressources du firmware sont invalides.", str(error))
+                return False
+        self.resources = resources
+        command = self.command_builder(self.resources, port)
         process = self.process_factory(self)
         self._process = process
         process.started.connect(self._on_started)
@@ -365,3 +406,28 @@ class FirmwareFlash(QObject):
         self._set_state(FlashState.FAILED)
         self.phase_changed.emit(user_message)
         self.failed.emit(FlashFailure(kind, user_message, technical_details))
+
+
+class NanoFirmwareFlash(FirmwareFlash):
+    """Profil AVRDUDE du Nano, avec choix explicite du bootloader."""
+
+    def __init__(self, parent: QObject | None = None, *,
+                 resource_loader: Callable[[], FirmwareResources] = load_nano_resources,
+                 **kwargs) -> None:
+        self.bootloader = NanoBootloader.RECENT
+        super().__init__(
+            parent,
+            resource_loader=resource_loader,
+            command_builder=self._nano_command,
+            **kwargs,
+        )
+
+    def _nano_command(self, resources: FirmwareResources, port: str) -> FlashCommand:
+        return build_nano_avrdude_command(resources, port, self.bootloader)
+
+    def start_flash(self, port_name: str,
+                    bootloader: NanoBootloader = NanoBootloader.RECENT) -> bool:
+        if not isinstance(bootloader, NanoBootloader):
+            raise ValueError("Type de bootloader Nano invalide.")
+        self.bootloader = bootloader
+        return super().start_flash(port_name)

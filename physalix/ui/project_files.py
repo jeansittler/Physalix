@@ -89,6 +89,7 @@ class ProjectFiles:
         # La navigation, la lecture vidéo et les dimensions de fenêtre ne modifient pas le travail.
         state.pop('tab', None)
         state.pop('active_graph', None)
+        state.pop('active_graph_id', None)
         state['video'].pop('index', None)
         state['video'].pop('controls', None)
         for graph in state['graphs']:
@@ -165,16 +166,19 @@ class ProjectFiles:
             if state is not None:
                 restore(staging, state, path)
             if not self.confirm_save():
+                staging.spectrophotometry_tab.shutdown()
                 staging.acquisition_tab.shutdown()
                 staging.video_tab.shutdown()
                 return False
+            self.spectrophotometry_tab.shutdown()
             self.acquisition_tab.shutdown()
             self.video_tab.shutdown()
             old = self.takeCentralWidget()
             for name in ('main_container', 'navigation', 'navigation_layout', 'navigation_group',
                          'navigation_buttons', 'brand_cartouche', 'brand_logo', '_navigation_mode',
                          'tabs', 'data_tab', 'graph_tab', 'modeling_tab', 'video_tab', 'calculations_tab',
-                         'statistics_tab', 'digitizer_tab', 'acquisition_tab'):
+                         'statistics_tab', 'digitizer_tab', 'acquisition_tab',
+                         'spectrophotometry_tab'):
                 setattr(self, name, getattr(staging, name))
             staging.takeCentralWidget()
             self.setCentralWidget(self.main_container)
@@ -185,14 +189,17 @@ class ProjectFiles:
             self.modeling_tab.graph_requested.disconnect()
             self.modeling_tab.graph_requested.connect(lambda: self.tabs.setCurrentWidget(self.graph_tab))
             self.acquisition_tab.show_graph = lambda: self.tabs.setCurrentWidget(self.graph_tab)
+            self._bind_spectrophotometry_diagnostic_action()
             old.deleteLater()
             self.project_path = Path(path) if path else None
             self.setWindowTitle(f'{self.project_path.name} — Physalix' if path else 'Physalix')
             if state is not None:
-                restore_views(self, state['graphs'])
+                restore_views(self, state['graphs'], state.get('active_graph_id'),
+                              state.get('active_graph'))
             self._saved_state = self.document_signature()
             return True
         except Exception:
+            staging.spectrophotometry_tab.shutdown()
             staging.acquisition_tab.shutdown()
             staging.video_tab.shutdown()
             raise

@@ -9,6 +9,10 @@ from PySide6.QtCore import QPointF
 from PySide6.QtWidgets import QComboBox, QLineEdit, QAbstractButton, QSpinBox, QDoubleSpinBox, QSlider
 from physalix.calculations import Calculation, Formula
 from physalix.fitting import FitResult
+from physalix.spectrophotometry_project import (
+    restore_spectrophotometry,
+    snapshot_spectrophotometry,
+)
 from physalix.video import VideoCache
 
 
@@ -75,7 +79,8 @@ def snapshot(window):
             tools[name] = dict(active=tool.active, controls=controls(tool),
                                regions=[list(r.getRegion()) for r in regions],
                                plateau_linked=getattr(tool, 'plateau_linked', False))
-        graphs.append(dict(title=subwindow.windowTitle(), series=entries, controls=controls(graph),
+        graphs.append(dict(identifier=subwindow.identifier, title=subwindow.windowTitle(),
+                           series=entries, controls=controls(graph),
                            modeling=controls(window.modeling_tab.pages[graph]), tools=tools,
                            view=graph.plot.viewRange(), right_view=graph.right_view.viewRange(),
                            mouse_mode=graph.plot.getViewBox().state['mouseMode'],
@@ -100,9 +105,14 @@ def snapshot(window):
                                    expression=c.formula.editable_expression() if c.formula else None,
                                    automatic_unit=c.automatic_unit, previous_unit=c.previous_unit) for c in engine.items],
                 graphs=graphs, arrangement=window.graph_tab.arrangement.currentIndex(),
-                active_graph=next(i for i, w in enumerate(window.graph_tab.windows) if w.graph is window.graph_tab.active_graph),
+                active_graph=next(i for i, w in enumerate(window.graph_tab.windows)
+                                  if w.graph is window.graph_tab.active_graph),
+                active_graph_id=next(w.identifier for w in window.graph_tab.windows
+                                     if w.graph is window.graph_tab.active_graph),
                 calculations_controls=controls(window.calculations_tab), statistics=controls(window.statistics_tab),
-                video=video, tab=(0 if window.tabs.currentWidget() is getattr(window, 'digitizer_tab', None)
+                video=video,
+                spectrophotometry=snapshot_spectrophotometry(window.spectrophotometry_tab),
+                tab=(0 if window.tabs.currentWidget() is getattr(window, 'digitizer_tab', None)
                                   else window.tabs.currentIndex()))
 
 
@@ -148,8 +158,21 @@ def restore(window, state, path=None):
     graphs = state.get('graphs', [])
     if not 1 <= len(graphs) <= 100:
         raise ValueError('Nombre de graphiques incorrect.')
+    graph_identifiers = set()
     for index, saved in enumerate(graphs):
-        graph = window.graph_tab.windows[0].graph if index == 0 else window.graph_tab.add_graph()
+        identifier = saved.get('identifier')
+        if identifier is not None:
+            if (not isinstance(identifier, str) or not identifier or len(identifier) > 128
+                    or identifier in graph_identifiers):
+                raise ValueError('Identifiant de graphique incorrect.')
+            graph_identifiers.add(identifier)
+        if index == 0:
+            subwindow = window.graph_tab.windows[0]
+            if identifier is not None:
+                subwindow.identifier = identifier
+            graph = subwindow.graph
+        else:
+            graph = window.graph_tab.add_graph(identifier=identifier)
         graph.sync_columns()
         window.graph_tab.set_graph_title(window.graph_tab.windows[index], saved['title'])
         if not 1 <= len(saved['series']) <= 100:
@@ -199,11 +222,16 @@ def restore(window, state, path=None):
         graph._refresh_timer.stop()
     window.graph_tab.update_graph_display_numbers()
     window.graph_tab.arrangement.setCurrentIndex(state['arrangement'])
-    window.graph_tab.area.setActiveSubWindow(window.graph_tab.windows[state['active_graph']])
     restore_controls(window.calculations_tab, state.get('calculations_controls', {}))
     window.statistics_tab.sync()
     restore_controls(window.statistics_tab, state.get('statistics', {}))
     window.statistics_tab.calculate()
+    if 'spectrophotometry' in state:
+        restore_spectrophotometry(
+            window.spectrophotometry_tab,
+            state['spectrophotometry'],
+            model.columnCount(),
+        )
     video = state.get('video', {})
     tracking = window.video_tab.tracking
     for name in ('x_direction', 'y_direction', 'scale', 'unit', 'length', 'columns', 'written_rows'):
@@ -228,11 +256,11 @@ def restore(window, state, path=None):
         window.video_tab._show_frame(min(video['index'], len(cache.times)-1))
         window.video_tab.status.setText('Vidéo intégrée au projet · Lecture sans son.')
     window.tabs.setCurrentIndex(state.get('tab', 0))
-    restore_views(window, graphs)
+    restore_views(window, graphs, state.get('active_graph_id'), state.get('active_graph'))
     model.undo_stack.clear()
 
 
-def restore_views(window, graphs):
+def restore_views(window, graphs, active_graph_id=None, active_graph_index=None):
     for subwindow, saved in zip(window.graph_tab.windows, graphs):
         graph = subwindow.graph
         graph._refresh_timer.stop()
@@ -243,3 +271,14 @@ def restore_views(window, graphs):
             graph.legend.setPos(*saved['legend'])
         if window.graph_tab.arrangement.currentIndex() == 3:
             subwindow.setGeometry(*saved['geometry'])
+    windows = window.graph_tab.windows
+    if not windows:
+        return
+    target = None
+    if isinstance(active_graph_id, str):
+        target = next((item for item in windows if item.identifier == active_graph_id), None)
+    if target is None and type(active_graph_index) is int and 0 <= active_graph_index < len(windows):
+        target = windows[active_graph_index]
+    target = target or windows[0]
+    if window.graph_tab.area.activeSubWindow() is not target:
+        window.graph_tab.area.setActiveSubWindow(target)

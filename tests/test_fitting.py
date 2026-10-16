@@ -9,7 +9,7 @@ from PySide6.QtCore import QPoint, QPointF, Qt
 from PySide6.QtGui import QWheelEvent
 from PySide6.QtWidgets import QApplication
 
-from physalix.fitting import Expression, fit_model, parse_parameters
+from physalix.fitting import Expression, MODELS, fit_model, parse_parameters
 from physalix.ui.main_window import MainWindow
 from physalix.ui.graph_series import PopupComboBox
 
@@ -34,12 +34,30 @@ class FittingTests(unittest.TestCase):
             ("charge", 0.3+5*(1-np.exp(-(x-4)/1.2)), [5, 1.2, 0.3]),
             ("discharge", 0.3+5*np.exp(-(x-4)/1.2), [5, 1.2, 0.3]),
             ("exponential", 2*np.exp(0.4*(x-4))+1, [2, 0.4, 1]),
+            ("exponential_growth", 6.3-(6.3-1.2)*np.exp(-0.8*(x-4)), [6.3, 1.2, 0.8]),
+            ("exponential_decay", 0.4+(5.7-0.4)*np.exp(-1.1*(x-4)), [0.4, 5.7, 1.1]),
             ("sine", 3*np.sin(5.3*(x-4)+0.7)+2, [3, 5.3, 0.7, 2]),
         ):
             with self.subTest(kind=kind):
                 result = fit_model(x, y, kind)
                 np.testing.assert_allclose(list(result.parameters.values()), expected, atol=1e-5)
                 self.assertLess(result.rmse, 1e-7)
+
+    def test_plateau_exponentials_enforce_direction_and_reject_degenerate_data(self):
+        x = np.linspace(7, 12, 30)
+        growth = fit_model(x, 4-(4-1.5)*np.exp(-0.6*(x-7)), "exponential_growth")
+        decay = fit_model(x, -0.5+(3.2+0.5)*np.exp(-0.9*(x-7)), "exponential_decay")
+        self.assertGreater(growth.parameters["y_inf"], growth.parameters["y0"])
+        self.assertGreater(decay.parameters["y0"], decay.parameters["y_inf"])
+        self.assertGreater(growth.parameters["k"], 0)
+        self.assertGreater(decay.parameters["k"], 0)
+        self.assertEqual(growth.x0, 7)
+        self.assertEqual(decay.x0, 7)
+        for kind in ("exponential_growth", "exponential_decay"):
+            with self.subTest(kind=kind), self.assertRaisesRegex(ValueError, "variation"):
+                fit_model(x, np.full_like(x, 2.5), kind)
+            with self.subTest(kind=kind), self.assertRaisesRegex(ValueError, "3 abscisses"):
+                fit_model([0, 1], [1, 2], kind)
 
     def test_quality_and_interval(self):
         x = np.arange(6.)
@@ -152,7 +170,7 @@ class ModelingInterfaceTests(unittest.TestCase):
             window.tabs.setCurrentWidget(window.modeling_tab)
             self.app.processEvents()
             combo = window.modeling_tab.model_choice
-            self.assertEqual(combo.count(), 10)
+            self.assertEqual(combo.count(), 12)
             self.assertEqual(combo.itemData(combo.count() - 1), "custom")
             self.assertEqual(combo.maxVisibleItems(), 8)
             combo.showPopup()
@@ -276,6 +294,34 @@ class ModelingInterfaceTests(unittest.TestCase):
             self.assertGreater(min(finite_x), 0)
             self.assertLessEqual(max(finite_x), 10 + .12*(10-1) + 1e-12)
             self.assertEqual((fit.result.x[0], fit.result.x[-1]), (1, 10))
+        finally:
+            window._discard_on_close = True
+            window.close()
+
+    def test_plateau_models_are_explicit_and_limited_to_selected_domain(self):
+        window = MainWindow()
+        graph, tab, model = window.graph_tab, window.modeling_tab, window.data_tab.model
+        try:
+            xs = np.arange(1., 9.)
+            ys = 5-(5-1.4)*np.exp(-0.7*(xs-1))
+            model.rows = [[str(x), str(y)] for x, y in zip(xs, ys)]
+            graph.refresh_plot()
+            self.assertFalse(graph.series[0].fits)
+            self.assertEqual(MODELS["exponential_growth"][0], "Croissance exponentielle")
+            self.assertEqual(MODELS["exponential_decay"][0], "Décroissance exponentielle")
+            tab.model_choice.setCurrentIndex(tab.model_choice.findData("exponential_growth"))
+            self.assertFalse(graph.series[0].fits)
+            tab.range_check.setChecked(True)
+            graph.fit_region.setRegion((3, 7))
+            tab.calculate()
+            fit = graph.series[0].fits[0]
+            curve_x, _ = fit.curve.getData()
+            point_x, _ = graph.series[0].points.getData()
+            self.assertEqual((curve_x[0], curve_x[-1]), (3, 7))
+            self.assertEqual((fit.result.x0, fit.result.x[0], fit.result.x[-1]), (3, 3, 7))
+            self.assertEqual((point_x[0], point_x[-1]), (1, 8))
+            self.assertIn("y∞", tab.result_text.toPlainText())
+            self.assertIn("R²", tab.result_text.toPlainText())
         finally:
             window._discard_on_close = True
             window.close()

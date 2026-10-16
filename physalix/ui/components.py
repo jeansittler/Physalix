@@ -3,7 +3,7 @@
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (QApplication, QBoxLayout, QComboBox, QFrame,
                                QHBoxLayout, QLabel, QPushButton, QScrollArea,
-                               QSizePolicy, QVBoxLayout, QWidget)
+                               QSizePolicy, QVBoxLayout, QWidget, QMessageBox)
 
 from physalix.ui.theme import LIGHT
 
@@ -47,6 +47,22 @@ def label(text, kind="sectionTitle"):
     widget = role(QLabel(text), kind)
     widget.setWordWrap(True)
     return widget
+
+
+def ask_yes_no(parent, title, text):
+    """Afficher une confirmation avec des libellés français explicites."""
+    dialog = QMessageBox(parent)
+    dialog.setIcon(QMessageBox.Icon.Question)
+    dialog.setWindowTitle(title)
+    dialog.setText(text)
+    yes_button = role(
+        dialog.addButton("Oui", QMessageBox.ButtonRole.AcceptRole), "primary"
+    )
+    no_button = dialog.addButton("Non", QMessageBox.ButtonRole.RejectRole)
+    dialog.setDefaultButton(no_button)
+    dialog.setEscapeButton(no_button)
+    dialog.exec()
+    return dialog.clickedButton() is yes_button
 
 
 def page_layout(layout):
