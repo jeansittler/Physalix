@@ -29,7 +29,8 @@ Fonctionnalités principales existantes :
 - Calculs ;
 - Statistiques ;
 - Numérisation de graphiques ;
-- Acquisition Arduino.
+- Acquisition Arduino ;
+- Spectrophotométrie Arduino.
 
 ---
 
@@ -51,17 +52,17 @@ Branche stable :
 
 `main`
 
-État attendu :
+État de développement actuel :
 
-`main == origin/main == v1.5.2`
+`main == origin/main == 852eb5f987ce6140d3ad9944d6dbc1b01a3c3c9a`
 
-Le working tree contient actuellement quatre modifications locales ciblées liées
-au lancement UAC de l'installateur. Elles ne sont pas encore validées
-définitivement :
-- `physalix/updates.py`
-- `physalix/ui/updates.py`
-- `tests/test_updates.py`
-- `tests/test_update_ui.py`
+Ce commit fusionne les six commits de `feature/spectrophotometry` dans `main`.
+La version du code reste `1.5.2`, mais cet état de développement est postérieur au
+tag public `v1.5.2`. La prochaine version publique n'est pas encore publiée et son
+numéro n'est pas officiellement décidé.
+
+Au début de la consolidation documentaire, `PROJECT_CONTEXT.md` était le seul
+fichier local modifié.
 
 ### Release 1.5.2
 
@@ -549,6 +550,15 @@ Préparation locale signée Physalix 1.5.2 :
 - `410 tests`
 - OK
 
+Dernier checkpoint complet après développement du Spectro :
+- `615 tests` — OK ;
+- exécuté avant la fusion sur le même arbre de code que celui fusionné dans `main`.
+
+Le build PyInstaller incluant le firmware Nano a été validé. Le flash réel du Nano,
+sa reconnexion et sa réutilisation après flash ont également été validés. Ces
+contrôles ne constituent pas encore une validation de release signée ni une
+validation d'installation de la prochaine version publique.
+
 Dernière validation ciblée UI Acquisition/Firmware UI avant intégration :
 - `56 tests`
 - OK
@@ -603,11 +613,14 @@ immédiatement toutes les analyses de réputation antivirus.
 Une demande de reconnaissance du certificat a été envoyée à Avast ; la réponse
 est en attente.
 
-Les ressources Acquisition nécessaires au runtime doivent être incluses :
-- firmware ;
-- manifeste firmware ;
-- AVRDUDE ;
-- configuration AVRDUDE.
+Les ressources firmware nécessaires au runtime doivent être incluses :
+- firmware et manifeste Uno pour l'Acquisition ;
+- firmware et manifeste Nano pour la Spectrophotométrie ;
+- AVRDUDE 8.1 et sa configuration, partagés par les deux cartes.
+
+Le bundle PyInstaller avec les ressources Nano a été validé sur l'arbre Spectro
+fusionné. Une future release doit néanmoins refaire les contrôles de distribution,
+de signature et d'installation prévus par le workflow de release.
 
 ### Updater
 
@@ -621,6 +634,11 @@ Une release doit vérifier :
 - compatibilité de l’updater existant.
 
 Ne pas modifier la logique de fallback cumulatif sans nécessité.
+
+Une étude ultérieure pourra évaluer un updater incrémental dans un worktree dédié.
+Elle devra conserver un fallback sûr vers l'installateur complet, la vérification
+d'intégrité et les exigences de signature. Aucun développement incrémental n'est
+engagé à ce stade.
 
 ---
 
@@ -658,6 +676,41 @@ Ne jamais prétendre qu’une validation réelle de mise à jour a été faite s
 `main` = branche publique stable.
 
 Ne pas développer directement une grosse fonctionnalité sur `main`.
+
+### Organisation des conversations Codex et des worktrees
+
+- Utiliser par défaut le projet Codex `C:\Physalix`, avec plusieurs conversations
+  spécialisées selon les fonctionnalités.
+- Une conversation Codex n'est pas une branche Git indépendante : plusieurs
+  conversations peuvent partager les mêmes fichiers et le même worktree.
+- Réserver les worktrees séparés aux gros chantiers nécessitant une isolation Git.
+- `C:\Physalix` et sa branche `main` portent le contexte principal de référence.
+- Dans la mesure du possible, actualiser et versionner `PROJECT_CONTEXT.md` avant de
+  créer un nouveau worktree. Le worktree récupère alors le contexte versionné par
+  Git ; aucune copie manuelle n'est requise.
+- Ne pas entretenir des modifications locales divergentes de `PROJECT_CONTEXT.md`
+  dans plusieurs worktrees. Placer les informations propres à un chantier dans une
+  documentation dédiée.
+- Avant une fusion, inspecter les éventuelles modifications documentaires non
+  commitées dans les deux worktrees. Ne jamais écraser un contexte local.
+- Après une fusion, actualiser les états historiques et retirer les instructions
+  devenues périmées.
+- Avant de retirer un ancien worktree, vérifier et sauvegarder toute modification
+  locale encore utile.
+- Avant chaque prompt Codex, préciser explicitement :
+  - s'il faut ouvrir une nouvelle conversation ou reprendre une conversation
+    existante ;
+  - le projet et le dossier de travail ;
+  - la branche Git ;
+  - le modèle et le niveau de raisonnement ;
+  - les actions Git autorisées et interdites.
+- Après fusion d'une fonctionnalité dans `main`, réaliser les corrections courantes
+  dans `C:\Physalix`, sauf nouveau chantier isolé.
+- Éviter que deux sessions Codex modifient simultanément les mêmes fichiers.
+- Préserver l'économie de crédits : utiliser des tests ciblés pendant le
+  développement et réserver la suite complète aux checkpoints pertinents.
+- Pour toute nouvelle conversation, demander explicitement la lecture intégrale de
+  `AGENTS.md` et de `PROJECT_CONTEXT.md` avant toute intervention.
 
 ### Acquisition
 
@@ -795,8 +848,108 @@ Message recommandé :
 
 ---
 
-## 21. Prochaine étape
+## 21. Spectrophotométrie intégrée
 
-Valider sur un deuxième ordinateur le parcours réel de mise à jour de Physalix
-1.5.1 vers 1.5.2, puis le redémarrage et l'Acquisition Arduino. Ne pas présenter
-ce parcours comme validé avant sa réalisation effective.
+### État
+
+La Spectrophotométrie est intégrée à `main` par le commit de fusion :
+
+`852eb5f987ce6140d3ad9944d6dbc1b01a3c3c9a`
+
+Ce commit conserve les six commits de `feature/spectrophotometry`, dont le dernier
+est `9c2577e46af869b203988285c3781fa1391bf4d0`. La branche stable et sa référence
+distante sont synchronisées sur ce commit.
+
+Le développement parallèle dans `C:\Physalix-spectro` est terminé. Les corrections
+courantes du module se font désormais dans `C:\Physalix` sur `main`, sauf
+ouverture explicite d'un nouveau chantier isolé.
+
+### Fonctions intégrées
+
+Le module comprend notamment :
+
+- acquisition des huit bandes visibles de l'AS7341 ;
+- mesures noire, blanche et échantillon ;
+- spectre d'absorbance à huit points expérimentaux ;
+- mesure d'absorbance sur une bande choisie ;
+- Beer-Lambert, régression linéaire et concentration inconnue ;
+- suivi cinétique et diagnostics ;
+- transfert vers Données et Graphique ;
+- persistance dans les projets Physalix ;
+- installation et contrôle du firmware Nano depuis Physalix.
+
+### Invariants scientifiques
+
+Bandes réellement mesurées :
+
+`415, 445, 480, 515, 555, 590, 630 et 680 nm`
+
+Pour chaque bande :
+
+`T(λ) = (I(λ) - I_dark(λ)) / (I0(λ) - I_dark(λ))`
+
+`A(λ) = -log10(T(λ))`
+
+Le noir, le blanc et l'échantillon doivent appartenir à une calibration compatible :
+même session, mêmes paramètres d'acquisition, absence de saturation utile,
+`I0 > I_dark` et `I > I_dark`.
+
+Les huit points mesurés doivent rester identifiables. Toute interpolation est
+uniquement visuelle et ne doit jamais être présentée comme une mesure continue.
+
+### Firmware et distribution
+
+Firmware Spectro Nano :
+
+- version `1.0.0` ;
+- protocole `1` ;
+- capacités `0x0000001F` / `31` ;
+- carte cible : Arduino Nano officiel A000005, ATmega328P, logique 5 V.
+
+Le flash reste explicite, ne touche ni aux fuses, ni à l'EEPROM, ni au bootloader,
+et n'est considéré comme réussi qu'après reconnexion et handshake compatible.
+Les ressources Nano et Uno doivent être incluses dans la distribution. Elles
+partagent AVRDUDE 8.1 et sa configuration validée.
+
+### Documentation détaillée
+
+Les détails matériels, mécaniques, scientifiques, protocolaires et historiques sont
+conservés dans :
+
+`docs/SPECTROPHOTOMETRY_CONTEXT.md`
+
+Cette annexe distingue le fonctionnement confirmé, l'historique du prototype et les
+expérimentations non garanties. La maintenir lors d'un changement durable du module
+Spectrophotométrie sans alourdir inutilement le présent contexte principal.
+
+### Validations
+
+Dernier checkpoint connu sur l'arbre fusionné :
+
+- `615 tests` complets réussis avant la fusion ;
+- build PyInstaller avec firmware Nano validé ;
+- flash Nano réel validé ;
+- reconnexion et réutilisation du Nano après flash validées ;
+- validation visuelle utilisateur réussie.
+
+Aucune nouvelle release publique ni installation signée intégrant Spectro n'est
+encore considérée comme validée.
+
+---
+
+## 22. Prochaines étapes
+
+1. Préparer de manière contrôlée la prochaine release Physalix intégrant la
+   Spectrophotométrie, sans présumer de son numéro avant décision explicite.
+2. Exécuter au checkpoint de release les contrôles nécessaires : tests pertinents,
+   build, bundle, smoke test, signatures, horodatages et vérifications des ressources
+   Uno et Nano.
+3. Contrôler la réaction antivirus et réaliser une véritable mise à jour depuis
+   Physalix `1.5.2`, puis vérifier le redémarrage et les fonctions matérielles utiles.
+4. Publier uniquement après validation explicite de l'utilisateur et après
+   vérification complète des artefacts.
+5. Étudier ultérieurement un updater incrémental dans un worktree dédié, sans
+   commencer son développement pendant la préparation courante de release.
+
+Ne jamais présenter ces validations de release ou de mise à jour comme réalisées
+avant leur exécution effective.
