@@ -37,11 +37,16 @@ CloseApplications=yes
 RestartApplications=no
 SetupLogging=yes
 ChangesAssociations=yes
+#ifdef ExternalSignedUninstallerDir
+SignedUninstaller=yes
+SignedUninstallerDir={#ExternalSignedUninstallerDir}
+#else
 #ifdef SignToolName
 SignTool={#SignToolName}
 SignedUninstaller=yes
 #else
 SignedUninstaller=no
+#endif
 #endif
 
 [Languages]
