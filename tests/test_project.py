@@ -1,4 +1,5 @@
 """Sauvegardes réelles, liens recalculables et échanges CSV."""
+import gc
 import os
 os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
 import tempfile
@@ -8,7 +9,7 @@ import unittest
 from unittest.mock import MagicMock, patch
 import zipfile
 
-from PySide6.QtCore import QPointF, QTimer
+from PySide6.QtCore import QEvent, QPointF, QTimer
 from PySide6.QtWidgets import QApplication, QMessageBox, QFileDialog
 from physalix.app import main as app_main, project_path_from_arguments
 from physalix.acquisition import AcquisitionConfig, DigitalStepConfig
@@ -33,7 +34,10 @@ class ProjectTests(unittest.TestCase):
         for window in self.windows:
             window._discard_on_close = True
             window.close()
+            window.deleteLater()
+        QApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
         self.app.processEvents()
+        gc.collect()
         self.directory.cleanup()
 
     def populated(self):
@@ -235,11 +239,24 @@ class ProjectTests(unittest.TestCase):
         with zipfile.ZipFile(self.path) as archive:
             document = json.loads(archive.read('project.json'))
         self.assertEqual(document['format'], 'Physalix')
-        self.assertEqual(document['version'], 1)
+        self.assertEqual(document['version'], 2)
         self.assertEqual(read_project(self.path), read_project(legacy))
         with patch.object(QFileDialog, 'getSaveFileName') as dialog:
             self.assertTrue(self.window.save_project())
             dialog.assert_not_called()
+
+    def test_version_one_without_image_analysis_restores_a_blank_module(self):
+        state = snapshot(self.window)
+        state.pop('image_analysis')
+        with zipfile.ZipFile(self.path, 'w') as archive:
+            archive.writestr('project.json', json.dumps({
+                'format': 'Physalix', 'version': 1, 'state': state,
+            }))
+        restored = MainWindow()
+        self.windows.append(restored)
+        restore(restored, read_project(self.path), self.path)
+        self.assertTrue(restored.image_analysis_tab.image.isNull())
+        self.assertEqual(restored.image_analysis_tab.profiles, [])
 
     def test_save_dialog_proposes_name_without_extension(self):
         with patch.object(QFileDialog, 'getSaveFileName', return_value=('', '')) as dialog:
@@ -329,7 +346,7 @@ class ProjectTests(unittest.TestCase):
         self.assertEqual(self.path.read_bytes(), b'keep me')
 
     def test_unknown_format_and_future_version_are_rejected(self):
-        for name, version in [('unknown', 1), ('Physalix', 2), ('Physalyx', 2)]:
+        for name, version in [('unknown', 1), ('Physalix', 3), ('Physalyx', 3)]:
             with self.subTest(name=name, version=version):
                 with zipfile.ZipFile(self.path, 'w') as archive:
                     archive.writestr('project.json', json.dumps({'format': name, 'version': version, 'state': {}}))

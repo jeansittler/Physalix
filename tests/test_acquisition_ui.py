@@ -922,10 +922,10 @@ class AcquisitionNavigationTests(unittest.TestCase):
         window = MainWindow()
         try:
             count_before = window.data_tab.model.columnCount()
-            self.assertIs(window.tabs.widget(window.tabs.count() - 2), window.acquisition_tab)
-            self.assertEqual(window.tabs.tabText(window.tabs.count() - 2), "Acquisition")
-            self.assertEqual(window.navigation_buttons[-2].toolTip(), "Acquisition")
-            self.assertFalse(window.navigation_buttons[-2].icon().isNull())
+            self.assertIs(window.tabs.widget(window.tabs.count() - 3), window.acquisition_tab)
+            self.assertEqual(window.tabs.tabText(window.tabs.count() - 3), "Acquisition")
+            self.assertEqual(window.navigation_buttons[-3].toolTip(), "Acquisition")
+            self.assertFalse(window.navigation_buttons[-3].icon().isNull())
             self.assertEqual(window.data_tab.model.columnCount(), count_before)
         finally:
             window._discard_on_close = True

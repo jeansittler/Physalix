@@ -19,6 +19,7 @@ from physalix.ui.statistics_tab import StatisticsTab
 from physalix.ui.graph_digitizer_tab import GraphDigitizerTab
 from physalix.ui.acquisition_tab import AcquisitionTab
 from physalix.ui.spectrophotometry_tab import SpectrophotometryTab
+from physalix.ui.image_analysis_tab import ImageAnalysisTab
 from physalix.ui.graph_workspace import GraphWorkspace, ModelingWorkspace
 from physalix.ui.project_files import ProjectFiles
 from physalix.ui.updates import UpdateController
@@ -27,11 +28,11 @@ from physalix import __development__, __version__
 
 NAVIGATION_LABELS = (
     "Données", "Graphique", "Modélisation", "Pointage", "Calculs",
-    "Statistiques", "Numérisation", "Acquisition", "Spectrophotométrie",
+    "Statistiques", "Numérisation", "Acquisition", "Spectrophotométrie", "Analyse d'images",
 )
 NAVIGATION_TOOLTIPS = (
     "Données", "Graphique", "Modélisation", "Pointage vidéo", "Calculs",
-    "Statistiques", "Numérisation", "Acquisition", "Spectrophotométrie",
+    "Statistiques", "Numérisation", "Acquisition", "Spectrophotométrie", "Analyse d'images",
 )
 NAVIGATION_LOGO_SIZES = {
     "normal": (100, 28), "compact": (86, 26), "icon": (70, 24),
@@ -85,6 +86,12 @@ class MainWindow(QMainWindow, ProjectFiles):
             show_graph=lambda: self.tabs.setCurrentWidget(self.graph_tab),
         )
         self.tabs.addTab(self.spectrophotometry_tab, "Spectrophotométrie")
+        self.image_analysis_tab = ImageAnalysisTab(
+            data_tab=self.data_tab,
+            graph_workspace=self.graph_tab,
+            show_graph=lambda: self.tabs.setCurrentWidget(self.graph_tab),
+        )
+        self.tabs.addTab(self.image_analysis_tab, "Analyse d'images")
         for index, tooltip in enumerate(NAVIGATION_TOOLTIPS):
             self.tabs.setTabToolTip(index, tooltip)
             self.tabs.setTabWhatsThis(index, tooltip)
@@ -146,7 +153,12 @@ class MainWindow(QMainWindow, ProjectFiles):
         self.setup_files()
         self.updater = UpdateController(self)
         self._setup_diagnostic_menu()
-        QTimer.singleShot(0, self._update_navigation_density)
+        # Un vrai timer enfant est annulé avec la fenêtre. Un singleShot sans
+        # contexte pouvait rappeler la méthode après destruction du widget central.
+        self._navigation_density_timer = QTimer(self)
+        self._navigation_density_timer.setSingleShot(True)
+        self._navigation_density_timer.timeout.connect(self._update_navigation_density)
+        self._navigation_density_timer.start(0)
 
     def _setup_diagnostic_menu(self):
         help_menu = self.updater.about_action.parent()
@@ -170,7 +182,7 @@ class MainWindow(QMainWindow, ProjectFiles):
 
     def update_navigation(self, *args):
         current = self.tabs.currentIndex()
-        for index, name in enumerate(("data", "graph", "model", "video", "calculations", "statistics", "digitizer", "acquisition", "spectrophotometry")):
+        for index, name in enumerate(("data", "graph", "model", "video", "calculations", "statistics", "digitizer", "acquisition", "spectrophotometry", "image_analysis")):
             active = index == current
             self.navigation_buttons[index].setChecked(active)
             self.navigation_buttons[index].setIcon(icon(name, active, navigation=True))
@@ -220,10 +232,10 @@ class MainWindow(QMainWindow, ProjectFiles):
             widget.style().polish(widget)
             widget.updateGeometry()
 
-    def _update_navigation_density(self):
+    def _update_navigation_density(self, available_width=None):
         if not hasattr(self, "tabs"):
             return
-        available = self.navigation.width()
+        available = self.navigation.width() if available_width is None else available_width
         normal_width = self._navigation_required_width("normal")
         compact_width = self._navigation_required_width("compact")
         hysteresis = 24

@@ -14,7 +14,10 @@ FORMAT = 'Physalix'
 LEGACY_FORMAT = 'Physalyx'
 PROJECT_SUFFIX = '.physalix'
 LEGACY_SUFFIX = '.physalyx'
-VERSION = 1
+VERSION = 2
+SUPPORTED_VERSIONS = (1, 2)
+IMAGE_ANALYSIS_ENTRY = 'image-analysis/source.png'
+MAX_IMAGE_ANALYSIS_SIZE = 256 * 1024**2
 
 
 def atomic_write(path, writer):
@@ -30,7 +33,10 @@ def atomic_write(path, writer):
             os.unlink(temporary)
 
 
-def write_project(path, state, cache=None):
+def write_project(path, state, cache=None, image_asset=None):
+    image_asset = None if image_asset is None else bytes(image_asset)
+    if image_asset is not None and len(image_asset) > MAX_IMAGE_ANALYSIS_SIZE:
+        raise ValueError("L'image d'analyse depasse 256 Mo.")
     def write(temporary):
         with zipfile.ZipFile(temporary, 'w', compression=zipfile.ZIP_DEFLATED) as archive:
             archive.writestr('project.json', json.dumps(
@@ -38,6 +44,8 @@ def write_project(path, state, cache=None):
             if cache:
                 for index in range(len(cache.times)):
                     archive.write(cache.path(index), f'video/{index:09d}.png', compress_type=zipfile.ZIP_STORED)
+            if image_asset is not None:
+                archive.writestr(IMAGE_ANALYSIS_ENTRY, image_asset)
     atomic_write(path, write)
 
 
@@ -46,9 +54,25 @@ def read_project(path):
         if archive.getinfo('project.json').file_size > 64 * 1024**2:
             raise ValueError('Le projet dépasse la taille maximale des données (64 Mo).')
         document = json.loads(archive.read('project.json'))
-    if document.get('format') not in (FORMAT, LEGACY_FORMAT) or document.get('version') != VERSION:
+    if (document.get('format') not in (FORMAT, LEGACY_FORMAT)
+            or document.get('version') not in SUPPORTED_VERSIONS):
         raise ValueError('Format de projet inconnu ou version non prise en charge.')
     return document['state']
+
+
+def read_project_asset(path, name, maximum):
+    """Lire une entree connue avec une limite non compressee explicite."""
+    with zipfile.ZipFile(path) as archive:
+        try:
+            info = archive.getinfo(name)
+        except KeyError as error:
+            raise ValueError("Ressource integree au projet manquante.") from error
+        if info.is_dir() or info.file_size > maximum:
+            raise ValueError("Ressource integree au projet trop volumineuse.")
+        data = archive.read(info)
+    if len(data) != info.file_size:
+        raise ValueError("Ressource integree au projet incomplete.")
+    return data
 
 
 def read_csv(path, delimiter=None, header=True):

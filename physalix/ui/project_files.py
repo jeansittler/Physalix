@@ -146,7 +146,8 @@ class ProjectFiles:
         try:
             QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
             state = snapshot(self)
-            write_project(path, state, self.video_tab.cache)
+            write_project(path, state, self.video_tab.cache,
+                          self.image_analysis_tab.project_image_asset())
             self.project_path = Path(path)
             self._saved_state = self.document_signature()
             self.setWindowTitle(f'{self.project_path.name} — Physalix')
@@ -178,10 +179,15 @@ class ProjectFiles:
                          'navigation_buttons', 'brand_cartouche', 'brand_logo', '_navigation_mode',
                          'tabs', 'data_tab', 'graph_tab', 'modeling_tab', 'video_tab', 'calculations_tab',
                          'statistics_tab', 'digitizer_tab', 'acquisition_tab',
-                         'spectrophotometry_tab'):
+                         'spectrophotometry_tab', 'image_analysis_tab'):
                 setattr(self, name, getattr(staging, name))
             staging.takeCentralWidget()
             self.setCentralWidget(self.main_container)
+            # Le widget central provient d'une fenêtre de staging cachée : sa
+            # navigation peut avoir évalué sa densité sur cette géométrie
+            # transitoire. La fenêtre n'ayant pas changé de taille, recalculer
+            # explicitement évite d'attendre un resizeEvent qui n'aura pas lieu.
+            self._update_navigation_density(self.contentsRect().width())
             self.tabs.currentChanged.disconnect()
             self.tabs.currentChanged.connect(self.update_navigation)
             self.graph_tab.modeling_requested.disconnect()
@@ -189,6 +195,7 @@ class ProjectFiles:
             self.modeling_tab.graph_requested.disconnect()
             self.modeling_tab.graph_requested.connect(lambda: self.tabs.setCurrentWidget(self.graph_tab))
             self.acquisition_tab.show_graph = lambda: self.tabs.setCurrentWidget(self.graph_tab)
+            self.image_analysis_tab.show_graph = lambda: self.tabs.setCurrentWidget(self.graph_tab)
             self._bind_spectrophotometry_diagnostic_action()
             old.deleteLater()
             self.project_path = Path(path) if path else None

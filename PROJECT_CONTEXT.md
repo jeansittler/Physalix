@@ -1,5 +1,22 @@
 # PHYSALIX — CONTEXTE DE TRAVAIL
 
+<!-- PHYSALIX_CODEX_BUDGET_START -->
+
+## Politique prioritaire d'économie de crédits Codex
+
+La politique détaillée et exécutoire se trouve dans `AGENTS.md`, section « Règles prioritaires — Budget Codex et maîtrise des tests ». **Elle prévaut sur toute mention historique de « suite complète au checkpoint » dans le présent contexte.**
+
+- **Sol Minimal par défaut** ; Sol Moyen si la complexité le justifie ; Sol Élevé seulement sur accord.
+- **Tests ciblés uniquement par défaut.** Une suite complète nécessite **un feu vert distinct**, obtenu après annonce de son coût/temps estimé ; une demande générale d'audit ne suffit pas.
+- **Timeout effectif : 3 minutes par commande ciblée ; 12 minutes maximum pour une suite complète explicitement autorisée.** Arrêt et diagnostic si 5 minutes sans progression, même avec CPU actif ; aucune relance globale automatique.
+- **Budget de tâche : environ 15 minutes ou 12 appels d'outils significatifs**, puis bilan et demande d'accord avant poursuite.
+- Pas de surveillance verbale répétitive, d'audit général non requis, de relecture intégrale répétée des consignes ou de travaux « au passage ».
+- Après un test interrompu : rapporter « suite complète non validée », pas « tests complets OK ».
+
+Cette politique est une **règle permanente du projet**. Elle ne doit pas être écartée par une formulation trop large d'un prompt ponctuel.
+
+<!-- PHYSALIX_CODEX_BUDGET_END -->
+
 > **Source de référence du projet**
 >
 > Ce fichier sert de contexte initial pour tout nouveau chat ChatGPT/Codex consacré à Physalix.
@@ -81,8 +98,9 @@ Validation de release : 615 tests réussis dans le pipeline, bundle de 674 fichi
 sa détection du splash, et signatures Authenticode avec horodatage RFC 3161 valides.
 L'installateur signé fait 85 401 424 octets. Les trois assets ont été téléchargés
 depuis leurs URL publiques ; la signature, l'horodatage, la taille, le SHA-256 et
-le manifeste public ont été revérifiés. La véritable mise à jour
-`1.5.2 → 1.6.0` reste à tester et ne doit pas être présentée comme validée.
+le manifeste public ont été revérifiés. Le 16 octobre 2026, l'utilisateur a confirmé
+la réussite d'une mise à jour réelle vers 1.6.0 et le fonctionnement général de
+Physalix sur son portable.
 
 Les règles permanentes de travail avec Codex sont centralisées dans `AGENTS.md`.
 
@@ -540,7 +558,8 @@ Release Physalix 1.6.0 :
 - assets GitHub publics et SHA-256 — OK.
 
 Le flash réel du Nano, sa reconnexion et sa réutilisation après flash avaient été
-validés avant la release. La mise à jour réelle `1.5.2 → 1.6.0` reste à effectuer.
+validés avant la release. Le 16 octobre 2026, la mise à jour réelle vers 1.6.0 et
+le fonctionnement général sur portable ont également été confirmés par l'utilisateur.
 
 Dernière validation ciblée UI Acquisition/Firmware UI avant intégration :
 - `56 tests`
@@ -915,16 +934,22 @@ Validations conservées :
 - validation visuelle utilisateur réussie.
 
 La release signée 1.6.0 intégrant Spectro est publiée et ses assets publics sont
-vérifiés. La mise à jour réelle depuis 1.5.2 reste distincte et non encore validée.
+vérifiés. Le 16 octobre 2026, l'utilisateur a validé le module Spectrophotométrie
+1.6.0 sur son matériel réel Arduino Nano et capteur AS7341. La validation matérielle
+finale du module n'est donc plus en attente.
+
+Cette confirmation valide le fonctionnement matériel du module dans la release
+1.6.0. Elle ne constitue pas une validation pédagogique exhaustive de chaque
+expérience possible et ne permet pas d'inventer des mesures ou performances
+expérimentales qui n'ont pas été communiquées.
 
 ---
 
 ## 22. Prochaines étapes
 
-1. Réaliser une véritable mise à jour depuis Physalix `1.5.2`, puis vérifier le
-   redémarrage, la préservation des projets utilisateur et les fonctions utiles.
-2. Contrôler pendant ce parcours la réaction antivirus et l'élévation UAC.
-3. Étudier ultérieurement un updater incrémental dans un worktree dédié, sans
+1. Pour chaque nouvelle expérience pédagogique, valider séparément le protocole,
+   les mesures attendues et leur interprétation avant de les documenter comme acquises.
+2. Étudier ultérieurement un updater incrémental dans un worktree dédié, sans
    commencer son développement pendant la préparation courante de release.
 
 Ne jamais présenter ces validations de release ou de mise à jour comme réalisées

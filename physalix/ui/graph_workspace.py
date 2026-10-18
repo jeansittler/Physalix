@@ -108,7 +108,7 @@ class GraphWorkspace(QWidget):
         self.arrange()
         return graph
 
-    def add_data_graph(self, x_column, y_column, title=None):
+    def add_data_graph(self, x_column, y_column, title=None, connect_points=False):
         """Créer un graphique neuf explicitement configuré sur deux colonnes."""
         if not (0 <= x_column < self.model.columnCount() and 0 <= y_column < self.model.columnCount()):
             raise ValueError("Colonnes du graphique introuvables.")
@@ -117,6 +117,7 @@ class GraphWorkspace(QWidget):
         series = graph.series[0]
         series.x_choice.setCurrentIndex(series.x_choice.findData(x_column))
         series.y_choice.setCurrentIndex(series.y_choice.findData(y_column))
+        series.connect_points.setChecked(bool(connect_points))
         if title:
             self.set_graph_title(
                 next(window for window in self.windows if window.graph is graph), title
