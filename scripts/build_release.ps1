@@ -49,15 +49,15 @@ try {
     if ($LASTEXITCODE -ne 0) { throw 'Build environment check failed.' }
     $version = (& $Python -c "from physalix import __version__; print(__version__)").Trim()
     if ($LASTEXITCODE -ne 0) { throw 'Cannot read version.' }
-    $existingExe = Join-Path $root 'dist\Physalix\Physalix.exe'
+    $existingExe = Join-Path $root 'dist\Physalyx\Physalyx.exe'
     if (Test-Path -LiteralPath $existingExe) {
         try {
             $handle = [IO.File]::Open($existingExe, 'Open', 'ReadWrite', 'None')
             $handle.Dispose()
-        } catch { throw 'Close Physalix before building: executable locked or inaccessible.' }
+        } catch { throw 'Close Physalyx before building: executable locked or inaccessible.' }
     }
     # Delete only these known generated directories, never artifacts or the source tree.
-    foreach ($relative in @('build\Physalix', 'dist\Physalix')) {
+    foreach ($relative in @('build\Physalyx', 'dist\Physalyx')) {
         $target = [IO.Path]::GetFullPath((Join-Path $root $relative))
         if (-not $target.StartsWith($root + '\', [StringComparison]::OrdinalIgnoreCase)) { throw 'Unsafe cleanup path.' }
         if (Test-Path -LiteralPath $target) {
@@ -68,17 +68,17 @@ try {
         }
     }
     Invoke-Logged $Python @('-m', 'unittest', 'discover', '-s', 'tests', '-v') 'artifacts/release-tests.log'
-    Write-Host 'Tests passed. Building Physalix...'
+    Write-Host 'Tests passed. Building Physalyx...'
     Invoke-Logged $Python @('-m', 'PyInstaller', '--clean', '--noconfirm', 'Physalix.spec') 'artifacts/release-build.log'
-    $bundle = Join-Path $root 'dist\Physalix'
+    $bundle = Join-Path $root 'dist\Physalyx'
     if (-not $AllowUnsigned) {
-        & $signScript @signingArguments -FilePath "$bundle\Physalix.exe"
+        & $signScript @signingArguments -FilePath "$bundle\Physalyx.exe"
     }
     & $Python scripts/verify_distribution.py bundle $bundle
     if ($LASTEXITCODE -ne 0) { throw 'Frozen executable validation failed.' }
     & $Python scripts/generate_compliance.py $bundle
     if ($LASTEXITCODE -ne 0) { throw 'Third-party compliance inventory failed.' }
-    & "$PSScriptRoot\test_launch.ps1" -Executable "$bundle\Physalix.exe"
+    & "$PSScriptRoot\test_launch.ps1" -Executable "$bundle\Physalyx.exe"
     if ($PackageOnly) { Write-Host "Package verified: $bundle (installer explicitly skipped)."; return }
     if (-not $Iscc) {
         $command = Get-Command ISCC.exe -ErrorAction SilentlyContinue
@@ -91,7 +91,7 @@ try {
     }
     if (-not $Iscc) { throw 'Package verified, but Inno Setup 6 is missing. Install it from https://jrsoftware.org/isdl.php then rerun this script.' }
     $artifactDir = Join-Path $root 'artifacts'
-    $installer = Join-Path $artifactDir "Physalix-Setup-$version.exe"
+    $installer = Join-Path $artifactDir "Physalyx-Setup-$version.exe"
     if (Test-Path -LiteralPath $installer) { Remove-Item -LiteralPath $installer -Force }
     $isccArguments = @("/DAppVersion=$version", "/DSourceDir=$bundle", "/DArtifactDir=$artifactDir")
     if (-not $AllowUnsigned) {
@@ -109,7 +109,7 @@ try {
         & $signScript @signingArguments -FilePath $installer -VerifyOnly
     }
     $hash = (Get-FileHash -LiteralPath $installer -Algorithm SHA256).Hash.ToLowerInvariant()
-    "$hash  Physalix-Setup-$version.exe" | Set-Content -LiteralPath "$installer.sha256" -Encoding ascii
+    "$hash  Physalyx-Setup-$version.exe" | Set-Content -LiteralPath "$installer.sha256" -Encoding ascii
     & $Python scripts/prepare_release.py
     if ($LASTEXITCODE -ne 0) { throw 'Update manifest generation failed.' }
     Get-Item -LiteralPath $installer | Select-Object FullName, Length

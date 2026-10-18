@@ -299,10 +299,30 @@ class ReleaseTests(unittest.TestCase):
         iss = (root / "packaging/installer/Physalix.iss").read_text(encoding="utf-8")
         for line in ("AppId={{807A4F23-674E-4CD3-9B57-D66B7B819B72}", "UsePreviousAppDir=yes",
                      "PrivilegesRequired=admin", "ArchitecturesInstallIn64BitMode=x64compatible",
-                     "DefaultDirName={autopf}\\Physalix", "AppVersion={#AppVersion}"):
+                     "DefaultDirName={autopf}\\Physalyx", "AppVersion={#AppVersion}",
+                     "AppName=Physalyx", "AppVerName=Physalyx {#AppVersion}",
+                     "UninstallDisplayName=Physalyx"):
             self.assertIn(line, iss)
         self.assertIn("SignTool={#SignToolName}", iss)
         self.assertIn("SignedUninstaller=yes", iss)
+
+    def test_physalyx_distribution_names_are_consistent(self):
+        root = Path(__file__).resolve().parents[1]
+        spec = (root / "Physalix.spec").read_text(encoding="utf-8")
+        build = (root / "scripts/build_release.ps1").read_text(encoding="utf-8")
+        prepare = (root / "scripts/prepare_release.py").read_text(encoding="utf-8")
+        verify = (root / "scripts/verify_distribution.py").read_text(encoding="utf-8")
+        compliance = (root / "scripts/generate_compliance.py").read_text(encoding="utf-8")
+        for expected in ("name='Physalyx'", "'OriginalFilename', 'Physalyx.exe'",
+                         "'ProductName', 'Physalyx'"):
+            self.assertIn(expected, spec)
+        for expected in ("dist\\Physalyx\\Physalyx.exe", "dist\\Physalyx",
+                         "$bundle\\Physalyx.exe", "Physalyx-Setup-$version.exe"):
+            self.assertIn(expected, build)
+        self.assertIn('f"Physalyx-Setup-{__version__}.exe"', prepare)
+        self.assertIn('directory / "Physalyx.exe"', verify)
+        self.assertIn('ROOT / "dist/Physalyx"', verify)
+        self.assertIn('ROOT / "dist/Physalyx"', compliance)
 
     def test_release_signing_is_fail_closed_and_precedes_hashing(self):
         root = Path(__file__).resolve().parents[1]
@@ -347,9 +367,14 @@ class ReleaseTests(unittest.TestCase):
         iss = (root / "packaging/installer/Physalix.iss").read_text(encoding="utf-8")
         self.assertIn('ChangesAssociations=yes', iss)
         self.assertIn('Subkey: ".physalix"', iss)
+        self.assertIn('Subkey: ".physalyx"', iss)
         self.assertIn('ValueData: "Physalix.Project"', iss)
         self.assertIn('Subkey: "Physalix.Project\\shell\\open\\command"', iss)
-        self.assertIn('ValueData: """{app}\\Physalix.exe"" ""%1"""', iss)
+        self.assertIn('ValueData: """{app}\\Physalyx.exe"" ""%1"""', iss)
+        self.assertIn('AppUserModelID: "Physalix.Physalix"', iss)
+        self.assertIn('Type: files; Name: "{app}\\Physalix.exe"', iss)
+        self.assertIn('Type: files; Name: "{autoprograms}\\Physalix.lnk"', iss)
+        self.assertIn('Type: files; Name: "{autodesktop}\\Physalix.lnk"', iss)
 
     def test_manifest_generation(self):
         from scripts import prepare_release
@@ -363,7 +388,7 @@ class ReleaseTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 prepare_release.prepare(path)
             content = b"fake PE handled by mock"
-            (path / f"Physalix-Setup-{__base_version__}.exe").write_bytes(content)
+            (path / f"Physalyx-Setup-{__base_version__}.exe").write_bytes(content)
             with patch("pefile.PE") as pe:
                 fixed = pe.return_value.__enter__.return_value.VS_FIXEDFILEINFO[0]
                 fixed.FileVersionMS = (major << 16) | minor
@@ -373,7 +398,7 @@ class ReleaseTests(unittest.TestCase):
                 self.assertFalse(raw.startswith(b"\xef\xbb\xbf"))
                 result = json.loads(raw.decode("utf-8"))
                 self.assertEqual(result["sha256"], hashlib.sha256(content).hexdigest())
-                self.assertEqual(result["installer_url"], f"https://github.com/jeansittler/Physalix/releases/download/v{__base_version__}/Physalix-Setup-{__base_version__}.exe")
+                self.assertEqual(result["installer_url"], f"https://github.com/jeansittler/Physalix/releases/download/v{__base_version__}/Physalyx-Setup-{__base_version__}.exe")
                 self.assertEqual([entry["version"] for entry in result["changelog"]],
                                  ["1.2.2", "1.2.3", "1.2.4", "1.2.5", "1.3.0", "1.4.0", "1.4.1", "1.5.0", "1.5.1", "1.5.2", "1.6.0", "1.7.0", "1.8.0"])
                 notes_124 = next(

@@ -26,7 +26,7 @@ def prepare(directory):
     changelog = list(reversed(load_release_notes(
         require_current=True, current_version=__version__
     )))
-    installer = directory / f"Physalix-Setup-{__version__}.exe"
+    installer = directory / f"Physalyx-Setup-{__version__}.exe"
     if not installer.is_file() or not installer.stat().st_size:
         raise ValueError(f"Installer missing or empty: {installer.name}")
     # Reject an incorrectly renamed older installer, using the existing build dependency.

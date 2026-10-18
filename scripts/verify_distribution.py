@@ -43,14 +43,14 @@ def environment():
             actual = importlib.metadata.version(name)
             assert actual == expected, f"{name}: {actual} != {expected}; install packaging/requirements-build.txt"
     subprocess.run([sys.executable, "-m", "pip", "check"], check=True)
-    print(f"Environment OK: Python {platform.python_version()}, Physalix {VERSION}")
+    print(f"Environment OK: Python {platform.python_version()}, Physalyx {VERSION}")
 
 
 def bundle(directory):
     from PyInstaller.archive.readers import CArchiveReader
     import pefile
     directory = directory.resolve()
-    exe = directory / "Physalix.exe"
+    exe = directory / "Physalyx.exe"
     pe = pefile.PE(str(exe))
     assert pe.FILE_HEADER.Machine == 0x8664
     assert pe.OPTIONAL_HEADER.Subsystem == 2, "GUI executable expected"
@@ -128,6 +128,6 @@ def bundle(directory):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("action", choices=["environment", "bundle"])
-    parser.add_argument("directory", nargs="?", type=Path, default=ROOT / "dist/Physalix")
+    parser.add_argument("directory", nargs="?", type=Path, default=ROOT / "dist/Physalyx")
     args = parser.parse_args()
     environment() if args.action == "environment" else bundle(args.directory)

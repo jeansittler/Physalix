@@ -65,16 +65,16 @@ exe = EXE(
     a.scripts,
     [],
     exclude_binaries=True,
-    name='Physalix',
+    name='Physalyx',
     icon=str(root / 'physalix/ui/resources/branding/icon_physalix.ico'),
     version=VSVersionInfo(
         ffi=FixedFileInfo(filevers=version_tuple, prodvers=version_tuple),
         kids=[
             StringFileInfo([StringTable('040C04B0', [
-                StringStruct('FileDescription', 'Physalix'),
-                StringStruct('ProductName', 'Physalix'),
-                StringStruct('InternalName', 'Physalix'),
-                StringStruct('OriginalFilename', 'Physalix.exe'),
+                StringStruct('FileDescription', 'Physalyx'),
+                StringStruct('ProductName', 'Physalyx'),
+                StringStruct('InternalName', 'Physalyx'),
+                StringStruct('OriginalFilename', 'Physalyx.exe'),
                 StringStruct('FileVersion', version),
                 StringStruct('ProductVersion', version),
             ])]),
@@ -99,5 +99,5 @@ coll = COLLECT(
     strip=False,
     upx=False,
     upx_exclude=[],
-    name='Physalix',
+    name='Physalyx',
 )

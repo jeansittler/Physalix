@@ -94,7 +94,7 @@ def main(bundle: Path, target: Path) -> None:
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("bundle", nargs="?", type=Path, default=ROOT / "dist/Physalix")
+    parser.add_argument("bundle", nargs="?", type=Path, default=ROOT / "dist/Physalyx")
     parser.add_argument("--output", type=Path, default=ROOT / "artifacts/third-party-inventory.json")
     args = parser.parse_args()
     main(args.bundle.resolve(), args.output.resolve())
