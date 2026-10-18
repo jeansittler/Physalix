@@ -56,15 +56,15 @@ Fonctionnalités principales existantes :
 
 ### Version publique
 
-**Physalix 1.7.0**
+**Physalix 1.8.0**
 
 Commit de release :
 
-`cc6dd4f0f9ec17354519d52f9f609191236a4411`
+`0fe830302500a5c4fffb52c0bb4d9ff8a3a2c8ed`
 
 Tag :
 
-`v1.7.0`
+`v1.8.0`
 
 Branche stable :
 
@@ -72,23 +72,26 @@ Branche stable :
 
 Release GitHub :
 
-`https://github.com/jeansittler/Physalix/releases/tag/v1.7.0`
+`https://github.com/jeansittler/Physalix/releases/tag/v1.8.0`
 
-Le tag annoté `v1.7.0` pointe exactement sur le commit de release ci-dessus.
-Physalix 1.7.0 est la release stable et Latest sur GitHub. Elle publie notamment
-le module Analyse d'images intégré à `main`.
+Le tag annoté `v1.8.0` pointe exactement sur le commit de release ci-dessus.
+Physalix 1.8.0 est la release stable et Latest sur GitHub. Lors de la publication,
+`main` était synchronisée avec `origin/main`. Cette version publie notamment la
+nouvelle page d'accueil scientifique intégrée à `main`.
 
 Assets publiés :
-- `Physalix-Setup-1.7.0.exe`
-- `Physalix-Setup-1.7.0.exe.sha256`
+- `Physalix-Setup-1.8.0.exe`
+- `Physalix-Setup-1.8.0.exe.sha256`
 - `update.json`
 
-SHA-256 de l’installateur 1.7.0 :
+Taille de l'installateur 1.8.0 : `86 291 280 octets`.
 
-`75aba75994e41190a8c6b3a9eef8dfec713714b749a04e29971eeb97ab46189b`
+SHA-256 de l’installateur 1.8.0 :
+
+`a1bea05abdcc56d70bdb14335833ec4e27ff101a4e1a137ccc706ab3738fe23c`
 
 `update.json` public :
-- version `1.7.0`
+- version `1.8.0`
 - `mandatory = false`
 - URL de l’installateur cohérente avec la release GitHub
 - SHA identique à celui de l’installateur
@@ -96,11 +99,12 @@ SHA-256 de l’installateur 1.7.0 :
 
 Validation de release : tests scientifiques et Qt ciblés réussis, build PyInstaller
 et smoke test réussis, signatures Authenticode avec horodatage RFC 3161 valides pour
-le programme, le désinstalleur et l'installateur. L'installateur signé fait
-86 267 160 octets. Les trois assets publics, leur SHA-256 et `update.json` ont été
-revérifiés. L'utilisateur a confirmé l'installation réelle puis la mise à jour
-automatique réelle vers 1.7.0. La suite complète précédemment interrompue reste
-**NON VALIDÉE** ; les tests ciblés ne constituent pas une validation globale.
+le programme, le désinstalleur et l'installateur. La procédure
+`ExternalSignedUninstallerDir` a été utilisée avec succès. Les trois assets publics,
+leur SHA-256 et `update.json` ont été revérifiés. Le 18 octobre 2026, l'utilisateur
+a confirmé la réussite de la mise à jour réelle de Physalix 1.7.0 vers 1.8.0.
+La suite complète de 689 tests reste **NON VALIDÉE** ; les vérifications ciblées
+ne constituent pas une validation globale.
 
 Les règles permanentes de travail avec Codex sont centralisées dans `AGENTS.md`.
 
@@ -564,6 +568,16 @@ Release Physalix 1.7.0 :
 - installation et mise à jour automatique réelles — confirmées par l'utilisateur ;
 - suite complète interrompue — **NON VALIDÉE**.
 
+Release Physalix 1.8.0 :
+- suite complète de 689 tests exécutée mais **NON VALIDÉE** : 35 échecs et 4 erreurs ;
+- cause commune identifiée : d'anciens tests Qt sélectionnaient directement un
+  onglet sans afficher son conteneur après l'introduction du `QStackedWidget` ;
+- tests concernés adaptés à l'API publique `MainWindow.show_module(...)` ;
+- les 39 anomalies historiques ont été couvertes par des vérifications ciblées réussies ;
+- aucun défaut scientifique n'a été démontré par ce diagnostic ;
+- build, bundle, smoke test, signatures Certum et assets publics — OK ;
+- mise à jour réelle 1.7.0 vers 1.8.0 — confirmée par l'utilisateur le 18 octobre 2026.
+
 Le flash réel du Nano, sa reconnexion et sa réutilisation après flash avaient été
 validés avant la release. Le 16 octobre 2026, la mise à jour réelle vers 1.6.0 et
 le fonctionnement général sur portable ont également été confirmés par l'utilisateur.
@@ -617,7 +631,8 @@ historique, mais permet, sans directive `SignTool` active :
 - la vérification Authenticode, de l'horodatage RFC 3161 et du SHA-256.
 
 Ce mode a été utilisé avec succès pour Physalix 1.7.0 après des problèmes de
-visibilité du certificat SimplySign dans le SignTool lancé directement par Inno.
+visibilité du certificat SimplySign dans le SignTool lancé directement par Inno,
+puis à nouveau pour la distribution signée Physalix 1.8.0.
 
 Une release Windows est bloquée si le certificat SimplySign, sa clé privée,
 SignTool, la signature ou l'horodatage ne sont pas disponibles. L'authentification
@@ -642,10 +657,14 @@ Les ressources firmware nécessaires au runtime doivent être incluses :
 
 Le bundle publié contient les ressources Nano et Uno ainsi qu'AVRDUDE. Les
 contrôles de distribution, de signature et de publication publique ont réussi.
+Pour Physalix 1.8.0, les trois assets publics sont
+`Physalix-Setup-1.8.0.exe`, `Physalix-Setup-1.8.0.exe.sha256` et `update.json`.
 
 ### Updater
 
 Le système de mise à jour utilise `update.json`.
+Le canal public `releases/latest/download/update.json` sert le manifeste 1.8.0,
+avec `mandatory = false`, et reste compatible avec l'updater de Physalix 1.7.0.
 
 Une release doit vérifier :
 - version correcte ;
@@ -765,9 +784,9 @@ Après stabilisation définitive, la branche pourra éventuellement être suppri
 
 Version applicative actuelle :
 
-`1.7.0`
+`1.8.0`
 
-Version publique actuelle : `1.7.0`.
+Version publique actuelle : `1.8.0`.
 
 Firmware Arduino :
 
@@ -998,12 +1017,38 @@ qui reste non validée pour cette release.
 
 ---
 
-## 23. Prochaines étapes
+## 23. Page d'accueil scientifique
+
+Physalix 1.8.0 dispose d'une véritable page d'accueil pédagogique, validée
+visuellement par l'utilisateur. Elle fournit :
+- une galerie visuelle des dix modules avec prévisualisations scientifiques vectorielles ;
+- une grille responsive adaptée aux dimensions de la fenêtre et un accès direct
+  aux modules ;
+- un bandeau compact pour créer ou ouvrir un projet ;
+- un bouton Accueil permanent et une navigation qui conserve le projet et les
+  données en cours ;
+- une intégration par `QStackedWidget` qui préserve les indices historiques du
+  `QTabWidget`, ainsi que la compatibilité avec `replace_project()` et l'import CSV.
+
+Fichiers de référence :
+- `physalix/ui/home_page.py` ;
+- `physalix/ui/main_window.py` ;
+- `physalix/ui/theme.py` ;
+- `tests/test_home_page.py`.
+
+Toute évolution de la navigation doit utiliser l'API publique
+`MainWindow.show_module(...)` lorsqu'un module doit être rendu visible, notamment
+dans les tests Qt. Ne pas sélectionner directement un onglet en supposant que son
+conteneur est déjà visible.
+
+---
+
+## 24. Prochaines étapes
 
 1. Pour chaque nouvelle expérience pédagogique, valider séparément le protocole,
    les mesures attendues et leur interprétation avant de les documenter comme acquises.
 2. Étudier ultérieurement un updater incrémental dans un worktree dédié, sans
-   commencer son développement pendant la préparation courante de release.
+   commencer son développement sans décision explicite.
 
 Ne jamais présenter ces validations de release ou de mise à jour comme réalisées
 avant leur exécution effective.
