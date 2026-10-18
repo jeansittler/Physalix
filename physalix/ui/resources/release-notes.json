@@ -118,5 +118,11 @@
       "Transfert des mesures vers Données et Graphique.",
       "Amélioration de la sauvegarde des projets et de la robustesse de certaines interactions."
     ]
+  },
+  {
+    "version": "1.8.0",
+    "notes": [
+      "Nouvelle page d'accueil scientifique : galerie visuelle des dix outils avec prévisualisations pédagogiques, accès direct et disposition adaptative, navigation améliorée, création ou ouverture rapide des projets, et conservation du projet actif lors du retour à l'accueil."
+    ]
   }
 ]

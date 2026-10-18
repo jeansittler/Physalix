@@ -25,6 +25,7 @@ class DigitizerTransferTests(unittest.TestCase):
         self.window = MainWindow()
         self.window.show()
         self.tab = self.window.digitizer_tab
+        self.window.show_module(self.window.tabs.indexOf(self.tab))
         self.app.processEvents()
 
     def tearDown(self):

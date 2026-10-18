@@ -24,6 +24,7 @@ class SpreadsheetTests(unittest.TestCase):
         self.window.resize(1000, 720)
         self.window.show()
         self.tab = self.window.data_tab
+        self.window.show_module(self.window.tabs.indexOf(self.tab))
         self.model, self.table = self.tab.model, self.tab.table
         self.app.processEvents()
 

@@ -198,7 +198,7 @@ class CalculationsTests(unittest.TestCase):
             window.resize(900, 650)
             window.show()
             tab = window.calculations_tab
-            window.tabs.setCurrentWidget(tab)
+            window.show_module(window.tabs.indexOf(tab))
             self.app.processEvents()
 
             self.assertFalse(tab.quantity_toggle.isChecked())

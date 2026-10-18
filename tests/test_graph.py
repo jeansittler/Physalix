@@ -26,7 +26,7 @@ class GraphTests(unittest.TestCase):
     def setUp(self):
         self.window = MainWindow()
         self.window.show()
-        self.window.tabs.setCurrentIndex(1)
+        self.window.show_module(1)
         self.graph = self.window.graph_tab
         self.model = self.window.data_tab.model
         self.app.processEvents()

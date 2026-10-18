@@ -197,6 +197,7 @@ class ModelingInterfaceTests(unittest.TestCase):
         graph, tab, model = window.graph_tab, window.modeling_tab, window.data_tab.model
         try:
             window.show()
+            window.show_module(window.tabs.indexOf(tab))
             model.rows = [[str(x), str(2*x+1)] for x in range(10)]
             graph.refresh_plot()
             tab.range_check.setChecked(True)

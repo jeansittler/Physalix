@@ -33,6 +33,7 @@ class ImageAnalysisUiTests(unittest.TestCase):
         self.window = MainWindow()
         self.windows = [self.window]
         self.tab = self.window.image_analysis_tab
+        self.window.show_module(self.window.tabs.indexOf(self.tab))
         image = QImage(80, 40, QImage.Format.Format_RGB32)
         for y in range(image.height()):
             for x in range(image.width()):

@@ -233,7 +233,7 @@ class TrackingUiTests(unittest.TestCase):
         try:
             window.show()
             tab = window.video_tab
-            window.tabs.setCurrentWidget(tab)
+            window.show_module(window.tabs.indexOf(tab))
             tab.open_video(self.path)
             self.wait_loaded(tab)
             self.assertFalse(tab.track_button.isEnabled())

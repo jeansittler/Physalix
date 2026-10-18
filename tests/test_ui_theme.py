@@ -23,6 +23,7 @@ class ThemeLayoutTests(unittest.TestCase):
     def setUp(self):
         self.window = MainWindow()
         self.window.show()
+        self.window.show_module(0)
 
     def tearDown(self):
         self.window._discard_on_close = True
