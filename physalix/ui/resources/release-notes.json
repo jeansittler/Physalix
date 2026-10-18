@@ -106,5 +106,17 @@
       "Amélioration de l'affichage du module Spectrophotométrie et du démarrage de Physalix.",
       "Fiabilisation de l'élévation UAC lors du lancement de l'installateur téléchargé par le système de mise à jour."
     ]
+  },
+  {
+    "version": "1.7.0",
+    "notes": [
+      "Nouvel onglet Analyse d'images pour étudier notamment les interférences, la diffraction et les spectres lumineux.",
+      "Étalonnage des images en distance ou en longueur d'onde.",
+      "Extraction et comparaison de profils d'intensité lumineuse.",
+      "Mesure des écarts et des interfranges avec placement interactif des repères.",
+      "Tracé et manipulation des segments directement sur les photographies.",
+      "Transfert des mesures vers Données et Graphique.",
+      "Amélioration de la sauvegarde des projets et de la robustesse de certaines interactions."
+    ]
   }
 ]
