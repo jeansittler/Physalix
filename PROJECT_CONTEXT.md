@@ -46,6 +46,7 @@ Fonctionnalités principales existantes :
 - Calculs ;
 - Statistiques ;
 - Numérisation de graphiques ;
+- Analyse d'images ;
 - Acquisition Arduino ;
 - Spectrophotométrie Arduino.
 
@@ -55,15 +56,15 @@ Fonctionnalités principales existantes :
 
 ### Version publique
 
-**Physalix 1.6.0**
+**Physalix 1.7.0**
 
 Commit de release :
 
-`5306f57a09000cdce5c7bf538cedd84dd85ece0c`
+`cc6dd4f0f9ec17354519d52f9f609191236a4411`
 
 Tag :
 
-`v1.6.0`
+`v1.7.0`
 
 Branche stable :
 
@@ -71,36 +72,35 @@ Branche stable :
 
 Release GitHub :
 
-`https://github.com/jeansittler/Physalix/releases/tag/v1.6.0`
+`https://github.com/jeansittler/Physalix/releases/tag/v1.7.0`
 
-Le tag annoté `v1.6.0` pointe exactement sur le commit de release ci-dessus.
-Physalix 1.6.0 est la release stable et Latest sur GitHub. Elle publie notamment
-la Spectrophotométrie Arduino Nano / AS7341 intégrée à `main`.
+Le tag annoté `v1.7.0` pointe exactement sur le commit de release ci-dessus.
+Physalix 1.7.0 est la release stable et Latest sur GitHub. Elle publie notamment
+le module Analyse d'images intégré à `main`.
 
 Assets publiés :
-- `Physalix-Setup-1.6.0.exe`
-- `Physalix-Setup-1.6.0.exe.sha256`
+- `Physalix-Setup-1.7.0.exe`
+- `Physalix-Setup-1.7.0.exe.sha256`
 - `update.json`
 
-SHA-256 de l’installateur 1.6.0 :
+SHA-256 de l’installateur 1.7.0 :
 
-`dbe631195a2a1fbe6cc4e9848421a9b6d96772bfa5a8699c62a5c1269e6873e9`
+`75aba75994e41190a8c6b3a9eef8dfec713714b749a04e29971eeb97ab46189b`
 
 `update.json` public :
-- version `1.6.0`
+- version `1.7.0`
 - `mandatory = false`
 - URL de l’installateur cohérente avec la release GitHub
 - SHA identique à celui de l’installateur
 - changelog cumulatif
 
-Validation de release : 615 tests réussis dans le pipeline, bundle de 674 fichiers
-(301,3 Mio), inventaire tiers de 29 fichiers, smoke test réussi après correction de
-sa détection du splash, et signatures Authenticode avec horodatage RFC 3161 valides.
-L'installateur signé fait 85 401 424 octets. Les trois assets ont été téléchargés
-depuis leurs URL publiques ; la signature, l'horodatage, la taille, le SHA-256 et
-le manifeste public ont été revérifiés. Le 16 octobre 2026, l'utilisateur a confirmé
-la réussite d'une mise à jour réelle vers 1.6.0 et le fonctionnement général de
-Physalix sur son portable.
+Validation de release : tests scientifiques et Qt ciblés réussis, build PyInstaller
+et smoke test réussis, signatures Authenticode avec horodatage RFC 3161 valides pour
+le programme, le désinstalleur et l'installateur. L'installateur signé fait
+86 267 160 octets. Les trois assets publics, leur SHA-256 et `update.json` ont été
+revérifiés. L'utilisateur a confirmé l'installation réelle puis la mise à jour
+automatique réelle vers 1.7.0. La suite complète précédemment interrompue reste
+**NON VALIDÉE** ; les tests ciblés ne constituent pas une validation globale.
 
 Les règles permanentes de travail avec Codex sont centralisées dans `AGENTS.md`.
 
@@ -557,6 +557,13 @@ Release Physalix 1.6.0 :
 - signatures Authenticode et horodatages RFC 3161 — OK ;
 - assets GitHub publics et SHA-256 — OK.
 
+Release Physalix 1.7.0 :
+- tests scientifiques et Qt ciblés — OK ;
+- build PyInstaller et smoke test — OK ;
+- programme, désinstalleur et installateur signés Certum et horodatés — OK ;
+- installation et mise à jour automatique réelles — confirmées par l'utilisateur ;
+- suite complète interrompue — **NON VALIDÉE**.
+
 Le flash réel du Nano, sa reconnexion et sa réutilisation après flash avaient été
 validés avant la release. Le 16 octobre 2026, la mise à jour réelle vers 1.6.0 et
 le fonctionnement général sur portable ont également été confirmés par l'utilisateur.
@@ -599,6 +606,19 @@ Workflow actuel :
 - `update.json` ;
 - release GitHub.
 
+Depuis la release 1.7.0, `packaging/installer/Physalix.iss` propose aussi le mode
+optionnel `ExternalSignedUninstallerDir`. Il conserve la procédure intégrée
+historique, mais permet, sans directive `SignTool` active :
+- une première compilation Inno générant le désinstalleur persistant ;
+- sa signature externe Certum avec `scripts/sign_release.ps1` ;
+- une seconde compilation réutilisant ce désinstalleur signé et ses copies
+  temporaires signées ;
+- la signature externe de l'installateur final ;
+- la vérification Authenticode, de l'horodatage RFC 3161 et du SHA-256.
+
+Ce mode a été utilisé avec succès pour Physalix 1.7.0 après des problèmes de
+visibilité du certificat SimplySign dans le SignTool lancé directement par Inno.
+
 Une release Windows est bloquée si le certificat SimplySign, sa clé privée,
 SignTool, la signature ou l'horodatage ne sont pas disponibles. L'authentification
 SimplySign reste interactive ; aucun OTP, PIN ni accès au compte n'est stocké.
@@ -620,7 +640,7 @@ Les ressources firmware nécessaires au runtime doivent être incluses :
 - firmware et manifeste Nano pour la Spectrophotométrie ;
 - AVRDUDE 8.1 et sa configuration, partagés par les deux cartes.
 
-Le bundle 1.6.0 publié contient les ressources Nano et Uno ainsi qu'AVRDUDE. Les
+Le bundle publié contient les ressources Nano et Uno ainsi qu'AVRDUDE. Les
 contrôles de distribution, de signature et de publication publique ont réussi.
 
 ### Updater
@@ -745,9 +765,9 @@ Après stabilisation définitive, la branche pourra éventuellement être suppri
 
 Version applicative actuelle :
 
-`1.6.0`
+`1.7.0`
 
-Version publique actuelle : `1.6.0`.
+Version publique actuelle : `1.7.0`.
 
 Firmware Arduino :
 
@@ -945,7 +965,40 @@ expérimentales qui n'ont pas été communiquées.
 
 ---
 
-## 22. Prochaines étapes
+## 22. Analyse d'images intégrée
+
+### Architecture
+
+Le module est intégré à `main` et s'appuie principalement sur :
+- `physalix/image_analysis.py` pour les calculs scientifiques de profils,
+  étalonnages et mesures ;
+- `physalix/ui/image_analysis_canvas.py` pour l'affichage de l'image et les
+  interactions graphiques ;
+- `physalix/ui/image_analysis_tab.py` pour l'interface, le parcours pédagogique,
+  les profils, mesures, transferts et la persistance ;
+- les composants existants de projet, Données et Graphique pour l'intégration au
+  modèle partagé, sans système de données parallèle.
+
+### Fonctions intégrées
+
+- chargement et analyse de photographies JPG, PNG et BMP ;
+- étalonnages spatial et spectral, relatifs ou absolus selon le parcours choisi ;
+- extraction, moyennage et comparaison de profils d'intensité ;
+- tracé interactif des segments en deux clics, puis manipulation directe ;
+- réticule synchronisé entre graphique, photographie et coordonnées ;
+- placement des points et mesures d'écarts ou d'interfranges moyens ;
+- transfert vers Données et Graphique ;
+- sauvegarde de l'image et de l'état scientifique dans les projets Physalix,
+  avec restauration et compatibilité des anciens projets.
+
+Les traitements généraux avancés d'image ne font pas partie du périmètre du module.
+Les validations conservées sont les tests scientifiques et Qt ciblés, le smoke test
+du bundle et la validation manuelle. Elles ne remplacent pas une suite complète,
+qui reste non validée pour cette release.
+
+---
+
+## 23. Prochaines étapes
 
 1. Pour chaque nouvelle expérience pédagogique, valider séparément le protocole,
    les mesures attendues et leur interprétation avant de les documenter comme acquises.
