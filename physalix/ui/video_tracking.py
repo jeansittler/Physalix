@@ -14,17 +14,27 @@ from physalix.ui.components import WheelSafeComboBox
 class CalibrationLengthSpinBox(QDoubleSpinBox):
     """Accept either decimal separator, keeping Qt's French display and bounds."""
 
+    def _number_text(self, text):
+        value = text.strip()
+        if self.prefix() and value.startswith(self.prefix().strip()):
+            value = value[len(self.prefix().strip()):].strip()
+        if self.suffix() and value.endswith(self.suffix().strip()):
+            value = value[:-len(self.suffix().strip())].strip()
+        return value
+
     def validate(self, text, pos):
         # Do not interpret grouping or mixed separators as a different length.
-        if any(char not in "0123456789.,+" for char in text) or text.count(".") + text.count(",") > 1:
+        value = self._number_text(text)
+        if (any(char not in "0123456789.,+" for char in value)
+                or value.count(".") + value.count(",") > 1):
             return QValidator.State.Invalid, text, pos
-        state, _, _ = super().validate(text.replace(".", ","), pos)
+        state, _, _ = super().validate(value.replace(".", ","), min(pos, len(value)))
         return state, text, pos
 
     def valueFromText(self, text):
         if self.validate(text, len(text))[0] != QValidator.State.Acceptable:
             raise ValueError("Saisissez une longueur positive valide.")
-        return super().valueFromText(text.replace(".", ","))
+        return super().valueFromText(self._number_text(text).replace(".", ","))
 
 
 class CalibrationDialog(QDialog):

@@ -1,5 +1,22 @@
 # PHYSALIX — CONTEXTE DE TRAVAIL
 
+<!-- PHYSALIX_CODEX_BUDGET_START -->
+
+## Politique prioritaire d'économie de crédits Codex
+
+La politique détaillée et exécutoire se trouve dans `AGENTS.md`, section « Règles prioritaires — Budget Codex et maîtrise des tests ». **Elle prévaut sur toute mention historique de « suite complète au checkpoint » dans le présent contexte.**
+
+- **Sol Minimal par défaut** ; Sol Moyen si la complexité le justifie ; Sol Élevé seulement sur accord.
+- **Tests ciblés uniquement par défaut.** Une suite complète nécessite **un feu vert distinct**, obtenu après annonce de son coût/temps estimé ; une demande générale d'audit ne suffit pas.
+- **Timeout effectif : 3 minutes par commande ciblée ; 12 minutes maximum pour une suite complète explicitement autorisée.** Arrêt et diagnostic si 5 minutes sans progression, même avec CPU actif ; aucune relance globale automatique.
+- **Budget de tâche : environ 15 minutes ou 12 appels d'outils significatifs**, puis bilan et demande d'accord avant poursuite.
+- Pas de surveillance verbale répétitive, d'audit général non requis, de relecture intégrale répétée des consignes ou de travaux « au passage ».
+- Après un test interrompu : rapporter « suite complète non validée », pas « tests complets OK ».
+
+Cette politique est une **règle permanente du projet**. Elle ne doit pas être écartée par une formulation trop large d'un prompt ponctuel.
+
+<!-- PHYSALIX_CODEX_BUDGET_END -->
+
 > **Source de référence du projet**
 >
 > Ce fichier sert de contexte initial pour tout nouveau chat ChatGPT/Codex consacré à Physalix.

@@ -1776,18 +1776,18 @@ class SpectrophotometryNavigationTests(unittest.TestCase):
     def test_tab_is_added_after_acquisition(self):
         window = MainWindow()
         try:
-            self.assertIs(window.tabs.widget(window.tabs.count() - 2), window.acquisition_tab)
+            self.assertIs(window.tabs.widget(window.tabs.count() - 3), window.acquisition_tab)
             self.assertIs(
-                window.tabs.widget(window.tabs.count() - 1),
+                window.tabs.widget(window.tabs.count() - 2),
                 window.spectrophotometry_tab,
             )
             self.assertEqual(
-                window.tabs.tabText(window.tabs.count() - 1), "Spectrophotométrie"
+                window.tabs.tabText(window.tabs.count() - 2), "Spectrophotométrie"
             )
             self.assertEqual(
-                window.navigation_buttons[-1].toolTip(), "Spectrophotométrie"
+                window.navigation_buttons[-2].toolTip(), "Spectrophotométrie"
             )
-            self.assertFalse(window.navigation_buttons[-1].icon().isNull())
+            self.assertFalse(window.navigation_buttons[-2].icon().isNull())
         finally:
             window._discard_on_close = True
             window.close()

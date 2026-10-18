@@ -14,6 +14,7 @@ from physalix.spectrophotometry_project import (
     snapshot_spectrophotometry,
 )
 from physalix.video import VideoCache
+from physalix.project import IMAGE_ANALYSIS_ENTRY, MAX_IMAGE_ANALYSIS_SIZE, read_project_asset
 
 
 def controls(owner):
@@ -112,6 +113,7 @@ def snapshot(window):
                 calculations_controls=controls(window.calculations_tab), statistics=controls(window.statistics_tab),
                 video=video,
                 spectrophotometry=snapshot_spectrophotometry(window.spectrophotometry_tab),
+                image_analysis=window.image_analysis_tab.snapshot_state(),
                 tab=(0 if window.tabs.currentWidget() is getattr(window, 'digitizer_tab', None)
                                   else window.tabs.currentIndex()))
 
@@ -232,6 +234,14 @@ def restore(window, state, path=None):
             state['spectrophotometry'],
             model.columnCount(),
         )
+    if 'image_analysis' in state:
+        image_state = state['image_analysis']
+        image_asset = None
+        if isinstance(image_state, dict) and image_state.get('image') is not None:
+            if not path:
+                raise ValueError("Image integree au projet manquante.")
+            image_asset = read_project_asset(path, IMAGE_ANALYSIS_ENTRY, MAX_IMAGE_ANALYSIS_SIZE)
+        window.image_analysis_tab.restore_state(image_state, image_asset)
     video = state.get('video', {})
     tracking = window.video_tab.tracking
     for name in ('x_direction', 'y_direction', 'scale', 'unit', 'length', 'columns', 'written_rows'):
@@ -255,7 +265,8 @@ def restore(window, state, path=None):
         window.video_tab.slider.setRange(0, len(cache.times)-1)
         window.video_tab._show_frame(min(video['index'], len(cache.times)-1))
         window.video_tab.status.setText('Vidéo intégrée au projet · Lecture sans son.')
-    window.tabs.setCurrentIndex(state.get('tab', 0))
+    tab = state.get('tab', 0)
+    window.tabs.setCurrentIndex(tab if type(tab) is int and 0 <= tab < window.tabs.count() else 0)
     restore_views(window, graphs, state.get('active_graph_id'), state.get('active_graph'))
     model.undo_stack.clear()
 

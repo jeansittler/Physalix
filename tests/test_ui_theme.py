@@ -10,6 +10,7 @@ from PySide6.QtWidgets import (
 )
 from physalix.ui.components import ResponsiveCards
 from physalix.ui.main_window import MainWindow
+from physalix.ui.project_state import snapshot
 from physalix.ui.theme import LIGHT, apply_theme, stylesheet
 
 
@@ -123,9 +124,9 @@ class ThemeLayoutTests(unittest.TestCase):
         navigation = self.window.navigation
         buttons = self.window.navigation_buttons
         labels = ["Données", "Graphique", "Modélisation", "Pointage", "Calculs",
-                  "Statistiques", "Numérisation", "Acquisition", "Spectrophotométrie"]
+                  "Statistiques", "Numérisation", "Acquisition", "Spectrophotométrie", "Analyse d'images"]
         tooltips = ["Données", "Graphique", "Modélisation", "Pointage vidéo", "Calculs",
-                    "Statistiques", "Numérisation", "Acquisition", "Spectrophotométrie"]
+                    "Statistiques", "Numérisation", "Acquisition", "Spectrophotométrie", "Analyse d'images"]
         self.window.resize(self.window._navigation_required_width("normal") + 100, 800)
         QTest.qWait(20)
         self.assertEqual([button.text() for button in buttons], labels)
@@ -193,6 +194,35 @@ class ThemeLayoutTests(unittest.TestCase):
             self.assertEqual(graph_tabs.sizeHint().height(), internal_height)
         self.assertEqual(states, ["normal", "compact", "icon", "icon", "compact",
                                   "compact", "normal"])
+
+    def test_navigation_density_is_recomputed_after_project_replacement(self):
+        # Reproduire la boucle d'événements ouverte par la confirmation de
+        # sauvegarde : elle laisse la fenêtre de staging calculer sa géométrie cachée.
+        self.window.confirm_save = lambda: (self.app.processEvents() or True)
+        wide = self.window._navigation_required_width("normal") + 100
+        for width in (wide, 640, wide):
+            with self.subTest(width=width):
+                self.window.showNormal()
+                self.window.resize(width, 700)
+                self.app.processEvents()
+                expected = self.window.navigation.property("navigationMode")
+                self.window.new_project()
+                self.app.processEvents()
+                self.assertEqual(
+                    self.window.navigation.property("navigationMode"), expected)
+
+        state = snapshot(self.window)
+        expected = self.window.navigation.property("navigationMode")
+        self.assertTrue(self.window.replace_project(state))
+        self.app.processEvents()
+        self.assertEqual(self.window.navigation.property("navigationMode"), expected)
+
+        self.window.showMaximized()
+        self.app.processEvents()
+        expected = self.window.navigation.property("navigationMode")
+        self.window.new_project()
+        self.app.processEvents()
+        self.assertEqual(self.window.navigation.property("navigationMode"), expected)
 
     def test_brand_cartouche_is_centered_on_continuous_navigation_background(self):
         for mode, width, cartouche_size, logo_size in (
