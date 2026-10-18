@@ -103,6 +103,8 @@ def stylesheet(t=LIGHT):
         background: {t.navy_hover}; color: white; }}
     QWidget#mainNavigation QToolButton[role="mainNavigationButton"]:checked {{
         background: {t.navy}; color: white; border-bottom-color: {t.primary}; }}
+    QWidget#mainNavigation QToolButton#homeNavigationButton[homeActive="true"] {{
+        background: {t.navy_hover}; color: white; border-bottom-color: {t.primary}; }}
     QWidget#mainNavigation QToolButton[role="mainNavigationButton"]:focus {{
         border-color: {t.nav_muted}; }}
     QTabBar#graphTabs {{ background: {t.navy}; }}
@@ -114,6 +116,19 @@ def stylesheet(t=LIGHT):
     QTabBar#graphTabs::tab:focus {{ border: 1px solid white; border-bottom: 3px solid {t.primary};
         padding: 5px 11px; }}
     QFrame[role="brandCartouche"] {{ background: {t.surface}; border: 0; border-radius: 4px; }}
+    QWidget#homeContent {{ background: {t.background}; }}
+    QFrame[role="homeHeader"] {{ background: {t.surface}; border: 1px solid {t.border};
+        border-radius: {t.card_radius}px; }}
+    QFrame[role="homeHeaderAccent"] {{ background: {t.primary}; border: 0; border-radius: 2px; }}
+    QLabel[role="homeEyebrow"] {{ color: #2670AE; font-size: 10px; font-weight: 700; }}
+    QLabel[role="homeHeadline"] {{ color: #0B2744; font-size: 18px; font-weight: 700; }}
+    QFrame[role="homeHeader"] QLabel[role="muted"] {{ color: #344B63; }}
+    QFrame[role="homeToolCard"] {{ background: {t.surface}; border: 1px solid {t.border};
+        border-radius: {t.card_radius}px; }}
+    QFrame[role="homeToolCard"][hovered="true"] {{ background: #FAFCFE; border-color: {t.primary}; }}
+    QFrame[role="homeToolCard"]:focus {{ border: 2px solid {t.primary}; }}
+    QLabel[role="homeToolTitle"] {{ color: {t.navy}; font-size: {t.card_title_px}px; font-weight: 650; }}
+    QLabel[role="homeToolDescription"] {{ color: {t.muted}; font-size: {t.caption_px}px; }}
     QLabel[role="brandTitle"] {{ font-size: {t.title_px}px; font-weight: 700; }}
     QLabel[role="pageTitle"] {{ color: {t.navy}; font-size: {t.title_px}px; font-weight: 700; }}
     QLabel[role="pageSubtitle"] {{ color: {t.muted}; font-size: {t.font_px}px; }}

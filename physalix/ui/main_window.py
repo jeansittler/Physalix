@@ -3,12 +3,13 @@
 from PySide6.QtCore import Qt, QSize, QTimer
 from PySide6.QtGui import QFont, QFontMetrics
 from PySide6.QtWidgets import (
-    QButtonGroup, QFrame, QHBoxLayout, QMainWindow, QMenu, QTabWidget,
+    QButtonGroup, QFrame, QHBoxLayout, QMainWindow, QMenu, QStackedWidget, QTabWidget,
     QToolButton, QVBoxLayout, QWidget,
 )
 from physalix.ui.components import role
 from physalix.ui.branding import BrandLogo, application_icon
 from physalix.ui.icons import icon
+from physalix.ui.home_page import HomePage
 
 from physalix.ui.data_tab import DataTab
 from physalix.ui.graph_tab import GraphTab
@@ -97,6 +98,14 @@ class MainWindow(QMainWindow, ProjectFiles):
             self.tabs.setTabWhatsThis(index, tooltip)
         self.tabs.tabBar().hide()
 
+        self.home_page = HomePage()
+        self.workspace_stack = QStackedWidget()
+        self.workspace_stack.addWidget(self.home_page)
+        self.workspace_stack.addWidget(self.tabs)
+        self.home_page.module_requested.connect(self.show_module)
+        self.home_page.new_project_requested.connect(self.new_project)
+        self.home_page.open_project_requested.connect(self.open_project)
+
         self.navigation = role(QWidget(), "mainNavigation")
         self.navigation.setObjectName("mainNavigation")
         self.navigation.setFixedHeight(44)
@@ -114,6 +123,18 @@ class MainWindow(QMainWindow, ProjectFiles):
         self.navigation_layout.addWidget(self.brand_cartouche)
         self.navigation_layout.addSpacing(NAVIGATION_GAP)
 
+        self.home_button = role(QToolButton(), "mainNavigationButton")
+        self.home_button.setObjectName("homeNavigationButton")
+        self.home_button.setIcon(icon("home", navigation=True))
+        self.home_button.setIconSize(QSize(18, 18))
+        self.home_button.setFixedSize(34, 34)
+        self.home_button.setToolTip("Accueil")
+        self.home_button.setAccessibleName("Accueil")
+        self.home_button.setFocusPolicy(Qt.FocusPolicy.TabFocus)
+        self.home_button.clicked.connect(self.show_home)
+        self.navigation_layout.addWidget(self.home_button)
+        self.navigation_layout.addSpacing(4)
+
         self.navigation_group = QButtonGroup(self.navigation)
         self.navigation_group.setExclusive(True)
         self.navigation_buttons = []
@@ -128,8 +149,7 @@ class MainWindow(QMainWindow, ProjectFiles):
             button.setIconSize(QSize(18, 18))
             button.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
             button.setFixedHeight(34)
-            button.clicked.connect(
-                lambda checked=False, chosen=index, pages=self.tabs: pages.setCurrentIndex(chosen))
+            button.clicked.connect(lambda checked=False, chosen=index: self.show_module(chosen))
             self.navigation_group.addButton(button, index)
             self.navigation_buttons.append(button)
             self.navigation_layout.addWidget(button)
@@ -140,7 +160,7 @@ class MainWindow(QMainWindow, ProjectFiles):
         main_layout.setContentsMargins(0, 0, 0, 0)
         main_layout.setSpacing(0)
         main_layout.addWidget(self.navigation)
-        main_layout.addWidget(self.tabs, 1)
+        main_layout.addWidget(self.workspace_stack, 1)
         self._set_navigation_mode("normal")
         self.tabs.currentChanged.connect(self.update_navigation)
         self.update_navigation()
@@ -159,6 +179,18 @@ class MainWindow(QMainWindow, ProjectFiles):
         self._navigation_density_timer.setSingleShot(True)
         self._navigation_density_timer.timeout.connect(self._update_navigation_density)
         self._navigation_density_timer.start(0)
+
+    def show_home(self):
+        """Afficher l'accueil sans modifier le projet ni l'onglet actif."""
+        self.workspace_stack.setCurrentWidget(self.home_page)
+        self.update_navigation()
+
+    def show_module(self, index):
+        """Ouvrir directement un module depuis l'accueil ou la navigation."""
+        if 0 <= index < self.tabs.count():
+            self.tabs.setCurrentIndex(index)
+            self.workspace_stack.setCurrentWidget(self.tabs)
+            self.update_navigation()
 
     def _setup_diagnostic_menu(self):
         help_menu = self.updater.about_action.parent()
@@ -182,10 +214,18 @@ class MainWindow(QMainWindow, ProjectFiles):
 
     def update_navigation(self, *args):
         current = self.tabs.currentIndex()
-        for index, name in enumerate(("data", "graph", "model", "video", "calculations", "statistics", "digitizer", "acquisition", "spectrophotometry", "image_analysis")):
-            active = index == current
-            self.navigation_buttons[index].setChecked(active)
-            self.navigation_buttons[index].setIcon(icon(name, active, navigation=True))
+        on_home = self.workspace_stack.currentWidget() is self.home_page
+        self.home_button.setProperty("homeActive", on_home)
+        self.home_button.style().unpolish(self.home_button)
+        self.home_button.style().polish(self.home_button)
+        self.navigation_group.setExclusive(False)
+        try:
+            for index, name in enumerate(("data", "graph", "model", "video", "calculations", "statistics", "digitizer", "acquisition", "spectrophotometry", "image_analysis")):
+                active = not on_home and index == current
+                self.navigation_buttons[index].setChecked(active)
+                self.navigation_buttons[index].setIcon(icon(name, active, navigation=True))
+        finally:
+            self.navigation_group.setExclusive(True)
         for index, button in enumerate(self.navigation_buttons):
             button.setFocusPolicy(
                 Qt.FocusPolicy.TabFocus if index == current else Qt.FocusPolicy.NoFocus)
@@ -205,7 +245,7 @@ class MainWindow(QMainWindow, ProjectFiles):
                 metrics.horizontalAdvance(label) + icon_and_gap + tab_chrome
                 for label in NAVIGATION_LABELS
             )
-        return 16 + NAVIGATION_CARTOUCHE_SIZES[mode][0] + NAVIGATION_GAP + tabs_width
+        return 16 + NAVIGATION_CARTOUCHE_SIZES[mode][0] + NAVIGATION_GAP + 38 + tabs_width
 
     def _set_navigation_mode(self, mode):
         if mode == self._navigation_mode:
