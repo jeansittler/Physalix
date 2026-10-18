@@ -1,9 +1,9 @@
-"""Identité visuelle de Physalix et rendu du logo en coordonnées Qt HiDPI."""
+"""Identité visuelle de Physalyx et rendu du logo en coordonnées Qt HiDPI."""
 
 import sys
 
 from PySide6.QtCore import QRect, QRectF, Qt
-from PySide6.QtGui import QIcon, QPainter, QPixmap, qAlpha
+from PySide6.QtGui import QColor, QFont, QFontMetricsF, QIcon, QPainter, QPixmap, qAlpha
 from PySide6.QtWidgets import QWidget
 
 from physalix.ui.resources import resource_path
@@ -29,24 +29,30 @@ def set_windows_app_id() -> None:
 
 
 class BrandLogo(QWidget):
-    """Centrer le contenu visible du PNG et le rendre proprement en HiDPI."""
+    """Associer le symbole historique intact au nouveau nom public."""
 
     def __init__(self, parent=None):
         super().__init__(parent)
-        self._pixmap = QPixmap(str(resource_path("branding", "logo_physalix.png")))
+        self._pixmap = QPixmap(str(resource_path("branding", "icon_physalix.png")))
         self._source_rect = self._visible_rect(self._pixmap)
         self.setDisplaySize(124, 38)
-        self.setAccessibleName("Physalix")
-        self.setToolTip("Physalix — Observer • Mesurer • Comprendre")
+        self.setAccessibleName("Physalyx")
+        self.setToolTip("Physalyx — Observer • Mesurer • Comprendre")
 
     def setDisplaySize(self, width, height):
         """Adapter l'affichage sans rééchantillonner la ressource HiDPI."""
         self.setFixedSize(width, height)
 
+    def _font(self):
+        font = QFont("Segoe UI")
+        font.setPixelSize(max(12, round(self.height() * .52)))
+        font.setWeight(QFont.Weight.Bold)
+        return font
+
     def _target_rect(self):
-        size = self._source_rect.size().scaled(self.size(), Qt.AspectRatioMode.KeepAspectRatio)
-        return QRectF((self.width() - size.width()) / 2,
-                      (self.height() - size.height()) / 2, size.width(), size.height())
+        margin = max(1.0, self.height() * .08)
+        side = max(1.0, self.height() - 2 * margin)
+        return QRectF(margin, margin, side, side)
 
     @staticmethod
     def _visible_rect(pixmap, alpha_threshold=5):
@@ -70,5 +76,19 @@ class BrandLogo(QWidget):
         if self._pixmap.isNull():
             return
         painter = QPainter(self)
-        painter.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform)
+        painter.setRenderHints(QPainter.RenderHint.Antialiasing |
+                               QPainter.RenderHint.TextAntialiasing |
+                               QPainter.RenderHint.SmoothPixmapTransform)
         painter.drawPixmap(self._target_rect(), self._pixmap, QRectF(self._source_rect))
+        font = self._font()
+        painter.setFont(font)
+        painter.setPen(QColor("#0B2744"))
+        metrics = QFontMetricsF(font)
+        text_rect = QRectF(self._target_rect().right() + max(2.0, self.width() * .02), 0,
+                           self.width() - self._target_rect().right(), self.height())
+        if metrics.horizontalAdvance("Physalyx") > text_rect.width():
+            font.setPixelSize(max(8, round(font.pixelSize() * text_rect.width() /
+                                           metrics.horizontalAdvance("Physalyx"))))
+            painter.setFont(font)
+        painter.drawText(text_rect, Qt.AlignmentFlag.AlignVCenter |
+                         Qt.AlignmentFlag.AlignLeft, "Physalyx")

@@ -43,7 +43,7 @@ class UpdateUiTests(unittest.TestCase):
         self.assertEqual([action.text() for action in menu.actions()], [
             "Rechercher des mises à jour…",
             "Notes de version…",
-            "À propos de Physalix…",
+            "À propos de Physalyx…",
         ])
 
     def test_release_notes_dialog_is_local_and_marks_current_version(self):
@@ -84,7 +84,7 @@ class UpdateUiTests(unittest.TestCase):
             self.controller.about()
         dialog = self.window.findChild(QDialog)
         text = "\n".join(label.text() for label in dialog.findChildren(QLabel))
-        self.assertIn(f"Physalix\nVersion {__version__}", text)
+        self.assertIn(f"Physalyx\nVersion {__version__}", text)
         self.assertIn("Logiciel pédagogique de physique-chimie", text)
         self.assertIn("Développé par Jean Sittler", text)
         self.assertIn("© 2026 Jean Sittler", text)
@@ -100,7 +100,7 @@ class UpdateUiTests(unittest.TestCase):
             info.assert_not_called()
             c.manual = True
             c.finish("check", current, None)
-            self.assertEqual(info.call_args.args[2], "Physalix est à jour.")
+            self.assertEqual(info.call_args.args[2], "Physalyx est à jour.")
             c.finish("check", None, TimeoutError())
             self.assertEqual(info.call_count, 2)
 

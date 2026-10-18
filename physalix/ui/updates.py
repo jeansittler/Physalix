@@ -18,7 +18,7 @@ class UpdateDialog(QDialog):
         self.setWindowTitle("Mise à jour disponible")
         self.resize(520, 360)
         layout = QVBoxLayout(self)
-        layout.addWidget(QLabel(f"Physalix {manifest.version} est disponible.\nVersion installée : {__version__}"))
+        layout.addWidget(QLabel(f"Physalyx {manifest.version} est disponible.\nVersion installée : {__version__}"))
         layout.addWidget(QLabel("Nouveautés :"))
         self.notes = QTextBrowser()
         self.notes.setPlainText(
@@ -38,7 +38,7 @@ class UpdateDialog(QDialog):
 class ReleaseNotesDialog(QDialog):
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.setWindowTitle("Notes de version — Physalix")
+        self.setWindowTitle("Notes de version — Physalyx")
         self.resize(620, 480)
         layout = QVBoxLayout(self)
         self.notes = QTextBrowser()
@@ -98,7 +98,7 @@ class UpdateController(QObject):
             "Rechercher des mises à jour…", self.manual_check
         )
         self.notes_action = help_menu.addAction("Notes de version…", self.show_release_notes)
-        self.about_action = help_menu.addAction("À propos de Physalix…", self.about)
+        self.about_action = help_menu.addAction("À propos de Physalyx…", self.about)
 
     def start(self):
         # Called only by the real entry point, never by staging/test MainWindows.
@@ -115,10 +115,10 @@ class UpdateController(QObject):
 
     def about(self):
         dialog = QDialog(self.window)
-        dialog.setWindowTitle("À propos de Physalix")
+        dialog.setWindowTitle("À propos de Physalyx")
         layout = QVBoxLayout(dialog)
         label = QLabel(
-            f"Physalix\n"
+            f"Physalyx\n"
             f"Version {__version__}\n"
             "Logiciel pédagogique de physique-chimie\n"
             "Développé par Jean Sittler\n"
@@ -201,7 +201,7 @@ class UpdateController(QObject):
             self.download_dialog.setRange(0, 100 if total else 0)
             if total:
                 self.download_dialog.setValue(min(99, int(done * 100 / total)))
-            self.download_dialog.setLabelText(f"Téléchargement de Physalix… {done / 1024**2:.1f} Mo")
+            self.download_dialog.setLabelText(f"Téléchargement de Physalyx… {done / 1024**2:.1f} Mo")
 
     @Slot(str, object, object)
     def finish(self, kind, result, error):
@@ -229,7 +229,7 @@ class UpdateController(QObject):
                 return
             if not updates.is_newer(result.version):
                 if self.manual:
-                    QMessageBox.information(self.window, "Mise à jour", "Physalix est à jour.")
+                    QMessageBox.information(self.window, "Mise à jour", "Physalyx est à jour.")
                 return
             # Keep checks disabled while the modal offer is open (nested Qt event loop).
             self.busy = True
@@ -249,8 +249,8 @@ class UpdateController(QObject):
                 self.check_action.setEnabled(not self.stopped)
 
     def download(self, manifest):
-        self.download_dialog = QProgressDialog("Téléchargement de Physalix…", "Annuler", 0, 0, self.window)
-        self.download_dialog.setWindowTitle("Mise à jour de Physalix")
+        self.download_dialog = QProgressDialog("Téléchargement de Physalyx…", "Annuler", 0, 0, self.window)
+        self.download_dialog.setWindowTitle("Mise à jour de Physalyx")
         self.download_dialog.setWindowModality(Qt.WindowModality.WindowModal)
         self.download_dialog.setMinimumDuration(0)
         self.download_dialog.setAutoClose(False)

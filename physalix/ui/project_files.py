@@ -128,7 +128,7 @@ class ProjectFiles:
             path = path.with_suffix(PROJECT_SUFFIX)
             save_as = True  # Let the user confirm the new destination; keep the legacy file.
         if save_as or not path:
-            path, _ = QFileDialog.getSaveFileName(self, 'Enregistrer le projet', str(path or 'Sans titre'), 'Projet Physalix (*.physalix)')
+            path, _ = QFileDialog.getSaveFileName(self, 'Enregistrer le projet', str(path or 'Sans titre'), 'Projet Physalyx (*.physalix)')
             if not path:
                 return False
             selected = Path(path)
@@ -150,7 +150,7 @@ class ProjectFiles:
                           self.image_analysis_tab.project_image_asset())
             self.project_path = Path(path)
             self._saved_state = self.document_signature()
-            self.setWindowTitle(f'{self.project_path.name} — Physalix')
+            self.setWindowTitle(f'{self.project_path.name} — Physalyx')
             self.statusBar().showMessage(f'Projet enregistré : {path}', 8000)
             return True
         except (OSError, ValueError, zipfile.BadZipFile) as error:
@@ -212,7 +212,7 @@ class ProjectFiles:
             self._bind_spectrophotometry_diagnostic_action()
             old.deleteLater()
             self.project_path = Path(path) if path else None
-            self.setWindowTitle(f'{self.project_path.name} — Physalix' if path else 'Physalix')
+            self.setWindowTitle(f'{self.project_path.name} — Physalyx' if path else 'Physalyx')
             if state is not None:
                 self.workspace_stack.setCurrentWidget(self.tabs)
                 restore_views(self, state['graphs'], state.get('active_graph_id'),
@@ -232,7 +232,7 @@ class ProjectFiles:
 
     def open_project(self):
         path, _ = QFileDialog.getOpenFileName(self, 'Ouvrir un projet', str(self.project_path or ''),
-            f'Projet Physalix (*{PROJECT_SUFFIX} *{LEGACY_SUFFIX})')
+            f'Projet Physalyx (*{PROJECT_SUFFIX} *{LEGACY_SUFFIX})')
         if not path:
             return
         return self.open_project_path(path)

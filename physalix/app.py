@@ -30,10 +30,12 @@ def _load_main_window():
 
 
 def main(instance_guard=None) -> int:
-    """Lancer l'interface de Physalix."""
+    """Lancer l'interface de Physalyx."""
     set_windows_app_id()
     app = QApplication(sys.argv)
+    # Keep the internal name: QStandardPaths uses it for existing local data.
     app.setApplicationName("Physalix")
+    app.setApplicationDisplayName("Physalyx")
     app.setApplicationVersion(__version__)
     app.setWindowIcon(application_icon())
     apply_theme(app)
@@ -57,7 +59,7 @@ def main(instance_guard=None) -> int:
             app.processEvents()
             window.open_project_path(project_path)
         else:
-            splash.set_stage("Ouverture de Physalix…")
+            splash.set_stage("Ouverture de Physalyx…")
         window.show()
         if instance_guard is not None:
             instance_guard.tag_window(window)

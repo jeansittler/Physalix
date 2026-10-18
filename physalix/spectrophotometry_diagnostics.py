@@ -70,7 +70,7 @@ def diagnostics_root() -> Path:
         QStandardPaths.StandardLocation.AppLocalDataLocation
     )
     if not location:
-        raise OSError("Qt ne fournit aucun dossier de données locales pour Physalix.")
+        raise OSError("Qt ne fournit aucun dossier de données locales pour Physalyx.")
     return Path(location) / DIAGNOSTIC_DIRECTORY
 
 

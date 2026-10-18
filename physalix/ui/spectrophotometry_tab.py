@@ -505,7 +505,7 @@ class SpectrophotometryTab(QWidget):
         layout.addWidget(
             page_header(
                 "Spectrophotométrie",
-                "Mesurer huit absorbances visibles avec le spectrophotomètre Physalix.",
+                "Mesurer huit absorbances visibles avec le spectrophotomètre Physalyx.",
             )
         )
 
@@ -669,7 +669,7 @@ class SpectrophotometryTab(QWidget):
         self.firmware_button = QPushButton("Installer le micrologiciel…")
         advanced_form.addRow(label("Micrologiciel du spectrophotomètre", "sectionTitle"))
         advanced_form.addRow("Carte cible", self.firmware_board_label)
-        advanced_form.addRow("Version Physalix", self.firmware_embedded_label)
+        advanced_form.addRow("Version Physalyx", self.firmware_embedded_label)
         advanced_form.addRow("État", self.firmware_status_label)
         advanced_form.addRow("Bootloader", self.nano_bootloader_combo)
         advanced_form.addRow(self.firmware_button)
@@ -1303,7 +1303,7 @@ class SpectrophotometryTab(QWidget):
             "Vérifiez manuellement la cible : Arduino Nano, ATmega328P, 5 V.\n"
             f"Port : {port}\nBootloader : {bootloader_text}\n"
             f"Micrologiciel SPCT : {target}\n\n"
-            "Physalix ne peut pas identifier un Nano neuf avant sa programmation."
+            "Physalyx ne peut pas identifier un Nano neuf avant sa programmation."
         )
         install = dialog.addButton("Installer", QMessageBox.ButtonRole.AcceptRole)
         dialog.addButton("Annuler", QMessageBox.ButtonRole.RejectRole)

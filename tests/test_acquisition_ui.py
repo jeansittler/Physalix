@@ -514,7 +514,7 @@ class ContinuousSquareUiTests(unittest.TestCase):
         self.select_gbf()
         self.assertFalse(self.tab.start_button.isEnabled())
         self.assertFalse(self.tab.gbf_start_button.isEnabled())
-        self.assertIn("firmware Physalix compatible GBF",
+        self.assertIn("firmware Physalyx compatible GBF",
                       self.tab.gbf_requirement_label.text())
         self.assertEqual(self.tab.gbf_shape_value.text(), "Carré")
         self.assertEqual(self.tab.gbf_output_value.text(), "D8")

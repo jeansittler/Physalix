@@ -286,7 +286,7 @@ class FirmwareFlash(QObject):
                        "Le firmware installé n’a pas pu être validé.", result.status.name)
             return False
         self._set_state(FlashState.SUCCESS)
-        self.phase_changed.emit("Firmware Physalix vérifié après reconnexion.")
+        self.phase_changed.emit("Firmware Physalyx vérifié après reconnexion.")
         self.succeeded.emit(result)
         return True
 
@@ -303,7 +303,7 @@ class FirmwareFlash(QObject):
         if self._process_running():
             self._fail(FlashErrorKind.INTERRUPTED,
                        "L’installation du firmware a été interrompue.",
-                       "Arrêt de Physalix pendant l’exécution d’AVRDUDE.")
+                       "Arrêt de Physalyx pendant l’exécution d’AVRDUDE.")
             self._process.terminate()
             self._kill_timer.start()
         else:

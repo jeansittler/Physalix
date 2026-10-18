@@ -1,4 +1,4 @@
-"""Fenêtre principale et navigation de Physalix."""
+"""Fenêtre principale et navigation de Physalyx."""
 
 from PySide6.QtCore import Qt, QSize, QTimer
 from PySide6.QtGui import QFont, QFontMetrics
@@ -49,7 +49,7 @@ class MainWindow(QMainWindow, ProjectFiles):
 
     def __init__(self) -> None:
         super().__init__()
-        self.setWindowTitle(f"Physalix — {__version__}" if __development__ else "Physalix")
+        self.setWindowTitle(f"Physalyx — {__version__}" if __development__ else "Physalyx")
         self.setWindowIcon(application_icon())
         self.resize(1280, 760)
         self.setMinimumSize(640, 420)

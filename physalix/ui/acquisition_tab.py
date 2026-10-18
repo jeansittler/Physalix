@@ -130,7 +130,7 @@ class AcquisitionTab(QWidget):
     def _build_ui(self):
         layout = page_layout(QVBoxLayout(self))
         layout.addWidget(page_header(
-            "Acquisition", "Mesurer la tension Uc d'un circuit RC avec un Arduino Physalix."))
+            "Acquisition", "Mesurer la tension Uc d'un circuit RC avec un Arduino Physalyx."))
 
         connection, connection_layout = panel(kind="toolbar")
         connection.setObjectName("acquisitionConnectionBar")
@@ -156,7 +156,7 @@ class AcquisitionTab(QWidget):
         self.firmware_status = QLabel("Firmware non détecté")
         self.firmware_status.setWordWrap(False)
         firmware_row.addWidget(self.firmware_status)
-        self.firmware_button = QPushButton("Installer le firmware Physalix…")
+        self.firmware_button = QPushButton("Installer le firmware Physalyx…")
         firmware_row.addWidget(self.firmware_button)
         connection_layout.addLayout(firmware_row)
         layout.addWidget(connection)
@@ -480,7 +480,7 @@ class AcquisitionTab(QWidget):
             self.firmware_button.hide()
             return
         labels = {
-            "absent": "Installer le firmware Physalix…",
+            "absent": "Installer le firmware Physalyx…",
             "older": "Mettre à jour le firmware…",
             "incompatible": "Réinstaller le firmware…",
         }
@@ -520,7 +520,7 @@ class AcquisitionTab(QWidget):
             self.firmware_status.setText(f"Firmware {version} — compatible")
         else:
             self._firmware_mode = "incompatible"
-            self.firmware_status.setText("Firmware Physalix incompatible")
+            self.firmware_status.setText("Firmware Physalyx incompatible")
         self._update_firmware_offer()
 
     def request_firmware_installation(self):
@@ -545,7 +545,7 @@ class AcquisitionTab(QWidget):
     def _confirm_firmware_installation(self, port: str) -> bool:
         text = self._firmware_confirmation_text(port)
         dialog = QMessageBox(self)
-        dialog.setWindowTitle("Installer le firmware Physalix")
+        dialog.setWindowTitle("Installer le firmware Physalyx")
         dialog.setIcon(QMessageBox.Icon.Warning)
         dialog.setText(text)
         install = dialog.addButton("Installer", QMessageBox.ButtonRole.AcceptRole)
@@ -557,10 +557,10 @@ class AcquisitionTab(QWidget):
         target = self.firmware_resources.manifest.firmware_version
         if self._firmware_mode == "older" and self._detected_firmware_info is not None:
             current = ".".join(map(str, self._detected_firmware_info.version))
-            return (f"Mettre à jour le firmware Physalix de {current} vers {target} "
+            return (f"Mettre à jour le firmware Physalyx de {current} vers {target} "
                     f"sur {port} ?\n\nLe programme actuellement présent sera remplacé.")
         return (
-            "L’installation du firmware Physalix remplacera le programme "
+            "L’installation du firmware Physalyx remplacera le programme "
             "actuellement présent sur cette carte.\n\n"
             f"Port : {port}\n\n"
             "Vérifiez qu’il s’agit bien d’une Arduino Uno R3 / "
@@ -601,7 +601,7 @@ class AcquisitionTab(QWidget):
         self.reconnect_retry_timer.stop()
         self.controller.close()
         if self._reconnect_opened:
-            message = "Arduino revenue mais firmware Physalix non détecté."
+            message = "Arduino revenue mais firmware Physalyx non détecté."
         else:
             message = "L’Arduino n’est pas revenue après l’installation."
         try:
@@ -687,16 +687,16 @@ class AcquisitionTab(QWidget):
         self._set_generation_field_visible(self.output_pin, not gbf)
         if square and not self._square_supported():
             if self._detected_firmware_info is None:
-                message = "Connectez un firmware Physalix compatible pour utiliser le mode carré."
+                message = "Connectez un firmware Physalyx compatible pour utiliser le mode carré."
             else:
-                message = "Le mode carré nécessite le firmware Physalix 1.1.0 ou supérieur."
+                message = "Le mode carré nécessite le firmware Physalyx 1.1.0 ou supérieur."
             self.square_requirement_label.setText(message)
             self.square_requirement_label.show()
         else:
             self.square_requirement_label.hide()
         if gbf and not self._gbf_supported():
             self.gbf_requirement_label.setText(
-                "Le mode GBF continu nécessite un firmware Physalix compatible GBF.")
+                "Le mode GBF continu nécessite un firmware Physalyx compatible GBF.")
             self.gbf_requirement_label.show()
         else:
             self.gbf_requirement_label.hide()
@@ -777,7 +777,7 @@ class AcquisitionTab(QWidget):
             return
         if not self._gbf_supported():
             self.result_status.setText(
-                "Le mode GBF continu nécessite un firmware Physalix compatible GBF.")
+                "Le mode GBF continu nécessite un firmware Physalyx compatible GBF.")
             return
         if self.controller.generator_state is not GeneratorState.STOPPED:
             return
@@ -886,10 +886,10 @@ class AcquisitionTab(QWidget):
                 self.result_status.setText(
                     "Démarrez le générateur GBF avant de lancer l’acquisition."
                     if self._gbf_supported() else
-                    "Le mode GBF continu nécessite un firmware Physalix compatible GBF.")
+                    "Le mode GBF continu nécessite un firmware Physalyx compatible GBF.")
             else:
                 self.result_status.setText(
-                    "Le mode carré nécessite le firmware Physalix 1.1.0 ou supérieur.")
+                    "Le mode carré nécessite le firmware Physalyx 1.1.0 ou supérieur.")
             return
         self.times_s.clear()
         self.voltages_v.clear()
@@ -1114,7 +1114,7 @@ class AcquisitionTab(QWidget):
         self._update_controls(AcquisitionState.ERROR)
         if protocol_incompatible and self.firmware_resources is not None:
             self._firmware_mode = "incompatible"
-            self.firmware_status.setText("Firmware Physalix incompatible")
+            self.firmware_status.setText("Firmware Physalyx incompatible")
             self._update_firmware_offer()
 
     def _update_controls(self, state: AcquisitionState):

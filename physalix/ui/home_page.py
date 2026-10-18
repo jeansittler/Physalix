@@ -323,7 +323,7 @@ class HomePage(QWidget):
 
         title_row = QHBoxLayout(); title_row.setContentsMargins(2, 2, 2, 0)
         title_row.addWidget(role(QLabel("Outils scientifiques"), "sectionTitle")); title_row.addStretch()
-        title_row.addWidget(role(QLabel(f"Physalix {__version__}"), "muted"))
+        title_row.addWidget(role(QLabel(f"Physalyx {__version__}"), "muted"))
         content_layout.addLayout(title_row)
 
         self.gallery = QWidget(); self.gallery.setMaximumWidth(1540)

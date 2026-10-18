@@ -262,7 +262,7 @@ class ProjectTests(unittest.TestCase):
         with patch.object(QFileDialog, 'getSaveFileName', return_value=('', '')) as dialog:
             self.assertFalse(self.window.save_project(save_as=True))
         self.assertEqual(dialog.call_args.args[2], 'Sans titre')
-        self.assertEqual(dialog.call_args.args[3], 'Projet Physalix (*.physalix)')
+        self.assertEqual(dialog.call_args.args[3], 'Projet Physalyx (*.physalix)')
 
     def test_cancel_legacy_migration_preserves_path_and_file(self):
         legacy = self.legacy_project()
@@ -324,7 +324,7 @@ class ProjectTests(unittest.TestCase):
         self.assertTrue(window.open_project_path(self.path))
         self.app.processEvents()
         self.assertEqual(window.project_path, self.path)
-        self.assertEqual(window.windowTitle(), f'{self.path.name} — Physalix')
+        self.assertEqual(window.windowTitle(), f'{self.path.name} — Physalyx')
         self.assertEqual(window.document_signature(), window._saved_state)
         self.assertEqual(window.data_tab.model.rows, self.window.data_tab.model.rows)
 

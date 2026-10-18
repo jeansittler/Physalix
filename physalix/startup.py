@@ -43,7 +43,7 @@ class _WindowsApi:
         ctypes.set_last_error(0)
         handle = self._kernel32.CreateMutexW(None, False, name)
         if not handle:
-            raise OSError(ctypes.get_last_error(), "Impossible de créer le mutex Physalix.")
+            raise OSError(ctypes.get_last_error(), "Impossible de créer le mutex Physalyx.")
         return handle, ctypes.get_last_error() == ERROR_ALREADY_EXISTS
 
     def close_handle(self, handle):
@@ -51,7 +51,7 @@ class _WindowsApi:
 
     def tag_window(self, hwnd):
         if not self._user32.SetPropW(hwnd, WINDOW_PROPERTY, 1):
-            raise OSError(ctypes.get_last_error(), "Impossible d'identifier la fenêtre Physalix.")
+            raise OSError(ctypes.get_last_error(), "Impossible d'identifier la fenêtre Physalyx.")
 
     def untag_window(self, hwnd):
         self._user32.RemovePropW(hwnd, WINDOW_PROPERTY)
@@ -144,8 +144,8 @@ class SingleInstance:
 def show_startup_error(error):
     """Afficher une erreur compréhensible même si Qt n'a pas pu démarrer."""
 
-    message = f"Physalix n'a pas pu démarrer.\n\n{error}"
+    message = f"Physalyx n'a pas pu démarrer.\n\n{error}"
     if sys.platform == "win32":
-        ctypes.windll.user32.MessageBoxW(None, message, "Démarrage de Physalix", 0x10)
+        ctypes.windll.user32.MessageBoxW(None, message, "Démarrage de Physalyx", 0x10)
     else:
         print(message, file=sys.stderr)

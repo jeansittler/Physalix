@@ -132,13 +132,13 @@ class StartupSplashTests(unittest.TestCase):
         window = QWidget()
         try:
             self.assertTrue(splash.windowFlags() & Qt.WindowType.FramelessWindowHint)
-            self.assertFalse(splash.logo_label.pixmap().isNull())
+            self.assertFalse(splash.brand_logo.grab().isNull())
             self.assertEqual((splash.activity.minimum(), splash.activity.maximum()), (0, 0))
             for message in (
-                "Initialisation de Physalix…",
+                "Initialisation de Physalyx…",
                 "Chargement des composants…",
                 "Préparation de l'interface…",
-                "Ouverture de Physalix…",
+                "Ouverture de Physalyx…",
             ):
                 splash.set_stage(message)
                 self.assertEqual(splash.message_label.text(), message)

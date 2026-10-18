@@ -167,7 +167,7 @@ class AcquisitionFirmwareUiTests(unittest.TestCase):
             ((0, 9, 0), 7, "mise à jour disponible", False),
             ((1, 2, 0), 31, "Firmware 1.2.0 — à jour", True),
             ((1, 3, 0), 31, "Firmware 1.3.0 — compatible", True),
-            ((1, 2, 0), 15, "Firmware Physalix incompatible", False),
+            ((1, 2, 0), 15, "Firmware Physalyx incompatible", False),
         )
         for version, capabilities, text, hidden in cases:
             with self.subTest(version=version, capabilities=capabilities):
@@ -204,7 +204,7 @@ class AcquisitionFirmwareUiTests(unittest.TestCase):
         self.controller.set_state(AcquisitionState.ERROR)
         self.controller.error_occurred.emit("Version de protocole incompatible : 2.")
         self.assertEqual(self.tab.firmware_status.text(),
-                         "Firmware Physalix incompatible")
+                         "Firmware Physalyx incompatible")
         self.assertEqual(self.tab.firmware_button.text(),
                          "Réinstaller le firmware…")
         self.assertTrue(self.tab.firmware_button.isEnabled())
@@ -291,7 +291,7 @@ class AcquisitionFirmwareUiTests(unittest.TestCase):
         self.tab.reconnect_retry_timer.stop()
         self.tab._attempt_flash_reconnect()
         self.tab._flash_reconnect_timed_out()
-        self.assertIn("firmware Physalix non détecté", self.tab.firmware_status.text())
+        self.assertIn("firmware Physalyx non détecté", self.tab.firmware_status.text())
         self.assertFalse(self.tab._flash_workflow_active)
         self.assertTrue(self.tab.connect_button.isEnabled())
 
