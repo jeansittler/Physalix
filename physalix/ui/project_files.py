@@ -176,7 +176,8 @@ class ProjectFiles:
             self.video_tab.shutdown()
             old = self.takeCentralWidget()
             for name in ('main_container', 'navigation', 'navigation_layout', 'navigation_group',
-                         'navigation_buttons', 'brand_cartouche', 'brand_logo', '_navigation_mode',
+                         'navigation_buttons', 'brand_cartouche', 'brand_logo', 'home_button',
+                         'home_page', 'workspace_stack', '_navigation_mode',
                          'tabs', 'data_tab', 'graph_tab', 'modeling_tab', 'video_tab', 'calculations_tab',
                          'statistics_tab', 'digitizer_tab', 'acquisition_tab',
                          'spectrophotometry_tab', 'image_analysis_tab'):
@@ -190,6 +191,18 @@ class ProjectFiles:
             self._update_navigation_density(self.contentsRect().width())
             self.tabs.currentChanged.disconnect()
             self.tabs.currentChanged.connect(self.update_navigation)
+            self.home_page.module_requested.disconnect()
+            self.home_page.module_requested.connect(self.show_module)
+            self.home_page.new_project_requested.disconnect()
+            self.home_page.new_project_requested.connect(self.new_project)
+            self.home_page.open_project_requested.disconnect()
+            self.home_page.open_project_requested.connect(self.open_project)
+            self.home_button.clicked.disconnect()
+            self.home_button.clicked.connect(self.show_home)
+            for index, button in enumerate(self.navigation_buttons):
+                button.clicked.disconnect()
+                button.clicked.connect(
+                    lambda checked=False, chosen=index: self.show_module(chosen))
             self.graph_tab.modeling_requested.disconnect()
             self.graph_tab.modeling_requested.connect(lambda: self.tabs.setCurrentWidget(self.modeling_tab))
             self.modeling_tab.graph_requested.disconnect()
@@ -201,6 +214,7 @@ class ProjectFiles:
             self.project_path = Path(path) if path else None
             self.setWindowTitle(f'{self.project_path.name} — Physalix' if path else 'Physalix')
             if state is not None:
+                self.workspace_stack.setCurrentWidget(self.tabs)
                 restore_views(self, state['graphs'], state.get('active_graph_id'),
                               state.get('active_graph'))
             self._saved_state = self.document_signature()
@@ -241,7 +255,7 @@ class ProjectFiles:
         dialog = CsvImportDialog(path, self)
         if dialog.exec() == QDialog.DialogCode.Accepted:
             self.append_csv(dialog.data)
-            self.tabs.setCurrentWidget(self.data_tab)
+            self.show_module(0)
             self.statusBar().showMessage('Données CSV importées.', 6000)
 
     def append_csv(self, data):

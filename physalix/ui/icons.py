@@ -8,6 +8,7 @@ from physalix.ui.theme import LIGHT
 
 
 PATHS = {
+    "home": '<path d="m3 11 9-8 9 8"/><path d="M5 10v10h14V10M9 20v-6h6v6"/>',
     "data": '<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 10h18M9 4v16M15 10v10M3 15h18"/>',
     "graph": '<path d="M4 3v17h17M7 15l4-5 4 2 5-7"/>',
     "model": '<path d="M7 20c4 0 2-16 7-16h2M7 9h9M16 14l5 6m0-6-5 6"/>',
