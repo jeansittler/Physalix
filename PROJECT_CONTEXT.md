@@ -1,4 +1,4 @@
-# PHYSALIX — CONTEXTE DE TRAVAIL
+# PHYSALYX — CONTEXTE DE TRAVAIL
 
 <!-- PHYSALIX_CODEX_BUDGET_START -->
 
@@ -12,6 +12,7 @@ La politique détaillée et exécutoire se trouve dans `AGENTS.md`, section « R
 - **Budget de tâche : environ 15 minutes ou 12 appels d'outils significatifs**, puis bilan et demande d'accord avant poursuite.
 - Pas de surveillance verbale répétitive, d'audit général non requis, de relecture intégrale répétée des consignes ou de travaux « au passage ».
 - Après un test interrompu : rapporter « suite complète non validée », pas « tests complets OK ».
+- Aucune modification non sollicitée ; aucun build, commit, push, tag ou publication sans autorisation explicite propre à l'étape.
 
 Cette politique est une **règle permanente du projet**. Elle ne doit pas être écartée par une formulation trop large d'un prompt ponctuel.
 
@@ -19,7 +20,7 @@ Cette politique est une **règle permanente du projet**. Elle ne doit pas être 
 
 > **Source de référence du projet**
 >
-> Ce fichier sert de contexte initial pour tout nouveau chat ChatGPT/Codex consacré à Physalix.
+> Ce fichier sert de contexte initial pour tout nouveau chat ChatGPT/Codex consacré à Physalyx.
 > Avant de proposer une modification, un prompt Codex, une refonte UI, une release ou un test, respecter les conventions, décisions d’architecture et méthodes de travail décrites ici.
 >
 > Ne pas demander à l’utilisateur de répéter une information déjà présente dans ce fichier.
@@ -30,13 +31,15 @@ Cette politique est une **règle permanente du projet**. Elle ne doit pas être 
 
 ## 1. Projet
 
-**Nom :** Physalix
+**Nom public :** Physalyx
+**Ancien nom public :** Physalix
 **Type :** logiciel pédagogique de physique / traitement et acquisition de données
 **Dépôt :** `C:\Physalix`
-**Dépôt GitHub :** `jeansittler/Physalix`
+**Dépôt GitHub officiel :** `jeansittler/Physalyx`
+**Domaine officiel prévu :** `physalyx.fr` — site non encore déployé
 **Licence :** GPL-3.0
 
-Physalix est une application desktop Python/PySide6 destinée notamment à l’enseignement de la physique.
+Physalyx est une application desktop Python/PySide6 destinée notamment à l’enseignement de la physique-chimie.
 
 Fonctionnalités principales existantes :
 - Données / tableaux de mesures ;
@@ -56,15 +59,15 @@ Fonctionnalités principales existantes :
 
 ### Version publique
 
-**Physalix 1.8.0**
+**Physalyx 1.9.0**
 
 Commit de release :
 
-`0fe830302500a5c4fffb52c0bb4d9ff8a3a2c8ed`
+`41a8e642adda5e99be3c34ee04713b418d0cdf4b`
 
 Tag :
 
-`v1.8.0`
+`v1.9.0`
 
 Branche stable :
 
@@ -72,39 +75,49 @@ Branche stable :
 
 Release GitHub :
 
-`https://github.com/jeansittler/Physalix/releases/tag/v1.8.0`
+`https://github.com/jeansittler/Physalyx/releases/tag/v1.9.0`
 
-Le tag annoté `v1.8.0` pointe exactement sur le commit de release ci-dessus.
-Physalix 1.8.0 est la release stable et Latest sur GitHub. Lors de la publication,
-`main` était synchronisée avec `origin/main`. Cette version publie notamment la
-nouvelle page d'accueil scientifique intégrée à `main`.
+Le tag annoté `v1.9.0` pointe exactement sur le commit de release ci-dessus.
+Physalyx 1.9.0 est la release stable et Latest sur GitHub. Le README public a été
+modernisé après la publication par le commit
+`7f24f47e68ba3dfbacd2e84c1e27795f6fee4f12`, actuellement sur `main`.
+Le dépôt GitHub existant a ensuite été renommé de `jeansittler/Physalix` vers
+`jeansittler/Physalyx` ; les anciennes URL GitHub redirigent vers le dépôt renommé.
 
 Assets publiés :
-- `Physalix-Setup-1.8.0.exe`
-- `Physalix-Setup-1.8.0.exe.sha256`
+- `Physalyx-Setup-1.9.0.exe`
+- `Physalyx-Setup-1.9.0.exe.sha256`
 - `update.json`
 
-Taille de l'installateur 1.8.0 : `86 291 280 octets`.
+Taille de l'installateur 1.9.0 : `85 511 056 octets`.
 
-SHA-256 de l’installateur 1.8.0 :
+SHA-256 de l’installateur 1.9.0 :
 
-`a1bea05abdcc56d70bdb14335833ec4e27ff101a4e1a137ccc706ab3738fe23c`
+`11be3c56a6be9a6c5185bfe3287312c12e1036e0038fea8e6428207866cb6c79`
 
 `update.json` public :
-- version `1.8.0`
+- version `1.9.0`
 - `mandatory = false`
 - URL de l’installateur cohérente avec la release GitHub
 - SHA identique à celui de l’installateur
 - changelog cumulatif
 
-Validation de release : tests scientifiques et Qt ciblés réussis, build PyInstaller
-et smoke test réussis, signatures Authenticode avec horodatage RFC 3161 valides pour
-le programme, le désinstalleur et l'installateur. La procédure
+Validation de release : build PyInstaller `onedir`, contrôles de distribution et
+smoke test réussis. Les signatures Authenticode Certum avec horodatage RFC 3161 sont
+valides pour `Physalyx.exe`, le désinstalleur et l'installateur. La procédure
 `ExternalSignedUninstallerDir` a été utilisée avec succès. Les trois assets publics,
-leur SHA-256 et `update.json` ont été revérifiés. Le 18 octobre 2026, l'utilisateur
-a confirmé la réussite de la mise à jour réelle de Physalix 1.7.0 vers 1.8.0.
+leur SHA-256 et `update.json` ont été revérifiés. La migration manuelle réelle de
+Physalix 1.8.0 vers Physalyx 1.9.0 a été validée sur un portable Windows, et la mise
+à jour automatique réelle 1.8.0 vers 1.9.0 sur un PC fixe.
 La suite complète de 689 tests reste **NON VALIDÉE** ; les vérifications ciblées
 ne constituent pas une validation globale.
+
+Compatibilité impérative conservée malgré le changement de nom public : package
+Python `physalix`, format interne `Physalix`, extensions `.physalix` et `.physalyx`,
+ProgID et AppUserModelID historiques, mutex d'instance unique, chemins de
+configuration, URL historique de l'updater et AppId Inno Setup
+`{807A4F23-674E-4CD3-9B57-D66B7B819B72}`. Ne pas renommer ces identifiants sans
+plan de migration explicite.
 
 Les règles permanentes de travail avec Codex sont centralisées dans `AGENTS.md`.
 
@@ -137,7 +150,7 @@ Minimiser les étapes de test : ne demander que les contrôles réellement utile
 
 ---
 
-## 5. Conventions UI Physalix
+## 5. Conventions UI Physalyx
 
 ### Principe général
 
@@ -304,7 +317,7 @@ Le module gère :
 - détection du port série ;
 - connexion / déconnexion ;
 - détection de version firmware ;
-- installation/mise à jour firmware depuis Physalix ;
+- installation/mise à jour firmware depuis Physalyx ;
 - acquisition analogique A0 ;
 - affichage temporaire en temps réel ;
 - résultats partiels ;
@@ -502,7 +515,7 @@ Les données `DATA_GBF` incluent :
 
 ---
 
-## 11. Flash firmware depuis Physalix
+## 11. Flash firmware depuis Physalyx
 
 Module dédié :
 
@@ -578,6 +591,17 @@ Release Physalix 1.8.0 :
 - build, bundle, smoke test, signatures Certum et assets publics — OK ;
 - mise à jour réelle 1.7.0 vers 1.8.0 — confirmée par l'utilisateur le 18 octobre 2026.
 
+Release Physalyx 1.9.0 :
+- renommage public Physalix vers Physalyx, sans changement des identifiants internes
+  nécessaires à la compatibilité ;
+- interface et branding validés visuellement, y compris la navigation responsive ;
+- build PyInstaller `onedir`, contrôles de distribution et smoke test — OK ;
+- `Physalyx.exe`, désinstalleur et installateur signés Certum et horodatés — OK ;
+- assets GitHub, SHA-256 et `update.json` publics — OK ;
+- migration manuelle réelle 1.8.0 vers 1.9.0 sur portable — confirmée ;
+- mise à jour automatique réelle 1.8.0 vers 1.9.0 sur PC fixe — confirmée ;
+- suite complète non relancée pour ce renommage — **NON VALIDÉE**.
+
 Le flash réel du Nano, sa reconnexion et sa réutilisation après flash avaient été
 validés avant la release. Le 16 octobre 2026, la mise à jour réelle vers 1.6.0 et
 le fonctionnement général sur portable ont également été confirmés par l'utilisateur.
@@ -594,7 +618,8 @@ Pendant le développement :
 - tests ciblés.
 
 Avant une release importante :
-- une suite complète.
+- présenter la portée, le nombre de tests et la durée historique d'une suite complète ;
+- ne la lancer qu'après autorisation distincte et explicite.
 
 Après correction d’un échec :
 - tests ciblés ;
@@ -608,12 +633,13 @@ Ne jamais désactiver ou supprimer un test pour faire passer une release.
 
 ### Release Windows
 
-Physalix est distribué avec un installateur Windows.
+Physalyx est distribué sous Windows sous forme de bundle PyInstaller `onedir` et
+d'un installateur Inno Setup.
 
 Workflow actuel :
 - build/bundle ;
 - smoke test ;
-- signature Authenticode SHA-256 de `Physalix.exe` avec horodatage RFC 3161 ;
+- signature Authenticode SHA-256 de `Physalyx.exe` avec horodatage RFC 3161 ;
 - installateur Inno avec signature native de Setup, du désinstalleur et de ses copies temporaires ;
 - vérification du certificat attendu et de l'horodatage ;
 - SHA-256 ;
@@ -632,18 +658,18 @@ historique, mais permet, sans directive `SignTool` active :
 
 Ce mode a été utilisé avec succès pour Physalix 1.7.0 après des problèmes de
 visibilité du certificat SimplySign dans le SignTool lancé directement par Inno,
-puis à nouveau pour la distribution signée Physalix 1.8.0.
+puis à nouveau pour les distributions signées Physalix 1.8.0 et Physalyx 1.9.0.
 
 Une release Windows est bloquée si le certificat SimplySign, sa clé privée,
 SignTool, la signature ou l'horodatage ne sont pas disponibles. L'authentification
 SimplySign reste interactive ; aucun OTP, PIN ni accès au compte n'est stocké.
 
 Le certificat Certum SimplySign est opérationnel. La chaîne automatisée a été
-validée par un build complet signé, puis par une installation réelle sur un second
-PC Windows 10 : `Physalix.exe`, l'installateur et `unins000.exe` ont une signature
+validée par des distributions signées et des installations réelles sous Windows :
+`Physalyx.exe`, l'installateur et `unins000.exe` ont une signature
 valide et horodatée, avec l'éditeur « Open Source Developer Jean SITTLER » affiché
 par Windows. Avast peut encore soumettre le fichier temporaire de l'installateur
-à CyberCapture pendant environ 50 secondes et analyser `Physalix.exe` pendant
+à CyberCapture pendant environ 50 secondes et analyser `Physalyx.exe` pendant
 environ 10 secondes au premier lancement, avant de déclarer les fichiers sûrs.
 La signature améliore l'identification de l'éditeur mais ne supprime donc pas
 immédiatement toutes les analyses de réputation antivirus.
@@ -657,14 +683,16 @@ Les ressources firmware nécessaires au runtime doivent être incluses :
 
 Le bundle publié contient les ressources Nano et Uno ainsi qu'AVRDUDE. Les
 contrôles de distribution, de signature et de publication publique ont réussi.
-Pour Physalix 1.8.0, les trois assets publics sont
-`Physalix-Setup-1.8.0.exe`, `Physalix-Setup-1.8.0.exe.sha256` et `update.json`.
+Pour Physalyx 1.9.0, les trois assets publics sont
+`Physalyx-Setup-1.9.0.exe`, `Physalyx-Setup-1.9.0.exe.sha256` et `update.json`.
 
 ### Updater
 
 Le système de mise à jour utilise `update.json`.
-Le canal public `releases/latest/download/update.json` sert le manifeste 1.8.0,
-avec `mandatory = false`, et reste compatible avec l'updater de Physalix 1.7.0.
+Le canal public `releases/latest/download/update.json` sert le manifeste 1.9.0,
+avec `mandatory = false`. L'URL historique `jeansittler/Physalix` reste volontairement
+utilisée par les versions déjà distribuées et redirige vers `jeansittler/Physalyx`.
+Le client de mise à jour valide et suit explicitement les redirections HTTPS.
 
 Une release doit vérifier :
 - version correcte ;
@@ -697,7 +725,7 @@ Pour une version publique :
 9. produire installateur ;
 10. calculer SHA-256 ;
 11. produire/vérifier `update.json` ;
-12. commit `release: prepare Physalix X.Y.Z` ;
+12. commit `release: prepare Physalyx X.Y.Z` ;
 13. push `main` ;
 14. tag annoté `vX.Y.Z` pointant exactement sur le commit de release ;
 15. push tag ;
@@ -784,9 +812,9 @@ Après stabilisation définitive, la branche pourra éventuellement être suppri
 
 Version applicative actuelle :
 
-`1.8.0`
+`1.9.0`
 
-Version publique actuelle : `1.8.0`.
+Version publique actuelle : `1.9.0`.
 
 Firmware Arduino :
 
@@ -881,7 +909,7 @@ Quand une information devient obsolète :
 
 Message recommandé :
 
-> On continue le développement de Physalix.
+> On continue le développement de Physalyx (anciennement Physalix).
 > Le fichier `PROJECT_CONTEXT.md` joint est la source de référence actuelle du projet.
 > Lis-le avant toute proposition et respecte notamment les conventions UI, le workflow Codex, les niveaux GPT-5.6 Sol et l’état Git/version qui y sont décrits.
 > Si une information du chat courant est plus récente que le fichier, elle prévaut et le fichier devra être mis à jour au prochain checkpoint.
@@ -916,7 +944,7 @@ Le module comprend notamment :
 - suivi cinétique et diagnostics ;
 - transfert vers Données et Graphique ;
 - persistance dans les projets Physalix ;
-- installation et contrôle du firmware Nano depuis Physalix.
+- installation et contrôle du firmware Nano depuis Physalyx.
 
 ### Invariants scientifiques
 
@@ -1019,7 +1047,7 @@ qui reste non validée pour cette release.
 
 ## 23. Page d'accueil scientifique
 
-Physalix 1.8.0 dispose d'une véritable page d'accueil pédagogique, validée
+Physalyx dispose d'une véritable page d'accueil pédagogique, validée
 visuellement par l'utilisateur. Elle fournit :
 - une galerie visuelle des dix modules avec prévisualisations scientifiques vectorielles ;
 - une grille responsive adaptée aux dimensions de la fenêtre et un accès direct
@@ -1049,6 +1077,9 @@ conteneur est déjà visible.
    les mesures attendues et leur interprétation avant de les documenter comme acquises.
 2. Étudier ultérieurement un updater incrémental dans un worktree dédié, sans
    commencer son développement sans décision explicite.
+3. Préparer ultérieurement le site officiel `physalyx.fr`, non encore déployé, de
+   préférence avec GitHub Pages et le domaine géré chez OVHcloud. Ne pas annoncer
+   le site comme accessible avant sa mise en ligne et sa validation réelles.
 
 Ne jamais présenter ces validations de release ou de mise à jour comme réalisées
 avant leur exécution effective.
