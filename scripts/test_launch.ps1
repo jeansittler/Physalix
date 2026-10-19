@@ -2,7 +2,7 @@ param([Parameter(Mandatory=$true)][string]$Executable)
 $ErrorActionPreference = 'Stop'
 $Executable = (Resolve-Path -LiteralPath $Executable).Path
 $productVersion = (Get-Item -LiteralPath $Executable).VersionInfo.ProductVersion
-$expectedTitle = if ($productVersion -like '*-dev') { "Physalix $([char]0x2014) $productVersion" } else { 'Physalix' }
+$expectedTitle = if ($productVersion -like '*-dev') { "Physalyx $([char]0x2014) $productVersion" } else { 'Physalyx' }
 if (-not ('PhysalixSmoke.NativeMethods' -as [type])) {
     Add-Type @'
 using System;
@@ -32,7 +32,7 @@ try {
     do {
         Start-Sleep -Milliseconds 200
         $process.Refresh()
-        if ($process.HasExited) { throw "Physalix exited during startup: $($process.ExitCode)" }
+        if ($process.HasExited) { throw "Physalyx exited during startup: $($process.ExitCode)" }
         $window = $process.MainWindowHandle
         $style = if ($window -ne [IntPtr]::Zero) {
             [PhysalixSmoke.NativeMethods]::GetWindowLong($window, $windowStyleIndex)
@@ -42,7 +42,7 @@ try {
             ($style -band $overlappedWindowMask) -eq $overlappedWindowMask
         )
     } while (-not $mainWindowReady -and [DateTime]::UtcNow -lt $deadline)
-    if (-not $mainWindowReady -or -not $process.Responding) { throw 'No responsive Physalix main window.' }
+    if (-not $mainWindowReady -or -not $process.Responding) { throw 'No responsive Physalyx main window.' }
     $modules = @(
         foreach ($module in $process.Modules) {
             $module.FileName
@@ -55,8 +55,8 @@ try {
         throw 'The bundled Python DLL was not loaded.'
     }
     $report = @{ ok = $true; executable = $Executable; title = $process.MainWindowTitle; modules = $modules; cwd = $env:TEMP }
-    if (-not $process.CloseMainWindow() -or -not $process.WaitForExit(10000)) { throw 'Physalix did not close normally.' }
-    if ($process.ExitCode -ne 0) { throw "Physalix exit code: $($process.ExitCode)" }
+    if (-not $process.CloseMainWindow() -or -not $process.WaitForExit(10000)) { throw 'Physalyx did not close normally.' }
+    if ($process.ExitCode -ne 0) { throw "Physalyx exit code: $($process.ExitCode)" }
     $report | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath "$root\artifacts\normal-launch-check.json" -Encoding UTF8
     Write-Host 'Normal launch OK: responsive window, bundled Python DLL, clean exit.'
 } finally {

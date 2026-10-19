@@ -106,7 +106,11 @@ def bundle(directory):
             del env[key]
     windows = os.environ["SystemRoot"]
     env["PATH"] = os.pathsep.join([str(Path(windows) / "System32"), windows])
-    with tempfile.TemporaryDirectory(prefix="Physalix external cwd ") as temporary:
+    temporary_root = ROOT / "artifacts"
+    temporary_root.mkdir(exist_ok=True)
+    with tempfile.TemporaryDirectory(prefix="Physalyx external cwd ", dir=temporary_root) as temporary:
+        env["TMP"] = temporary
+        env["TEMP"] = temporary
         report = Path(temporary) / "report.json"
         result = subprocess.run([str(exe), "--distribution-check", str(report)], cwd=temporary,
                                 env=env, timeout=90, capture_output=True)
