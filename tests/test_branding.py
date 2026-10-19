@@ -42,6 +42,10 @@ class BrandingTests(unittest.TestCase):
                 widget_center = QRectF(logo.rect()).center()
                 self.assertEqual(target.center().y(), widget_center.y())
                 self.assertLess(target.center().x(), widget_center.x())
+                logo.setSymbolOnly(True)
+                self.assertTrue(logo.symbolOnly())
+                self.assertEqual(logo._target_rect().center(), QRectF(logo.rect()).center())
+                self.assertFalse(logo.grab().isNull())
             finally:
                 os.chdir(previous)
 

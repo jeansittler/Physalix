@@ -254,6 +254,7 @@ class MainWindow(QMainWindow, ProjectFiles):
         self.navigation.setProperty("navigationMode", mode)
         self.brand_cartouche.setFixedSize(*NAVIGATION_CARTOUCHE_SIZES[mode])
         self.brand_logo.setDisplaySize(*NAVIGATION_LOGO_SIZES[mode])
+        self.brand_logo.setSymbolOnly(mode != "normal")
         font = self.navigation_buttons[0].font()
         font.setWeight(QFont.Weight.DemiBold)
         metrics = QFontMetrics(font)

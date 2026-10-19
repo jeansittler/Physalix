@@ -43,6 +43,13 @@ class HomePageTests(unittest.TestCase):
         self.assertEqual(page.grid.getItemPosition(8)[1:], (1, 1, 1))
         self.assertEqual(page.grid.getItemPosition(9)[1:], (2, 1, 1))
 
+    def test_navigation_uses_symbol_only_outside_normal_mode(self):
+        window = MainWindow()
+        for mode, symbol_only in (("normal", False), ("compact", True), ("icon", True)):
+            with self.subTest(mode=mode):
+                window._set_navigation_mode(mode)
+                self.assertEqual(window.brand_logo.symbolOnly(), symbol_only)
+
     def test_card_is_keyboard_activatable(self):
         page = HomePage()
         requested = []

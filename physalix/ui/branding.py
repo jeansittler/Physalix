@@ -35,6 +35,7 @@ class BrandLogo(QWidget):
         super().__init__(parent)
         self._pixmap = QPixmap(str(resource_path("branding", "icon_physalix.png")))
         self._source_rect = self._visible_rect(self._pixmap)
+        self._symbol_only = False
         self.setDisplaySize(124, 38)
         self.setAccessibleName("Physalyx")
         self.setToolTip("Physalyx — Observer • Mesurer • Comprendre")
@@ -42,6 +43,16 @@ class BrandLogo(QWidget):
     def setDisplaySize(self, width, height):
         """Adapter l'affichage sans rééchantillonner la ressource HiDPI."""
         self.setFixedSize(width, height)
+
+    def setSymbolOnly(self, symbol_only):
+        """Masquer le wordmark lorsque la navigation manque de largeur."""
+        symbol_only = bool(symbol_only)
+        if symbol_only != self._symbol_only:
+            self._symbol_only = symbol_only
+            self.update()
+
+    def symbolOnly(self):
+        return self._symbol_only
 
     def _font(self):
         font = QFont("Segoe UI")
@@ -52,7 +63,8 @@ class BrandLogo(QWidget):
     def _target_rect(self):
         margin = max(1.0, self.height() * .08)
         side = max(1.0, self.height() - 2 * margin)
-        return QRectF(margin, margin, side, side)
+        left = (self.width() - side) / 2 if self._symbol_only else margin
+        return QRectF(left, margin, side, side)
 
     @staticmethod
     def _visible_rect(pixmap, alpha_threshold=5):
@@ -80,6 +92,8 @@ class BrandLogo(QWidget):
                                QPainter.RenderHint.TextAntialiasing |
                                QPainter.RenderHint.SmoothPixmapTransform)
         painter.drawPixmap(self._target_rect(), self._pixmap, QRectF(self._source_rect))
+        if self._symbol_only:
+            return
         font = self._font()
         painter.setFont(font)
         painter.setPen(QColor("#0B2744"))
