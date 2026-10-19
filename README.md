@@ -1,32 +1,33 @@
-# Physalix
+# Physalyx
 
-[![Dernière version](https://img.shields.io/github/v/release/jeansittler/Physalix?display_name=tag&sort=semver&label=version)](https://github.com/jeansittler/Physalix/releases/latest)
-[![Windows](https://img.shields.io/badge/plateforme-Windows-0078D4?logo=windows&logoColor=white)](https://github.com/jeansittler/Physalix/releases/latest)
-[![Licence](https://img.shields.io/github/license/jeansittler/Physalix)](LICENSE)
+[![Version](https://img.shields.io/badge/version-1.9.0-0B6FA4)](https://github.com/jeansittler/Physalyx/releases/latest)
+[![Windows](https://img.shields.io/badge/plateforme-Windows-0078D4?logo=windows&logoColor=white)](https://github.com/jeansittler/Physalyx/releases/latest)
+[![Licence](https://img.shields.io/badge/licence-GPL--3.0-blue)](LICENSE)
 
-**Physalix** est un logiciel libre de physique-chimie pour Windows, conçu pour exploiter, analyser et modéliser des données expérimentales, notamment au lycée.
+**Physalyx** est un logiciel libre de physique-chimie pour Windows. Conçu notamment pour l'enseignement, il rassemble dans une même application les outils nécessaires pour saisir, visualiser, analyser et modéliser des données expérimentales.
 
-Il réunit dans une même application le tableur, le graphique, la modélisation, le pointage vidéo, les calculs et les statistiques.
+## Télécharger Physalyx
 
-## Télécharger
+**[Télécharger la dernière version pour Windows](https://github.com/jeansittler/Physalyx/releases/latest)**
 
-➡️ **[Télécharger la dernière version de Physalix](https://github.com/jeansittler/Physalix/releases/latest)**
+L'installateur Windows est signé numériquement avec un certificat **Certum**. Physalyx peut ensuite rechercher les nouvelles versions et proposer leur installation.
 
-L'installateur Windows est fourni dans chaque release. Physalix peut ensuite rechercher les nouvelles versions et proposer leur installation.
+Physalyx succède à **Physalix**. La mise à niveau depuis les installations existantes est prise en charge et les anciens projets restent compatibles.
 
-> **Remarque :** l'installateur public n'est pas encore signé numériquement. Windows ou l'antivirus peuvent donc afficher un avertissement lors du premier lancement.
+## Dix modules pour les activités expérimentales
 
-## Fonctionnalités principales
+- **Données** — saisir, organiser et vérifier des mesures, importer ou exporter des données CSV et travailler avec des grandeurs accompagnées de leurs unités.
+- **Graphique** — tracer plusieurs séries, utiliser des axes Y gauche et droite, zoomer et examiner les courbes avec un réticule libre ou lié.
+- **Modélisation** — ajuster des modèles usuels ou une formule personnalisée, puis exploiter les paramètres obtenus.
+- **Pointage** — étalonner une vidéo, définir le repère et relever la position d'un mobile image par image, manuellement ou avec une assistance automatique optionnelle.
+- **Calculs** — créer de nouvelles grandeurs à partir de formules et calculer des dérivées numériques.
+- **Statistiques** — décrire une série de mesures, visualiser sa dispersion et déterminer notamment l'incertitude-type A.
+- **Numérisation** — extraire les points d'une courbe depuis une image JPEG ou PNG après calibration des axes, avec détection assistée et corrections manuelles.
+- **Analyse d'images** — étalonner une photographie en distance ou en longueur d'onde, mesurer des écarts et analyser des profils d'intensité, notamment pour la diffraction, les interférences et les spectres.
+- **Acquisition Arduino** — mesurer des tensions avec une Arduino Uno, observer les signaux en temps réel, générer un échelon ou un signal carré et transférer les mesures vers Données et Graphique.
+- **Spectrophotométrie** — utiliser une Arduino Nano et un capteur AS7341 pour mesurer un spectre d'absorbance, réaliser une étude de Beer-Lambert ou suivre une cinétique.
 
-- **Données / Tableur** — saisie de mesures, copier-coller, import/export CSV, formules de cellules et unités.
-- **Graphique** — plusieurs séries, axes Y gauche/droite, zoom, réticule libre ou lié à une courbe et outils d'analyse.
-- **Modélisation** — modèles linéaires, affines, polynomiaux, exponentiels, condensateur, sinusoïde et formule utilisateur.
-- **Pointage vidéo** — étalonnage, origine, pointage manuel précis et pointage automatique optionnel avec arrêt conservateur en cas de perte de suivi.
-- **Calculs** — dérivées numériques et création de nouvelles grandeurs par formule.
-- **Statistiques** — indicateurs usuels, dispersion et incertitude-type A.
-- **Dosages** — méthode des tangentes pour les dosages pH-métriques et détermination graphique de l'équivalence en conductimétrie.
-- **Acquisition** — mesures avec Arduino Uno, génération d'échelon ou de signal carré et transfert direct vers Données et Graphique.
-- **Projets `.physalix`** — sauvegarde du travail pour le reprendre ou l'échanger.
+Les projets enregistrent le travail dans le format `.physalix` afin de pouvoir le reprendre ou l'échanger.
 
 ## Aperçu
 
@@ -34,53 +35,52 @@ L'installateur Windows est fourni dans chaque release. Physalix peut ensuite rec
   <tr>
     <td width="50%" align="center">
       <strong>Graphique et modélisation</strong><br>
-      <img src="docs/images/graphique-modelisation.png" alt="Graphique et modélisation dans Physalix">
+      <img src="docs/images/graphique-modelisation.png" alt="Graphique et modélisation dans Physalyx">
     </td>
     <td width="50%" align="center">
       <strong>Pointage vidéo</strong><br>
-      <img src="docs/images/pointage-video.png" alt="Pointage vidéo dans Physalix">
+      <img src="docs/images/pointage-video.png" alt="Pointage vidéo dans Physalyx">
     </td>
   </tr>
   <tr>
     <td width="50%" align="center">
       <strong>Dosage pH-métrique</strong><br>
-      <img src="docs/images/dosage-phmetrique.png" alt="Dosage pH-métrique dans Physalix">
+      <img src="docs/images/dosage-phmetrique.png" alt="Dosage pH-métrique dans Physalyx">
     </td>
     <td width="50%" align="center">
       <strong>Titrage conductimétrique</strong><br>
-      <img src="docs/images/titrage-conductimetrique.png" alt="Titrage conductimétrique dans Physalix">
+      <img src="docs/images/titrage-conductimetrique.png" alt="Titrage conductimétrique dans Physalyx">
     </td>
   </tr>
 </table>
 
-## Installation
+## Installation et mises à jour
 
-1. Ouvrez la page **[Releases](https://github.com/jeansittler/Physalix/releases/latest)**.
-2. Téléchargez l'installateur `Physalix-Setup-...exe`.
-3. Lancez l'installation.
-4. Ouvrez ensuite Physalix depuis Windows.
+1. Ouvrez la page **[Physalyx — dernière version](https://github.com/jeansittler/Physalyx/releases/latest)**.
+2. Téléchargez `Physalyx-Setup-1.9.0.exe` ou l'installateur d'une version plus récente.
+3. Lancez l'installateur signé et suivez les étapes affichées.
+4. Ouvrez Physalyx depuis Windows.
 
-Les projets utilisent l'extension `.physalix`.
+Une installation existante de Physalix est reconnue lors de la mise à niveau. L'application conserve la compatibilité avec les projets existants et avec l'extension `.physalix`.
 
-## Développement et documentation
+## Projet et contribution
 
-Physalix est développé en **Python** avec **PySide6** et **PyQtGraph**.
+Physalyx est développé en **Python** avec **PySide6** et **PyQtGraph**. Le futur site `physalyx.fr` est en préparation ; le dépôt GitHub reste la source de référence pour le code, la documentation et les téléchargements.
 
-- [Construire Physalix sous Windows](BUILD_WINDOWS.md)
+- [Construire Physalyx sous Windows](BUILD_WINDOWS.md)
 - [Contribuer au projet](CONTRIBUTING.md)
-- [Procédure de release](RELEASE.md)
+- [Consulter la procédure de release](RELEASE.md)
 - [Signaler une vulnérabilité](SECURITY.md)
-- [Politique de confidentialité](PRIVACY.md)
-- [Composants et licences tierces](THIRD_PARTY_NOTICES.md)
-
-Les bugs et propositions peuvent être signalés dans les **[issues GitHub](https://github.com/jeansittler/Physalix/issues)**.
+- [Consulter la politique de confidentialité](PRIVACY.md)
+- [Consulter les composants et licences tierces](THIRD_PARTY_NOTICES.md)
+- [Signaler un bug ou proposer une amélioration](https://github.com/jeansittler/Physalyx/issues)
 
 ## Confidentialité
 
-Physalix n'intègre pas de télémétrie. Il contacte GitHub pour vérifier la disponibilité de nouvelles versions. Les détails sont décrits dans [PRIVACY.md](PRIVACY.md).
+Physalyx n'intègre pas de télémétrie. Il contacte GitHub uniquement pour vérifier la disponibilité des nouvelles versions. Les détails figurent dans la [politique de confidentialité](PRIVACY.md).
 
 ## Licence
 
-Physalix est distribué sous licence **GNU GPL-3.0-only**. Voir [LICENSE](LICENSE).
+Physalyx est distribué sous licence **GNU GPL-3.0-only**. Consultez le fichier [LICENSE](LICENSE).
 
 Développé par **Jean Sittler**.
